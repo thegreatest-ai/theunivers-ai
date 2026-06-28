@@ -1,0 +1,116 @@
+:root{
+  --bg:#05060e;--blue:#2e7bff;--cyan:#38bdf8;--purple:#9b5cff;--text:#eef1fb;--muted:#8b90ad;
+  --line:rgba(140,150,210,.16);--glass:rgba(18,20,38,.6);--grad:linear-gradient(100deg,var(--cyan),var(--blue) 42%,var(--purple));
+  --ease:cubic-bezier(.22,1,.36,1);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:auto}
+body{background:var(--bg);color:var(--text);font-family:'Sora',system-ui,sans-serif;font-weight:300;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+h1,h2{font-family:'Sora',sans-serif;font-weight:700;letter-spacing:-.02em;line-height:1.04}
+.grad{background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+canvas{display:block}
+
+/* fixed 3D layer behind everything */
+.canvas-fixed{position:fixed;inset:0;z-index:0}
+/* finale blackout — fades the whole background to pure black (driven per-frame) */
+.blackout{position:fixed;inset:0;z-index:1;background:#000;opacity:0;pointer-events:none}
+
+/* scrolling content above the canvas — transparent, clicks pass through to canvas */
+.scroll-content{position:relative;z-index:2;width:100%;pointer-events:none}
+.scroll-content a,.scroll-content button,.scroll-content input,.scroll-content textarea,.nav{pointer-events:auto}
+
+/* nav */
+.nav{position:fixed;top:0;left:0;right:0;z-index:20;display:flex;align-items:center;justify-content:space-between;padding:22px clamp(20px,5vw,44px)}
+.brand{display:flex;align-items:center;gap:11px;text-decoration:none;color:var(--text)}
+.brand-name{font-weight:600;font-size:1.15rem}
+.brand-name i{font-style:normal;background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.nav-links{display:flex;align-items:center;gap:26px}
+.nav-links span{color:var(--muted);font-size:.92rem;cursor:pointer;transition:color .2s}
+.nav-links span:hover{color:var(--text)}
+
+.pill{font-family:inherit;cursor:pointer;border:1px solid rgba(150,170,255,.4);color:var(--text);background:rgba(120,140,255,.08);padding:10px 22px;border-radius:999px;font-size:.92rem;transition:all .22s}
+.pill:hover{border-color:var(--blue);box-shadow:0 0 22px rgba(70,110,255,.45)}
+.pill.solid{border:none;color:#fff;background:var(--grad);box-shadow:0 10px 34px rgba(90,70,240,.45)}
+.pill.solid:hover{transform:translateY(-2px);box-shadow:0 14px 44px rgba(90,70,240,.6)}
+.pill.full{width:100%;padding:14px;margin-top:6px}
+
+/* scroll acts — each a full-height stage */
+.act{position:relative;width:100vw;min-height:100vh;display:flex;flex-direction:column;justify-content:center;padding:0 8vw;gap:18px}
+.act.center{align-items:center;text-align:center}
+.act.left{align-items:flex-start;text-align:left}
+.act.right{align-items:flex-end;text-align:right}
+.eyebrow{color:var(--cyan);font-size:.8rem;letter-spacing:.34em;text-transform:uppercase}
+.kicker{color:var(--cyan);font-size:.76rem;letter-spacing:.3em;text-transform:uppercase}
+.act h1{font-size:clamp(3rem,8vw,6.5rem)}
+.act h2{font-size:clamp(1.9rem,4.6vw,3.6rem)}
+.lede{color:#c8cce4;font-size:clamp(1rem,1.5vw,1.2rem);max-width:30em}
+.act button{margin-top:14px}
+.forces{display:flex;gap:44px;margin-top:20px;flex-wrap:wrap}
+.forces div{display:flex;flex-direction:column;gap:6px;max-width:14em}
+.forces b{font-size:1.35rem;background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.forces span{color:var(--muted);font-size:.9rem}
+
+/* scroll cue */
+.scroll-cue{margin-top:30px;width:26px;height:42px;border:1.5px solid rgba(150,170,255,.4);border-radius:14px;display:flex;justify-content:center;padding-top:7px}
+.scroll-cue span{width:3px;height:8px;border-radius:2px;background:var(--cyan);animation:cue 1.8s var(--ease) infinite}
+@keyframes cue{0%{opacity:0;transform:translateY(-4px)}40%{opacity:1}100%{opacity:0;transform:translateY(12px)}}
+
+/* word/element reveal on view */
+.act > *{opacity:0;transform:translateY(28px);transition:opacity .9s var(--ease),transform .9s var(--ease)}
+.act.in > *{opacity:1;transform:none}
+
+/* finale — pinned to the centre of the screen, revealed in place by the last scroll (no slide) */
+.spacer-finale{height:100vh}
+.finale{position:fixed;inset:0;z-index:3;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;text-align:center;padding:0 8vw;pointer-events:none;visibility:hidden}
+.finale > *{opacity:0}
+.finale h2{transform-origin:center center;will-change:transform,opacity;font-size:clamp(1.9rem,4.6vw,3.6rem)}
+.finale .socials{pointer-events:auto}
+.act.in > *:nth-child(2){transition-delay:.08s}
+.act.in > *:nth-child(3){transition-delay:.16s}
+.act.in > *:nth-child(4){transition-delay:.24s}
+.act.in > *:nth-child(5){transition-delay:.32s}
+
+/* quotes */
+.quote{max-width:24em;font-weight:400;font-size:clamp(1.25rem,2.5vw,1.9rem);line-height:1.42;color:#e2e7f6;font-style:italic}
+.quote cite{display:block;margin-top:12px;font-size:.82rem;font-style:normal;letter-spacing:.05em;color:var(--cyan)}
+.pop{animation:pop .35s ease}
+@keyframes pop{from{opacity:0;transform:translateY(10px) scale(.97)}to{opacity:1;transform:none}}
+
+/* panels / forms */
+.panel{width:100%;max-width:380px;margin-top:6px;display:flex;flex-direction:column;gap:12px;text-align:left;background:var(--glass);border:1px solid var(--line);border-radius:18px;padding:24px;backdrop-filter:blur(16px)}
+.sso{display:flex;flex-direction:column;gap:10px}
+.sso-row{display:flex;gap:10px}
+.sso-btn{flex:1;padding:12px;border-radius:12px;cursor:pointer;background:rgba(255,255,255,.05);color:var(--text);border:1px solid rgba(255,255,255,.12);font-family:inherit;font-size:.9rem;transition:all .2s}
+.sso-btn:hover{background:rgba(255,255,255,.1);border-color:rgba(120,140,255,.4)}
+.divider{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:.78rem;margin:2px 0}
+.divider::before,.divider::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,transparent,var(--line),transparent)}
+.panel form{display:flex;flex-direction:column;gap:10px}
+.panel input{padding:12px 14px;border-radius:11px;font-family:inherit;font-size:.95rem;color:#fff;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12)}
+.panel input::placeholder{color:#5a5f7a}
+.panel input:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(46,123,255,.18)}
+.success{text-align:center}
+.success .tick{width:58px;height:58px;border-radius:50%;margin:0 auto 14px;display:grid;place-items:center;font-size:1.6rem;color:#fff;background:var(--grad)}
+.success h3{font-size:1.5rem;margin-bottom:6px}.success p{color:var(--muted)}
+
+/* socials + finale brand */
+.socials{display:flex;gap:12px}
+.socials a{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;color:var(--muted);border:1px solid var(--line);background:rgba(255,255,255,.03);transition:all .22s}
+.socials a:hover{color:#fff;border-color:var(--blue);box-shadow:0 0 16px rgba(70,110,255,.45);transform:translateY(-2px)}
+.socials svg{width:17px;height:17px;fill:currentColor}
+.made{color:#5a5f7a;font-size:.74rem;letter-spacing:.28em}
+.brandblock{display:flex;flex-direction:column;align-items:center;gap:3px;margin-top:6px}
+.brand-name.big{font-size:1.5rem;font-weight:600}
+.designed{color:var(--muted);font-size:.78rem;letter-spacing:.02em}
+
+/* ---------- preloader ---------- */
+.preloader{position:fixed;inset:0;z-index:90;background:#05070f;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;transition:opacity .8s var(--ease),visibility .8s}
+.preloader.done{opacity:0;visibility:hidden}
+.pl-mark{display:flex;align-items:center;gap:10px;font-size:1.1rem;font-weight:600;letter-spacing:.02em;animation:flick 2.4s ease-in-out infinite alternate}
+.pl-mark i{font-style:normal;background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+@keyframes flick{from{opacity:.55}to{opacity:1}}
+.pl-bar{width:230px;height:2px;background:rgba(140,150,210,.16);overflow:hidden;border-radius:2px}
+.pl-bar span{display:block;height:100%;background:var(--grad);transform-origin:left;transition:transform .3s var(--ease)}
+.pl-pct{font-family:'Space Grotesk',monospace;color:var(--muted);font-size:.82rem;letter-spacing:.2em}
+
+@media (max-width:640px){ .nav{padding:16px 20px} .nav-links span{display:none} .forces{gap:24px} }
+@media (prefers-reduced-motion:reduce){ .act > *{transition:none;opacity:1;transform:none} .scroll-cue span{animation:none} }
