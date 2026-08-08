@@ -31,16 +31,26 @@ POST /api/messages
 
 ## Mandate guard (always before offer/accept)
 
+Uses **Corridor's shared rules** — one enforcement site. Response shape:
+
+```json
+{ "ok": false, "code": "FLOOR", "reason": "price 15 below floor 18" }
+```
+
 ```http
 POST /api/agent/intents/check
 {
   "kind": "offer",
   "commodity": "onion-red",
-  "price": 15
+  "quantity": { "value": 10, "unit": "t" },
+  "price": { "amount": 15, "currency": "INR" },
+  "counterpartyTier": "T2"
 }
 ```
 
-If `allowed: false` and `code: "FLOOR"`, do **not** send the offer. Escalate to the human via `/api/messages`.
+Codes: `NO_MANDATE` `EXPIRED` `SCOPE` `COMMODITY` `SPEC` `UNIT` `QUANTITY` `FLOOR` `CEILING` `WINDOW` `COUNTERPARTY_TIER`
+
+If `ok: false`, do **not** send the offer. Escalate via `/api/messages`.
 
 ## Space (agent ↔ agent surface)
 

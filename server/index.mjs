@@ -24,7 +24,7 @@ import {
   token, now, requireInvite, consumeInvite, createSession,
   userFromSession, agentFromToken,
 } from './auth.mjs';
-import { checkMandate } from './mandate.mjs';
+import { checkMandates } from './guard.mjs';
 import {
   oauthConfigured, googleAuthUrl, githubAuthUrl,
   finishGoogle, finishGithub, oauthCallbackRedirect,
@@ -204,10 +204,36 @@ route('POST', '/api/deploy', (ctx) => {
   );
 
   const mandateId = `mnd_${randomUUID().slice(0, 8)}`;
+  const maxQty = {
+    value: Number(ctx.body.maxQuantity ?? 40),
+    unit: String(ctx.body.quantityUnit ?? 't'),
+  };
+  const expiresAt = ctx.body.expiresAt
+    ? String(ctx.body.expiresAt)
+    : new Date(Date.now() + 90 * 24 * 3600 * 1000).toISOString();
+  const minTier = String(ctx.body.counterpartyMinTier ?? 'T2');
+  const deliveryWindow = ctx.body.deliveryWindow ?? {
+    from: new Date().toISOString().slice(0, 10),
+    to: new Date(Date.now() + 180 * 24 * 3600 * 1000).toISOString().slice(0, 10),
+  };
+  const specTemplateId = String(ctx.body.specTemplateId ?? `${commodity}-v1`);
+
   run(
-    `INSERT INTO mandate (id, agent_id, commodity, scope, price_floor, currency, status, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, 'active', ?)`,
-    mandateId, agentId, commodity, scope, floor, currency, now(),
+    `INSERT INTO mandate (
+       id, agent_id, commodity, scope, price_floor, price_ceiling, currency,
+       max_quantity, consumed, delivery_window, counterparty_min_tier,
+       expires_at, spec_template_id, status, created_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
+    mandateId, agentId, commodity, scope, floor,
+    ctx.body.ceiling != null ? Number(ctx.body.ceiling) : null,
+    currency,
+    JSON.stringify(maxQty),
+    JSON.stringify({ quantity: 0 }),
+    JSON.stringify(deliveryWindow),
+    minTier,
+    expiresAt,
+    specTemplateId,
+    now(),
   );
 
   run(
@@ -338,24 +364,20 @@ route('POST', '/api/messages', (ctx) => {
   return { id, ok: true };
 });
 
-/** Agent-facing: mandate check before any binding intent */
+/** Agent-facing: mandate check — Corridor shared rules (one enforcement site). */
 route('POST', '/api/agent/intents/check', (ctx) => {
   const agent = ctx.agent;
   if (!agent) return err(401, 'agent token required');
-  const mandate = one("SELECT * FROM mandate WHERE agent_id = ? AND status = 'active'", agent.id);
-  const intent = {
-    kind: String(ctx.body.kind ?? 'offer'),
-    commodity: ctx.body.commodity,
-    price: ctx.body.price != null ? Number(ctx.body.price) : undefined,
-  };
-  const result = checkMandate(mandate, intent);
+  const mandates = all("SELECT * FROM mandate WHERE agent_id = ? AND status = 'active'", agent.id);
+  const result = checkMandates(mandates, ctx.body);
   run(
     `INSERT INTO mandate_audit (id, agent_id, intent, allowed, code, reason, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    `aud_${randomUUID().slice(0, 8)}`, agent.id, JSON.stringify(intent),
-    result.allowed ? 1 : 0, result.code, result.reason, now(),
+    `aud_${randomUUID().slice(0, 8)}`, agent.id, JSON.stringify(ctx.body),
+    result.ok ? 1 : 0, result.ok ? null : result.code, result.ok ? null : result.reason, now(),
   );
-  return { ...result, mandate: mandate ? publicMandate(mandate) : null };
+  const mandate = mandates[0] ? publicMandate(mandates[0]) : null;
+  return { ...result, mandate };
 });
 
 route('GET', '/api/agent/me', (ctx) => {
@@ -413,6 +435,15 @@ function publicMandate(m) {
     priceFloor: m.price_floor != null
       ? { amount: m.price_floor, currency: m.currency }
       : null,
+    priceCeiling: m.price_ceiling != null
+      ? { amount: m.price_ceiling, currency: m.currency }
+      : null,
+    maxQuantity: m.max_quantity ? JSON.parse(String(m.max_quantity)) : null,
+    consumed: m.consumed ? JSON.parse(String(m.consumed)) : null,
+    deliveryWindow: m.delivery_window ? JSON.parse(String(m.delivery_window)) : null,
+    counterpartyMinTier: m.counterparty_min_tier || 'T2',
+    expiresAt: m.expires_at,
+    specTemplateId: m.spec_template_id,
     currency: m.currency,
     status: m.status,
     createdAt: m.created_at,

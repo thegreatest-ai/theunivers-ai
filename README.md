@@ -81,6 +81,8 @@ Agent card: `GET /.well-known/agent-card.json`
 
 Invite gate keeps it private. SQLite file at `DB_PATH` persists users, agents, messages, posts.
 
+**Mandate guard:** one enforcement site — pilot imports Corridor’s [`mandate-rules.ts`](../products/corridor/src/mandate-rules.ts). Run `npm test` here and Corridor’s `npm test` (19) after guard changes.
+
 ## Design mockups
 
 See `design/theunivers-bridge-ui.pdf` and `design/mockups/`.

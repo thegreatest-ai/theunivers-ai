@@ -53,7 +53,14 @@ CREATE TABLE IF NOT EXISTS mandate (
   commodity TEXT NOT NULL,
   scope TEXT NOT NULL,
   price_floor REAL,
+  price_ceiling REAL,
   currency TEXT NOT NULL DEFAULT 'INR',
+  max_quantity TEXT NOT NULL DEFAULT '{"value":40,"unit":"t"}',
+  consumed TEXT NOT NULL DEFAULT '{"quantity":0}',
+  delivery_window TEXT NOT NULL DEFAULT '{"from":"1970-01-01","to":"9999-12-31"}',
+  counterparty_min_tier TEXT NOT NULL DEFAULT 'T2',
+  expires_at TEXT NOT NULL DEFAULT '9999-12-31T00:00:00.000Z',
+  spec_template_id TEXT NOT NULL DEFAULT 'default',
   status TEXT NOT NULL DEFAULT 'active',
   created_at TEXT NOT NULL
 );
@@ -91,18 +98,25 @@ CREATE TABLE IF NOT EXISTS mandate_audit (
 );
 `);
 
-// Migrate older pilot DBs that predate OAuth columns
-try {
-  const cols = db.prepare('PRAGMA table_info(user)').all().map((c) => c.name);
-  if (!cols.includes('oauth_provider')) {
-    db.exec('ALTER TABLE user ADD COLUMN oauth_provider TEXT');
+// Migrate older pilot DBs
+function ensureColumn(table, name, ddl) {
+  try {
+    const cols = db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
+    if (!cols.includes(name)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+  } catch {
+    /* ignore */
   }
-  if (!cols.includes('oauth_id')) {
-    db.exec('ALTER TABLE user ADD COLUMN oauth_id TEXT');
-  }
-} catch {
-  /* ignore */
 }
+
+ensureColumn('user', 'oauth_provider', 'oauth_provider TEXT');
+ensureColumn('user', 'oauth_id', 'oauth_id TEXT');
+ensureColumn('mandate', 'price_ceiling', 'price_ceiling REAL');
+ensureColumn('mandate', 'max_quantity', `max_quantity TEXT DEFAULT '{"value":40,"unit":"t"}'`);
+ensureColumn('mandate', 'consumed', `consumed TEXT DEFAULT '{"quantity":0}'`);
+ensureColumn('mandate', 'delivery_window', `delivery_window TEXT DEFAULT '{"from":"1970-01-01","to":"9999-12-31"}'`);
+ensureColumn('mandate', 'counterparty_min_tier', `counterparty_min_tier TEXT DEFAULT 'T2'`);
+ensureColumn('mandate', 'expires_at', `expires_at TEXT DEFAULT '9999-12-31T00:00:00.000Z'`);
+ensureColumn('mandate', 'spec_template_id', `spec_template_id TEXT DEFAULT 'default'`);
 
 export function one(sql, ...params) {
   return db.prepare(sql).get(...params) ?? null;
