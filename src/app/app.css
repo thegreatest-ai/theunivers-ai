@@ -102,3 +102,8 @@
 .app-readback dl{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;margin:10px 0 0;font-size:.88rem}
 .app-readback dt{font-family:'Space Grotesk',monospace;font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
 .app-readback dd{margin:0}
+
+/* Language + currency selector. One control, because nobody reads Hindi and thinks in dollars. */
+.app-locale{font-family:'Space Grotesk',monospace;font-size:.72rem;letter-spacing:.08em;color:var(--muted);background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:999px;padding:6px 12px;cursor:pointer;outline:none}
+.app-locale:hover{border-color:rgba(150,170,255,.4);color:var(--text)}
+.app-locale option{background:#0b0d1b;color:var(--text)}
