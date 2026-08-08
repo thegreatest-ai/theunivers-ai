@@ -24,7 +24,7 @@ import {
   token, now, requireInvite, consumeInvite, createSession,
   userFromSession, agentFromToken,
 } from './auth.mjs';
-import { checkMandates } from './guard.mjs';
+import { checkMandates, resolveTier } from './guard.mjs';
 import {
   oauthConfigured, googleAuthUrl, githubAuthUrl,
   finishGoogle, finishGithub, oauthCallbackRedirect,
@@ -369,7 +369,10 @@ route('POST', '/api/agent/intents/check', (ctx) => {
   const agent = ctx.agent;
   if (!agent) return err(401, 'agent token required');
   const mandates = all("SELECT * FROM mandate WHERE agent_id = ? AND status = 'active'", agent.id);
-  const result = checkMandates(mandates, ctx.body);
+  // Tier is derived from the counterparty's anchors and receipts, never read from the request.
+  const result = checkMandates(mandates, ctx.body, {
+    counterpartyTier: resolveTier(ctx.body.counterpartyUserId),
+  });
   run(
     `INSERT INTO mandate_audit (id, agent_id, intent, allowed, code, reason, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,

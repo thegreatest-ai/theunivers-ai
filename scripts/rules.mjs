@@ -25,42 +25,61 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const SOURCE = join(here, '../../../products/corridor/src/mandate-rules.ts');
-const VENDOR = join(here, '../server/vendor/mandate-rules.ts');
-const STAMP  = join(here, '../server/vendor/mandate-rules.hash');
+// Every pure rule module shared with corridor. Add here, never copy by hand.
+const FILES = ['mandate-rules.ts', 'trust-rules.ts'];
+const srcOf    = (f) => join(here, '../../../products/corridor/src/', f);
+const vendorOf = (f) => join(here, '../server/vendor/', f);
+const stampOf  = (f) => join(here, '../server/vendor/', f.replace(/\.ts$/, '.hash'));
 
 const sha = (s) => createHash('sha256').update(s).digest('hex');
 const cmd = process.argv[2];
 
 if (cmd === 'sync') {
-  if (!existsSync(SOURCE)) {
-    console.error(`✗ corridor source not found at ${SOURCE}`);
-    console.error('  Clone it next to this repo, or edit SOURCE in scripts/rules.mjs.');
-    process.exit(1);
+  for (const f of FILES) {
+    const SOURCE = srcOf(f);
+    if (!existsSync(SOURCE)) {
+      console.error(`✗ corridor source not found at ${SOURCE}`);
+      console.error('  Clone it next to this repo, or edit the path in scripts/rules.mjs.');
+      process.exit(1);
+    }
+    const src = readFileSync(SOURCE, 'utf8');
+    mkdirSync(dirname(vendorOf(f)), { recursive: true });
+    writeFileSync(vendorOf(f),
+      `// GENERATED — do not edit. Source of truth: corridor/src/${f}\n` +
+      '// Regenerate with: node scripts/rules.mjs sync\n' + src);
+    writeFileSync(stampOf(f), sha(src) + '\n');
+    console.log(`✓ vendored ${f}  (${sha(src).slice(0, 12)}…)`);
   }
-  const src = readFileSync(SOURCE, 'utf8');
-  mkdirSync(dirname(VENDOR), { recursive: true });
-  writeFileSync(VENDOR,
-    '// GENERATED — do not edit. Source of truth: corridor/src/mandate-rules.ts\n' +
-    '// Regenerate with: node scripts/rules.mjs sync\n' + src);
-  writeFileSync(STAMP, sha(src) + '\n');
-  console.log(`✓ vendored mandate-rules.ts  (${sha(src).slice(0, 12)}…)`);
   process.exit(0);
 }
 
 if (cmd === 'check') {
-  if (!existsSync(VENDOR)) { console.error('✗ server/vendor/mandate-rules.ts missing — run: node scripts/rules.mjs sync'); process.exit(1); }
-  if (!existsSync(SOURCE)) { console.log('• corridor source not present (deployed artifact) — vendored rules used as-is'); process.exit(0); }
-  const want = sha(readFileSync(SOURCE, 'utf8'));
-  const have = existsSync(STAMP) ? readFileSync(STAMP, 'utf8').trim() : '';
-  if (want !== have) {
-    console.error('✗ mandate rules have DRIFTED from corridor.');
-    console.error(`    corridor: ${want.slice(0, 12)}…`);
-    console.error(`    vendored: ${have.slice(0, 12) || '(none)'}…`);
-    console.error('  The guard is the one enforcement site. Run: node scripts/rules.mjs sync');
+  let drifted = false;
+  for (const f of FILES) {
+    const SOURCE = srcOf(f);
+    if (!existsSync(vendorOf(f))) {
+      console.error(`✗ server/vendor/${f} missing — run: node scripts/rules.mjs sync`);
+      process.exit(1);
+    }
+    if (!existsSync(SOURCE)) {
+      console.log(`• corridor absent (deployed artifact) — vendored ${f} used as-is`);
+      continue;
+    }
+    const want = sha(readFileSync(SOURCE, 'utf8'));
+    const have = existsSync(stampOf(f)) ? readFileSync(stampOf(f), 'utf8').trim() : '';
+    if (want !== have) {
+      console.error(`✗ ${f} has DRIFTED from corridor.`);
+      console.error(`    corridor: ${want.slice(0, 12)}…`);
+      console.error(`    vendored: ${have.slice(0, 12) || '(none)'}…`);
+      drifted = true;
+    } else {
+      console.log(`✓ ${f} matches corridor (${want.slice(0, 12)}…)`);
+    }
+  }
+  if (drifted) {
+    console.error('  These are the ONLY enforcement/derivation sites. Run: node scripts/rules.mjs sync');
     process.exit(1);
   }
-  console.log(`✓ mandate rules match corridor (${want.slice(0, 12)}…)`);
   process.exit(0);
 }
 

@@ -96,6 +96,38 @@ CREATE TABLE IF NOT EXISTS mandate_audit (
   reason TEXT,
   created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS anchor (
+  id          TEXT PRIMARY KEY,
+  user_id     TEXT NOT NULL REFERENCES user(id),
+  type        TEXT NOT NULL,          -- trade_licence | farmer_id | fpo_membership | ...
+  issuer      TEXT NOT NULL,
+  method      TEXT NOT NULL,          -- api | document | vouch | onsite
+  status      TEXT NOT NULL DEFAULT 'pending',
+  verified_at TEXT,
+  expires_at  TEXT,                   -- an anchor that lapses must lower standing, not linger
+  vouched_by  TEXT REFERENCES user(id),
+  created_at  TEXT NOT NULL,
+  -- A vouch with no voucher is an unanchored identity wearing a badge.
+  CHECK (method <> 'vouch' OR vouched_by IS NOT NULL)
+);
+
+-- Append-only, hash-chained, per user. No UPDATE and no DELETE path exists in this codebase,
+-- and none should be added: a record that can be rewritten is not evidence.
+CREATE TABLE IF NOT EXISTS receipt (
+  id           TEXT PRIMARY KEY,
+  seq          INTEGER NOT NULL,
+  user_id      TEXT NOT NULL REFERENCES user(id),
+  type         TEXT NOT NULL,         -- payment.released | inspection.passed | dispute.opened | ...
+  payload      TEXT NOT NULL,
+  prev_hash    TEXT NOT NULL,
+  hash         TEXT NOT NULL,
+  created_at   TEXT NOT NULL,
+  UNIQUE (user_id, seq)
+);
+CREATE INDEX IF NOT EXISTS receipt_user_idx ON receipt(user_id);
+CREATE INDEX IF NOT EXISTS anchor_user_idx  ON anchor(user_id);
+
 `);
 
 // Migrate older pilot DBs

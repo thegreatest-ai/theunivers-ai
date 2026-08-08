@@ -5,6 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { checkMandates } from '../server/guard.mjs';
+import { derive } from '../server/vendor/trust-rules.ts';
 
 const baseRow = {
   status: 'active',
@@ -70,8 +71,7 @@ test('shared guard: COUNTERPARTY_TIER', () => {
     commodity: 'onion-red',
     quantity: { value: 10, unit: 't' },
     price: { amount: 25, currency: 'INR' },
-    counterpartyTier: 'T1',
-  });
+  }, { counterpartyTier: 'T1' });   // resolved by the caller, never taken from the body
   assert.equal(r.ok, false);
   assert.equal(r.code, 'COUNTERPARTY_TIER');
 });
@@ -106,4 +106,48 @@ test('shared guard: legacy numeric price still FLOORs', () => {
   });
   assert.equal(r.ok, false);
   assert.equal(r.code, 'FLOOR');
+});
+
+// ── Trust derivation (invariant 1) ────────────────────────────────────────────────────────
+// These exist because COUNTERPARTY_TIER was inert in production for two days while its own
+// test passed. The rule was fine; nothing derived a tier to feed it.
+
+test('trust: no anchors means T0 — an account is not standing', () => {
+  const r = derive([], [], 0);
+  assert.equal(r.tier, 'T0');
+});
+
+test('trust: a vouch from an institution reaches T2, the transactable line', () => {
+  const r = derive(
+    [{ type: 'fpo_membership', method: 'vouch', status: 'verified' }], [], 30);
+  assert.equal(r.tier, 'T2');
+});
+
+test('trust: an EXPIRED anchor stops counting', () => {
+  const yesterday = new Date(Date.now() - 86_400_000).toISOString();
+  const r = derive(
+    [{ type: 'trade_licence', method: 'api', status: 'verified', expiresAt: yesterday }], [], 400);
+  assert.equal(r.tier, 'T0', 'a lapsed licence must lower standing, not linger');
+});
+
+test('trust: a clean delivery record lifts T2 to T3', () => {
+  const receipts = ['payment.released','payment.released','payment.released',
+                    'payment.released','payment.released','inspection.passed'];
+  const r = derive([{ type: 'trade_licence', method: 'api', status: 'verified' }], receipts, 200);
+  assert.equal(r.tier, 'T3');
+});
+
+test('trust: a dispute holds it at T2', () => {
+  const receipts = ['payment.released','payment.released','payment.released',
+                    'payment.released','payment.released','inspection.passed','dispute.opened'];
+  const r = derive([{ type: 'trade_licence', method: 'api', status: 'verified' }], receipts, 200);
+  assert.equal(r.tier, 'T2');
+});
+
+test('trust: score is rate-based — disputes outweigh volume', () => {
+  const many = Array(40).fill('payment.released').concat(Array(5).fill('dispute.opened'));
+  const few  = Array(20).fill('payment.released');
+  const anchor = [{ type: 'trade_licence', method: 'api', status: 'verified' }];
+  assert.ok(derive(anchor, few, 200).score > derive(anchor, many, 200).score,
+    'a 45-deal trader with 5 disputes must rank below a clean 20-deal supplier');
 });

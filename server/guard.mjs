@@ -3,6 +3,7 @@
  * Do not re-implement FLOOR / QUANTITY / EXPIRED here. Ever.
  */
 import { evaluate } from './vendor/mandate-rules.ts';
+import { tierOf } from './trust.mjs';
 
 // The rules are VENDORED from corridor/src/mandate-rules.ts, not reached for across the
 // filesystem. The previous '../../../products/corridor/...' worked on one laptop and would have
@@ -46,7 +47,7 @@ export function rowToSnapshot(m) {
   };
 }
 
-export function normalizeIntent(body) {
+export function normalizeIntent(body, counterpartyTier) {
   const kind = String(body.kind ?? 'offer');
   const intent = { kind };
 
@@ -77,20 +78,39 @@ export function normalizeIntent(body) {
   if (body.specTemplateId) intent.specTemplateId = String(body.specTemplateId);
   if (body.deliveryDate) intent.deliveryDate = String(body.deliveryDate);
 
-  // Caller may pass resolved tier, or we leave undefined (skip tier check)
-  if (body.counterpartyTier !== undefined) {
-    intent.counterpartyTier = body.counterpartyTier;
-  } else if (body.counterpartyPrincipalId && body.counterpartyTier == null && body.requireCounterpartyTier) {
-    intent.counterpartyTier = null;
-  }
+  // Counterparty tier is supplied by the CALLER as an argument — never read from `body`.
+  //
+  // This previously read: "caller may pass resolved tier, or we leave undefined (skip tier
+  // check)", and the HTTP layer never passed one. So COUNTERPARTY_TIER was inert in production
+  // while its test passed, because the test supplied a tier. A refusal that only fires in tests
+  // is worse than no refusal at all: it reads as covered.
+  //
+  // Taking it from `body` would be worse still — a counterparty could assert their own standing
+  // by putting it in the JSON. Hence an argument, and hence resolveTier() below, which derives
+  // it from anchors and receipts.
+  if (counterpartyTier !== undefined) intent.counterpartyTier = counterpartyTier;
 
   return intent;
 }
 
-export function checkMandates(mandateRows, intentBody, now = new Date()) {
+/**
+ * @param mandateRows  the principal's mandates
+ * @param intentBody   what the agent wants to do
+ * @param opts.counterpartyTier  RESOLVED tier. Callers use resolveTier() — never request input.
+ */
+export function checkMandates(mandateRows, intentBody, opts = {}, now = new Date()) {
   const snapshots = (Array.isArray(mandateRows) ? mandateRows : [mandateRows])
     .map(rowToSnapshot)
     .filter(Boolean);
-  const intent = normalizeIntent(intentBody);
+  const intent = normalizeIntent(intentBody, opts.counterpartyTier);
   return evaluate(snapshots, intent, now);
+}
+
+/**
+ * Derive a counterparty's standing from their anchors and receipts. Returns undefined when there
+ * is no counterparty to resolve, which correctly skips the tier rule rather than failing open on
+ * a fabricated value.
+ */
+export function resolveTier(counterpartyUserId, now = new Date()) {
+  return counterpartyUserId ? tierOf(String(counterpartyUserId), now) : undefined;
 }
