@@ -13,6 +13,10 @@ export function oauthConfigured() {
   return {
     google: Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
     github: Boolean(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET),
+    facebook: Boolean(process.env.FACEBOOK_CLIENT_ID && process.env.FACEBOOK_CLIENT_SECRET),
+    // Apple is reported but NOT implemented — see appleAuthUrl() for why. Reporting it as
+    // false rather than omitting it keeps the UI's provider list honest and complete.
+    apple: false,
   };
 }
 
@@ -87,6 +91,93 @@ export function githubAuthUrl(inviteCode) {
     state,
   });
   return `https://github.com/login/oauth/authorize?${params}`;
+}
+
+/**
+ * Facebook Login. Same shape as GitHub: signed state carries the invite, no nonce DB.
+ *
+ * Note on scope: `email` is granted without App Review while the app is in Development mode,
+ * for admins/developers/testers only. Going public requires review. That is fine for a private
+ * pilot and it is the thing that bites on launch day, so it is written down here.
+ */
+export function facebookAuthUrl(inviteCode) {
+  const cfg = oauthConfigured();
+  if (!cfg.facebook) throw new Error('Facebook OAuth not configured');
+  const inv = requireInvite(inviteCode);
+  if (!inv.ok) throw new Error(inv.error);
+
+  const state = signState({
+    provider: 'facebook',
+    invite: inviteCode,
+    nonce: randomBytes(8).toString('hex'),
+    exp: Date.now() + 10 * 60 * 1000,
+  });
+  const params = new URLSearchParams({
+    client_id: process.env.FACEBOOK_CLIENT_ID,
+    redirect_uri: `${apiBase()}/api/auth/facebook/callback`,
+    scope: 'email public_profile',
+    response_type: 'code',
+    state,
+  });
+  return `https://www.facebook.com/v21.0/dialog/oauth?${params}`;
+}
+
+export async function finishFacebook(code, stateRaw) {
+  const state = readState(stateRaw);
+  if (!state || state.provider !== 'facebook') throw new Error('invalid OAuth state');
+  const inv = requireInvite(state.invite);
+  if (!inv.ok) throw new Error(inv.error);
+
+  const tokenParams = new URLSearchParams({
+    client_id: process.env.FACEBOOK_CLIENT_ID,
+    client_secret: process.env.FACEBOOK_CLIENT_SECRET,
+    redirect_uri: `${apiBase()}/api/auth/facebook/callback`,
+    code,
+  });
+  const tokenRes = await fetch(`https://graph.facebook.com/v21.0/oauth/access_token?${tokenParams}`);
+  const tokens = await tokenRes.json();
+  if (!tokens.access_token) {
+    throw new Error(tokens.error?.message || 'Facebook token exchange failed');
+  }
+
+  const profileRes = await fetch(
+    `https://graph.facebook.com/v21.0/me?fields=id,name,email&access_token=${tokens.access_token}`);
+  const profile = await profileRes.json();
+  if (!profileRes.ok || !profile.id) throw new Error('Facebook profile fetch failed');
+
+  // A Facebook account need not carry an email (no verified address, or the user declined the
+  // permission). Refuse rather than invent one: every downstream identity here keys on email.
+  if (!profile.email) {
+    throw new Error('Facebook did not return an email address. Use Google or GitHub instead.');
+  }
+
+  return upsertOAuthUser({
+    provider: 'facebook',
+    oauthId: String(profile.id),
+    email: profile.email,
+    name: profile.name || profile.email,
+  });
+}
+
+/**
+ * Sign in with Apple — DELIBERATELY NOT IMPLEMENTED. Three blockers, none of them code:
+ *
+ *   1. It cannot work on localhost. Apple requires an HTTPS return URL on a verified domain;
+ *      http://localhost is rejected outright. Nothing here can be tested until theunivers.ai
+ *      is deployed with TLS.
+ *   2. It needs a paid Apple Developer Program membership, plus an App ID, a Services ID and
+ *      a .p8 private key.
+ *   3. The client secret is not a string — it is a JWT you sign with that key, valid for at
+ *      most six months, which must be regenerated on a schedule or sign-in silently breaks.
+ *
+ * Half-implementing this would ship auth code that cannot be exercised. When the domain is
+ * live: add APPLE_TEAM_ID / APPLE_SERVICES_ID / APPLE_KEY_ID / APPLE_PRIVATE_KEY, generate the
+ * client-secret JWT, and mirror facebookAuthUrl above.
+ */
+export function appleAuthUrl() {
+  throw new Error(
+    'Sign in with Apple is not enabled: it requires an HTTPS domain (not localhost), ' +
+    'a paid Apple Developer account, and a JWT client secret. Use Google, GitHub or Facebook.');
 }
 
 async function upsertOAuthUser({ provider, oauthId, email, name }) {

@@ -5,6 +5,14 @@ import { api, setSession } from './api';
 
 const API = import.meta.env.VITE_API_URL ?? '';
 
+/** Rendered in this order, and only when /api/health says the server can complete the flow. */
+const PROVIDERS = [
+  { key: 'google',   label: 'Google' },
+  { key: 'github',   label: 'GitHub' },
+  { key: 'facebook', label: 'Facebook' },
+  { key: 'apple',    label: 'Apple' },
+];
+
 export default function SignIn() {
   const nav = useNavigate();
   const [params] = useSearchParams();
@@ -14,7 +22,7 @@ export default function SignIn() {
   const [name, setName] = useState('');
   const [error, setError] = useState(params.get('error') || '');
   const [busy, setBusy] = useState(false);
-  const [oauth, setOauth] = useState({ google: false, github: false });
+  const [oauth, setOauth] = useState({ google: false, github: false, facebook: false, apple: false });
 
   useEffect(() => {
     fetch(`${API}/api/auth/providers`)
@@ -26,7 +34,7 @@ export default function SignIn() {
   function startOAuth(provider) {
     const invite = inviteCode.trim();
     if (!invite) {
-      setError('Enter your invite code first, then connect with Google or GitHub.');
+      setError('Enter your invite code first, then choose a sign-in provider.');
       return;
     }
     window.location.href = `${API}/api/auth/${provider}?invite=${encodeURIComponent(invite)}`;
@@ -57,7 +65,7 @@ export default function SignIn() {
     <div className="app-centre">
       <p className="kicker">theunivers.ai · private pilot</p>
       <h1 className="app-hero"><span className="grad">Connect both worlds.</span></h1>
-      <p className="app-note">Invite-only. Fast sign-in with Google or GitHub, then deploy your agent.</p>
+      <p className="app-note">Invite-only. Sign in, then deploy your agent.</p>
 
       <div className="panel" style={{ maxWidth: 400, margin: '18px 0 0' }}>
         <div className="app-field">
@@ -70,28 +78,30 @@ export default function SignIn() {
           />
         </div>
 
+        {/* Providers are rendered from /api/health, so a button exists only when the server can
+            actually complete that flow. The alternative — showing all four always — is the fake
+            sign-in panel we just deleted from the marketing site, in a new place.
+
+            Apple is absent by design, not oversight: it needs an HTTPS domain (localhost is
+            rejected), a paid developer account, and a JWT client secret. See appleAuthUrl() in
+            server/oauth.mjs. It appears here automatically once the server reports it. */}
         <div className="sso" style={{ marginTop: 4 }}>
-          <button
-            type="button"
-            className="sso-btn"
-            disabled={!oauth.google}
-            onClick={() => startOAuth('google')}
-            title={oauth.google ? 'Continue with Google' : 'Set GOOGLE_CLIENT_ID / SECRET in .env'}
-          >
-            Continue with Google
-          </button>
-          <button
-            type="button"
-            className="sso-btn"
-            disabled={!oauth.github}
-            onClick={() => startOAuth('github')}
-            title={oauth.github ? 'Continue with GitHub' : 'Set GITHUB_CLIENT_ID / SECRET in .env'}
-          >
-            Continue with GitHub
-          </button>
-          {!oauth.google && !oauth.github && (
+          {PROVIDERS.filter((p) => oauth[p.key]).map((p) => (
+            <button
+              key={p.key}
+              type="button"
+              className="sso-btn"
+              onClick={() => startOAuth(p.key)}
+              title={`Continue with ${p.label}`}
+            >
+              Continue with {p.label}
+            </button>
+          ))}
+
+          {PROVIDERS.every((p) => !oauth[p.key]) && (
             <p className="app-note" style={{ margin: 0 }}>
-              OAuth buttons unlock when you add Google / GitHub client credentials to <code>.env</code>.
+              No sign-in provider is configured yet. Add credentials to <code>.env</code> —
+              see <code>.env.example</code> for each provider’s callback URL. Email still works below.
             </p>
           )}
         </div>

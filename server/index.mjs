@@ -27,7 +27,8 @@ import {
 import { checkMandates, resolveTier } from './guard.mjs';
 import {
   oauthConfigured, googleAuthUrl, githubAuthUrl,
-  finishGoogle, finishGithub, oauthCallbackRedirect,
+  finishGoogle, finishGithub, facebookAuthUrl, finishFacebook,
+  oauthCallbackRedirect,
 } from './oauth.mjs';
 
 const PORT = Number(process.env.PORT ?? 8790);
@@ -100,6 +101,28 @@ route('GET', '/api/auth/github/callback', async (ctx) => {
     const state = ctx.query.get('state');
     if (!code) return err(400, ctx.query.get('error') || 'missing code');
     const { sessionToken, next } = await finishGithub(code, state);
+    return { __redirect: oauthCallbackRedirect(sessionToken, next) };
+  } catch (e) {
+    return { __redirect: `${process.env.FRONTEND_URL || BASE_URL}/app/signin?error=${encodeURIComponent(e.message)}` };
+  }
+});
+
+route('GET', '/api/auth/facebook', (ctx) => {
+  try {
+    const invite = String(ctx.query.get('invite') ?? '').trim();
+    if (!invite) return err(400, 'invite code required');
+    return { __redirect: facebookAuthUrl(invite) };
+  } catch (e) {
+    return err(400, e.message);
+  }
+});
+
+route('GET', '/api/auth/facebook/callback', async (ctx) => {
+  try {
+    const code = ctx.query.get('code');
+    const state = ctx.query.get('state');
+    if (!code) return err(400, ctx.query.get('error') || 'missing code');
+    const { sessionToken, next } = await finishFacebook(code, state);
     return { __redirect: oauthCallbackRedirect(sessionToken, next) };
   } catch (e) {
     return { __redirect: `${process.env.FRONTEND_URL || BASE_URL}/app/signin?error=${encodeURIComponent(e.message)}` };
@@ -578,6 +601,7 @@ server.listen(PORT, () => {
   const oauth = oauthConfigured();
   console.log(`theunivers Bridge pilot on ${BASE_URL}`);
   console.log(`Invite code: ${INVITE_CODE}`);
-  console.log(`OAuth: Google ${oauth.google ? 'on' : 'off'} · GitHub ${oauth.github ? 'on' : 'off'}`);
+  console.log('OAuth: ' + Object.entries(oauthConfigured())
+    .map(([k, on]) => `${k[0].toUpperCase()}${k.slice(1)} ${on ? 'on' : 'off'}`).join(' · '));
   console.log(`Agent skill: ${BASE_URL}/agent/skill.md`);
 });
