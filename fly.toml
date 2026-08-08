@@ -1,0 +1,47 @@
+# fly.toml — theunivers.ai
+#
+# Deploy:  fly deploy          (from this folder; builds the Dockerfile, no registry needed)
+# Logs:    fly logs
+# Shell:   fly ssh console
+
+app = "theunivers-ai"
+primary_region = "cdg"   # Paris — closest low-latency Fly region to the UAE at the time of writing.
+                          # `fly platform regions` lists current options; move it if a nearer one exists.
+
+[build]
+
+[env]
+  PORT = "8790"
+  NODE_ENV = "production"
+  DB_PATH = "/data/pilot.db"
+  BASE_URL = "https://theunivers.ai"
+  FRONTEND_URL = "https://theunivers.ai"
+
+  # Registration is CLOSED in production. It is open locally for convenience; shipping it open
+  # would let anyone create an account on a product that has never been tested with strangers.
+  INVITE_REQUIRED = "true"
+
+[http_service]
+  internal_port = 8790
+  force_https = true
+  auto_stop_machines = "suspend"
+  auto_start_machines = true
+  # Zero would let the machine stop entirely and cold-start on the next visitor. One keeps the
+  # site instant for the pilot; drop it to 0 later if cost matters more than first-byte time.
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/api/health"
+
+# SQLite lives here. Persists across deploys; without it the database is wiped on every release.
+[[mounts]]
+  source = "theunivers_data"
+  destination = "/data"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

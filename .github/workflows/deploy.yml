@@ -1,9 +1,19 @@
-name: Deploy to GitHub Pages
+# DISABLED — this used to publish dist/ to GitHub Pages on every push to main.
+#
+# theunivers.ai now runs on Fly, because the product needs a Node process: the API, OAuth
+# callbacks and the SQLite database cannot run on static hosting. Leaving this enabled would
+# race the Fly deployment and periodically replace the working site with a static build whose
+# sign-in silently fails — a login page that looks real and cannot work.
+#
+# Deploy with:  npm run deploy      (build + fly deploy)
+#
+# Kept rather than deleted so the history and the reason stay together. To bring Pages back for
+# a marketing-only site, restore the `on:` block below.
+
+name: Deploy to GitHub Pages (disabled)
 
 on:
-  push:
-    branches: [main]
-  workflow_dispatch:
+  workflow_dispatch:   # manual only — never on push
 
 permissions:
   contents: read
@@ -28,13 +38,3 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
