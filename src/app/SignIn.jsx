@@ -26,22 +26,41 @@ export default function SignIn() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
-  const [touched, setTouched] = useState(false);
+  const [blurred, setBlurred] = useState({});      // per field, so nothing turns red before use
+  const [pwFocus, setPwFocus] = useState(false);
 
   useEffect(() => { api.providers().then(setOauth).catch(() => setOauth({})); }, []);
 
   const set = (k) => (e) => { setF({ ...f, [k]: e.target.value }); setError(''); };
+  const blur = (k) => () => setBlurred({ ...blurred, [k]: true });
+
   const pw = checkPassword(f.password);
   const anyProvider = PROVIDERS.some((p) => oauth[p.key]);
 
+  // Deliberately permissive: one @, something either side, a dot in the domain. Stricter regexes
+  // reject addresses that are perfectly valid and the only real test is whether mail arrives.
+  const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email.trim());
+  const nameOk = f.name.trim().length > 0;
+
+  // A field turns red only after it has been used and left — not while someone is still typing
+  // their first character, which is the most common way validation feels hostile.
+  const badName = mode === 'create' && blurred.name && !nameOk;
+  // Empty counts as invalid once the field has been left, same as the name — an untouched form
+  // stays neutral, a form you have been through and left incomplete shows you where.
+  const badEmail = blurred.email && !emailOk;
+
+  // The checklist appears when the box is selected, and stays if they leave it unsatisfied —
+  // otherwise the reason the button is disabled disappears at the moment they need it.
+  const showRules = mode === 'create' && (pwFocus || (blurred.password && f.password && !pw.ok));
+
   const canSubmit =
-    mode === 'forgot' ? Boolean(f.email)
-    : mode === 'signin' ? Boolean(f.email && f.password)
-    : Boolean(f.name && f.email && f.invite && pw.ok);   // create: the gate
+    mode === 'forgot' ? emailOk
+    : mode === 'signin' ? Boolean(emailOk && f.password)
+    : Boolean(nameOk && emailOk && f.invite && pw.ok);   // create: the gate
 
   async function submit(e) {
     e.preventDefault();
-    setTouched(true);
+    setBlurred({ name: true, email: true, password: true });
     if (!canSubmit || busy) return;
     setBusy(true); setError(''); setNotice('');
     try {
@@ -98,20 +117,38 @@ export default function SignIn() {
           <>
             <div className="app-field"><label>Invite code</label>
               <input value={f.invite} onChange={set('invite')} placeholder="univers-pilot" autoComplete="off" /></div>
-            <div className="app-field"><label>Name</label>
-              <input value={f.name} onChange={set('name')} autoComplete="name" /></div>
+            <div className="app-field">
+              <label>Name</label>
+              <input
+                className={badName ? 'bad' : ''}
+                value={f.name} onChange={set('name')} onBlur={blur('name')} autoComplete="name"
+              />
+              {badName && <span className="app-bad">Your name is required.</span>}
+            </div>
           </>
         )}
 
-        <div className="app-field"><label>Email</label>
-          <input type="email" value={f.email} onChange={set('email')} autoComplete="email" /></div>
+        <div className="app-field">
+          <label>Email</label>
+          <input
+            className={badEmail ? 'bad' : ''}
+            type="email" value={f.email} onChange={set('email')} onBlur={blur('email')}
+            autoComplete="email"
+          />
+          {badEmail && (
+            <span className="app-bad">
+              {f.email.trim() ? 'That doesn’t look like an email address.' : 'Your email is required.'}
+            </span>
+          )}
+        </div>
 
         {mode !== 'forgot' && (
           <div className="app-field">
             <label>Password</label>
             <input
               type="password" value={f.password} onChange={set('password')}
-              onBlur={() => setTouched(true)}
+              onFocus={() => setPwFocus(true)}
+              onBlur={() => { setPwFocus(false); blur('password')(); }}
               autoComplete={mode === 'create' ? 'new-password' : 'current-password'}
             />
           </div>
@@ -119,11 +156,11 @@ export default function SignIn() {
 
         {/* Live checklist — the same rules the server enforces, shown as you type rather than
             thrown back after submit. Nothing is marked failed until the field has been used. */}
-        {mode === 'create' && (
+        {showRules && (
           <ul className="app-pwrules">
             {pw.results.map((r) => (
-              <li key={r.id} className={r.ok ? 'ok' : (touched || f.password ? 'no' : '')}>
-                <span className="mark">{r.ok ? '✓' : '·'}</span> {r.label}
+              <li key={r.id} className={r.ok ? 'ok' : (f.password ? 'no' : '')}>
+                <span className="mark">{r.ok ? '✓' : '·'}</span>{r.label}
               </li>
             ))}
           </ul>
@@ -139,11 +176,7 @@ export default function SignIn() {
             : 'Sign in'}
         </button>
 
-        {mode === 'create' && !pw.ok && f.password && (
-          <p className="app-note" style={{ margin: 0 }}>
-            The button unlocks when every rule above is met.
-          </p>
-        )}
+
       </form>
 
       {anyProvider && mode !== 'forgot' && (

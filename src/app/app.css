@@ -117,12 +117,19 @@
 .app-locale:hover{border-color:rgba(150,170,255,.4);color:var(--text)}
 .app-locale option{background:#0b0d1b;color:var(--text)}
 
-/* Password rules — shown live, same rules the server enforces. */
-.app-pwrules{list-style:none;padding:0;margin:2px 0 0;display:grid;gap:5px}
-.app-pwrules li{font-size:.82rem;color:var(--muted);display:flex;align-items:center;gap:8px;transition:color .2s}
-.app-pwrules li .mark{font-family:'Space Grotesk',monospace;width:1em;display:inline-block;text-align:center}
+/* Password rules — compact, and only while the field is in use. Same rules the server enforces. */
+.app-pwrules{list-style:none;padding:0;margin:1px 0 0;display:flex;flex-wrap:wrap;gap:3px 12px;
+  animation:app-rules-in .18s var(--ease) both}
+@keyframes app-rules-in{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
+.app-pwrules li{font-size:.7rem;line-height:1.5;color:var(--faint,#6c7a7c);display:flex;align-items:center;gap:4px;transition:color .18s}
+.app-pwrules li .mark{font-family:'Space Grotesk',monospace;width:.8em;text-align:center;font-size:.75rem}
 .app-pwrules li.ok{color:var(--cyan)}
 .app-pwrules li.no{color:#c98d84}
+
+/* Invalid field — red only after the field has been used and left. */
+.app-field input.bad{border-color:#c0503f}
+.app-field input.bad:focus{outline-color:#c0503f}
+.app-bad{font-size:.72rem;color:#d1776a;margin-top:1px}
 .app-error{border-left:2px solid #ff6b5a;background:rgba(255,107,90,.07);padding:9px 12px;margin:0;font-size:.86rem;color:#e9c2bc;border-radius:0 8px 8px 0}
 .app-notice{border-left:2px solid var(--cyan);background:rgba(56,189,248,.07);padding:9px 12px;margin:0;font-size:.86rem;color:#cfe6f5;border-radius:0 8px 8px 0;word-break:break-all}
 .app-switch{display:flex;gap:18px;flex-wrap:wrap;justify-content:center;margin-top:6px}
