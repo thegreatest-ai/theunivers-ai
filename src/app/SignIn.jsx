@@ -1,141 +1,177 @@
-/** /app/signin — invite + Google / GitHub fast connect */
+/**
+ * /app/signin — sign in, create an account, or reset a password.
+ *
+ * The password rules come from shared/password-policy.mjs, the SAME module the server enforces.
+ * Two copies would drift: the form would accept what the API rejects, or someone would "fix" the
+ * API to match the form. What you see live here is exactly what /api/auth/register applies.
+ *
+ * The live checklist is a courtesy, not a gate. The gate is server-side — this form is not a
+ * security boundary and anyone can POST straight to the endpoint.
+ */
 import { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { api, setSession } from './api';
+import { checkPassword } from '../../shared/password-policy.mjs';
 
-const API = import.meta.env.VITE_API_URL ?? '';
-
-/** Rendered in this order, and only when /api/health says the server can complete the flow. */
 const PROVIDERS = [
-  { key: 'google',   label: 'Google' },
-  { key: 'github',   label: 'GitHub' },
-  { key: 'facebook', label: 'Facebook' },
-  { key: 'apple',    label: 'Apple' },
+  { key: 'google', label: 'Google' },
+  { key: 'github', label: 'GitHub' },
 ];
 
 export default function SignIn() {
   const nav = useNavigate();
-  const [params] = useSearchParams();
-  const [mode, setMode] = useState('register');
-  const [inviteCode, setInvite] = useState('');
-  const [email, setEmail] = useState('');
-  const [name, setName] = useState('');
-  const [error, setError] = useState(params.get('error') || '');
+  const [mode, setMode] = useState('signin');        // signin | create | forgot
+  const [oauth, setOauth] = useState({});
+  const [f, setF] = useState({ name: '', email: '', password: '', invite: '' });
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
-  const [oauth, setOauth] = useState({ google: false, github: false, facebook: false, apple: false });
+  const [touched, setTouched] = useState(false);
 
-  useEffect(() => {
-    fetch(`${API}/api/auth/providers`)
-      .then((r) => r.json())
-      .then(setOauth)
-      .catch(() => {});
-  }, []);
+  useEffect(() => { api.providers().then(setOauth).catch(() => setOauth({})); }, []);
 
-  function startOAuth(provider) {
-    const invite = inviteCode.trim();
-    if (!invite) {
-      setError('Enter your invite code first, then choose a sign-in provider.');
-      return;
-    }
-    window.location.href = `${API}/api/auth/${provider}?invite=${encodeURIComponent(invite)}`;
-  }
+  const set = (k) => (e) => { setF({ ...f, [k]: e.target.value }); setError(''); };
+  const pw = checkPassword(f.password);
+  const anyProvider = PROVIDERS.some((p) => oauth[p.key]);
+
+  const canSubmit =
+    mode === 'forgot' ? Boolean(f.email)
+    : mode === 'signin' ? Boolean(f.email && f.password)
+    : Boolean(f.name && f.email && f.invite && pw.ok);   // create: the gate
 
   async function submit(e) {
     e.preventDefault();
-    setBusy(true);
-    setError('');
+    setTouched(true);
+    if (!canSubmit || busy) return;
+    setBusy(true); setError(''); setNotice('');
     try {
-      if (mode === 'register') {
-        const data = await api.register({ inviteCode, email, name });
-        setSession(data.sessionToken);
-        nav('/app/deploy');
+      if (mode === 'forgot') {
+        const r = await api.forgot({ email: f.email });
+        setNotice(r.message);
+        // No mailer is wired up in the pilot, so the server hands the token back. Shown as a
+        // link rather than hidden, and clearly labelled as a pilot-only shortcut.
+        if (r.__pilotOnly?.resetToken) {
+          setNotice(`${r.message}  ·  Pilot shortcut: token ${r.__pilotOnly.resetToken}`);
+        }
+      } else if (mode === 'signin') {
+        const r = await api.login({ email: f.email, password: f.password });
+        setSession(r.sessionToken);
+        nav(r.hasAgent ? '/app' : '/app/deploy');
       } else {
-        const data = await api.login({ inviteCode, email });
-        setSession(data.sessionToken);
-        nav(data.agent ? '/app' : '/app/deploy');
+        const r = await api.register({
+          name: f.name, email: f.email, password: f.password, inviteCode: f.invite,
+        });
+        setSession(r.sessionToken);
+        nav('/app/deploy');
       }
-    } catch (err) {
-      setError(err.message);
+    } catch (e2) {
+      setError(e2.message || 'Something went wrong.');
     } finally {
       setBusy(false);
     }
   }
 
+  function startOAuth(key) {
+    if (!f.invite.trim() && mode === 'create') {
+      setError('Enter your invite code first.');
+      return;
+    }
+    window.location.href = `/api/auth/${key}?invite=${encodeURIComponent(f.invite.trim())}`;
+  }
+
   return (
     <div className="app-centre">
-      <p className="kicker">theunivers.ai · private pilot</p>
-      <h1 className="app-hero"><span className="grad">Connect both worlds.</span></h1>
-      <p className="app-note">Invite-only. Sign in, then deploy your agent.</p>
+      <p className="kicker">theunivers.ai</p>
+      <h1 className="app-hero" style={{ fontSize: 'clamp(2.1rem,5vw,3.4rem)' }}>
+        {mode === 'create' ? <>Deploy your <span className="grad">agent</span>.</>
+          : mode === 'forgot' ? 'Reset your password.'
+          : <>Welcome <span className="grad">back</span>.</>}
+      </h1>
+      <p className="app-note">
+        {mode === 'create' ? 'Invite-only while we run the pilot.'
+          : mode === 'forgot' ? 'We’ll send a link to set a new one.'
+          : 'Sign in to your agent.'}
+      </p>
 
-      <div className="panel" style={{ maxWidth: 400, margin: '18px 0 0' }}>
-        <div className="app-field">
-          <label>Invite code</label>
-          <input
-            value={inviteCode}
-            onChange={(e) => setInvite(e.target.value)}
-            placeholder="univers-pilot"
-            required
-          />
-        </div>
+      <form className="app-form" onSubmit={submit} noValidate>
+        {mode === 'create' && (
+          <>
+            <div className="app-field"><label>Invite code</label>
+              <input value={f.invite} onChange={set('invite')} placeholder="univers-pilot" autoComplete="off" /></div>
+            <div className="app-field"><label>Name</label>
+              <input value={f.name} onChange={set('name')} autoComplete="name" /></div>
+          </>
+        )}
 
-        {/* Providers are rendered from /api/health, so a button exists only when the server can
-            actually complete that flow. The alternative — showing all four always — is the fake
-            sign-in panel we just deleted from the marketing site, in a new place.
+        <div className="app-field"><label>Email</label>
+          <input type="email" value={f.email} onChange={set('email')} autoComplete="email" /></div>
 
-            Apple is absent by design, not oversight: it needs an HTTPS domain (localhost is
-            rejected), a paid developer account, and a JWT client secret. See appleAuthUrl() in
-            server/oauth.mjs. It appears here automatically once the server reports it. */}
-        <div className="sso" style={{ marginTop: 4 }}>
-          {PROVIDERS.filter((p) => oauth[p.key]).map((p) => (
-            <button
-              key={p.key}
-              type="button"
-              className="sso-btn"
-              onClick={() => startOAuth(p.key)}
-              title={`Continue with ${p.label}`}
-            >
-              Continue with {p.label}
-            </button>
-          ))}
-
-          {PROVIDERS.every((p) => !oauth[p.key]) && (
-            <p className="app-note" style={{ margin: 0 }}>
-              No sign-in provider is configured yet. Add credentials to <code>.env</code> —
-              see <code>.env.example</code> for each provider’s callback URL. Email still works below.
-            </p>
-          )}
-        </div>
-
-        <div className="divider"><span>or email</span></div>
-
-        <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {mode === 'register' && (
-            <div className="app-field">
-              <label>Name</label>
-              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ramesh Bhosale" required />
-            </div>
-          )}
+        {mode !== 'forgot' && (
           <div className="app-field">
-            <label>Email</label>
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@gmail.com" required />
+            <label>Password</label>
+            <input
+              type="password" value={f.password} onChange={set('password')}
+              onBlur={() => setTouched(true)}
+              autoComplete={mode === 'create' ? 'new-password' : 'current-password'}
+            />
           </div>
-          {error && <p className="app-note" style={{ color: '#f87171' }}>{error}</p>}
-          <button className="app-cta" type="submit" disabled={busy}>
-            {busy ? '…' : mode === 'register' ? 'Create account ✦' : 'Sign in ✦'}
-          </button>
-          <button
-            type="button"
-            className="app-ghost"
-            onClick={() => setMode(mode === 'register' ? 'login' : 'register')}
-          >
-            {mode === 'register' ? 'Already registered? Sign in' : 'Need an account? Register'}
-          </button>
-        </form>
+        )}
+
+        {/* Live checklist — the same rules the server enforces, shown as you type rather than
+            thrown back after submit. Nothing is marked failed until the field has been used. */}
+        {mode === 'create' && (
+          <ul className="app-pwrules">
+            {pw.results.map((r) => (
+              <li key={r.id} className={r.ok ? 'ok' : (touched || f.password ? 'no' : '')}>
+                <span className="mark">{r.ok ? '✓' : '·'}</span> {r.label}
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {error && <p className="app-error">{error}</p>}
+        {notice && <p className="app-notice">{notice}</p>}
+
+        <button className="app-cta" type="submit" disabled={!canSubmit || busy}>
+          {busy ? 'One moment…'
+            : mode === 'create' ? 'Create account'
+            : mode === 'forgot' ? 'Send reset link'
+            : 'Sign in'}
+        </button>
+
+        {mode === 'create' && !pw.ok && f.password && (
+          <p className="app-note" style={{ margin: 0 }}>
+            The button unlocks when every rule above is met.
+          </p>
+        )}
+      </form>
+
+      {anyProvider && mode !== 'forgot' && (
+        <>
+          <div className="divider" style={{ maxWidth: 440, width: '100%' }}>
+            <span style={{ flex: 1, height: 1, background: 'var(--line)' }} />or<span style={{ flex: 1, height: 1, background: 'var(--line)' }} />
+          </div>
+          <div className="sso" style={{ maxWidth: 440, width: '100%' }}>
+            {PROVIDERS.filter((p) => oauth[p.key]).map((p) => (
+              <button key={p.key} type="button" className="sso-btn" onClick={() => startOAuth(p.key)}>
+                Continue with {p.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
+      <div className="app-switch">
+        {mode !== 'signin' && <button type="button" onClick={() => { setMode('signin'); setError(''); }}>Sign in</button>}
+        {mode !== 'create' && <button type="button" onClick={() => { setMode('create'); setError(''); }}>Create an account</button>}
+        {mode !== 'forgot' && <button type="button" onClick={() => { setMode('forgot'); setError(''); }}>Forgot my password</button>}
       </div>
 
-      <p className="app-note" style={{ marginTop: 12 }}>
-        Signing in identifies you. Standing comes later from anchors and completed work — not from this login.
-      </p>
+      {!anyProvider && (
+        <p className="app-note">
+          Google and GitHub sign-in appear here once their credentials are in <code>.env</code>.
+        </p>
+      )}
     </div>
   );
 }

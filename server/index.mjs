@@ -25,9 +25,11 @@ import {
   userFromSession, agentFromToken,
 } from './auth.mjs';
 import { checkMandates, resolveTier } from './guard.mjs';
+import { hashPassword, verifyPassword } from './passwords.mjs';
+import { passwordError } from '../shared/password-policy.mjs';
 import {
   oauthConfigured, googleAuthUrl, githubAuthUrl,
-  finishGoogle, finishGithub, facebookAuthUrl, finishFacebook,
+  finishGoogle, finishGithub,
   oauthCallbackRedirect,
 } from './oauth.mjs';
 
@@ -107,73 +109,114 @@ route('GET', '/api/auth/github/callback', async (ctx) => {
   }
 });
 
-route('GET', '/api/auth/facebook', (ctx) => {
-  try {
-    const invite = String(ctx.query.get('invite') ?? '').trim();
-    if (!invite) return err(400, 'invite code required');
-    return { __redirect: facebookAuthUrl(invite) };
-  } catch (e) {
-    return err(400, e.message);
-  }
-});
-
-route('GET', '/api/auth/facebook/callback', async (ctx) => {
-  try {
-    const code = ctx.query.get('code');
-    const state = ctx.query.get('state');
-    if (!code) return err(400, ctx.query.get('error') || 'missing code');
-    const { sessionToken, next } = await finishFacebook(code, state);
-    return { __redirect: oauthCallbackRedirect(sessionToken, next) };
-  } catch (e) {
-    return { __redirect: `${process.env.FRONTEND_URL || BASE_URL}/app/signin?error=${encodeURIComponent(e.message)}` };
-  }
-});
-
 route('POST', '/api/auth/register', (ctx) => {
   const email = String(ctx.body.email ?? '').trim().toLowerCase();
   const name = String(ctx.body.name ?? '').trim();
+  const password = String(ctx.body.password ?? '');
   const inviteCode = String(ctx.body.inviteCode ?? '').trim();
-  if (!email || !name || !inviteCode) return err(400, 'email, name, inviteCode required');
+  if (!email || !name || !inviteCode) return err(400, 'name, email and invite code are required');
+
+  // THE GATE. The browser checks the same rules live for feedback, but this is the one that
+  // counts — the form is not a security boundary and anyone can POST here directly.
+  const pwErr = passwordError(password);
+  if (pwErr) return err(400, pwErr);
 
   const inv = requireInvite(inviteCode);
   if (!inv.ok) return err(403, inv.error);
 
   if (one('SELECT id FROM user WHERE email = ?', email)) {
-    return err(409, 'email already registered — use login');
+    return err(409, 'That email is already registered — sign in instead.');
   }
 
   const id = `usr_${randomUUID().slice(0, 8)}`;
   run(
-    'INSERT INTO user (id, email, name, kind, jurisdiction, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+    `INSERT INTO user (id, email, name, kind, jurisdiction, password_hash, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
     id, email, name,
     String(ctx.body.kind ?? 'individual'),
     String(ctx.body.jurisdiction ?? 'IN'),
+    hashPassword(password),
     now(),
   );
   consumeInvite(inviteCode);
   const sessionToken = createSession(id);
-  return { sessionToken, user: publicUser(one('SELECT * FROM user WHERE id = ?', id)) };
+  const user = one('SELECT * FROM user WHERE id = ?', id);
+  return { sessionToken, user: publicUser(user), agent: null, hasAgent: false };
 });
 
 route('POST', '/api/auth/login', (ctx) => {
   const email = String(ctx.body.email ?? '').trim().toLowerCase();
-  const inviteCode = String(ctx.body.inviteCode ?? '').trim();
-  if (!email || !inviteCode) return err(400, 'email and inviteCode required');
-
-  const inv = requireInvite(inviteCode);
-  if (!inv.ok) return err(403, inv.error);
+  const password = String(ctx.body.password ?? '');
+  if (!email || !password) return err(400, 'email and password are required');
 
   const user = one('SELECT * FROM user WHERE email = ?', email);
-  if (!user) return err(404, 'unknown email — register first');
+
+  // One message for "no such user" and for "wrong password". Distinguishing them turns this
+  // endpoint into an account-enumeration oracle: an attacker learns which emails are registered.
+  const REJECT = 'Email or password is incorrect.';
+  if (!user) return err(401, REJECT);
+
+  // A null hash means the account was created through Google or GitHub. Say so plainly — a
+  // generic rejection would send someone round in circles resetting a password they never had.
+  if (!user.password_hash) {
+    return err(400, `That account signs in with ${user.oauth_provider || 'a provider'}. Use that button instead.`);
+  }
+  if (!verifyPassword(password, user.password_hash)) return err(401, REJECT);
 
   const sessionToken = createSession(user.id);
   const agent = one('SELECT * FROM agent WHERE user_id = ?', user.id);
   return {
-    sessionToken,
-    user: publicUser(user),
+    sessionToken, user: publicUser(user),
     agent: agent ? publicAgent(agent, false) : null,
     hasAgent: Boolean(agent),
   };
+});
+
+/**
+ * Forgot password. ALWAYS returns the same response whether or not the email exists — the
+ * alternative tells an attacker which addresses are registered.
+ *
+ * Pilot behaviour: there is no mail sender wired up, so the token is returned in the response
+ * and logged. That is deliberately unacceptable for production and is labelled as such in the
+ * payload, so it cannot quietly ship.
+ */
+route('POST', '/api/auth/forgot', (ctx) => {
+  const email = String(ctx.body.email ?? '').trim().toLowerCase();
+  if (!email) return err(400, 'email is required');
+
+  const user = one('SELECT * FROM user WHERE email = ?', email);
+  const SAME = { ok: true, message: 'If that email has an account, a reset link is on its way.' };
+  if (!user || !user.password_hash) return SAME;
+
+  const resetToken = token(24);
+  const expires = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+  run('UPDATE user SET reset_token = ?, reset_expires = ? WHERE id = ?', resetToken, expires, user.id);
+  console.log(`[pilot] password reset for ${email}: ${resetToken}`);
+
+  return { ...SAME, __pilotOnly: { resetToken, note: 'Returned because no mailer is configured. Remove before production.' } };
+});
+
+route('POST', '/api/auth/reset', (ctx) => {
+  const resetToken = String(ctx.body.token ?? '').trim();
+  const password = String(ctx.body.password ?? '');
+  if (!resetToken) return err(400, 'reset token is required');
+
+  const pwErr = passwordError(password);
+  if (pwErr) return err(400, pwErr);
+
+  const user = one('SELECT * FROM user WHERE reset_token = ?', resetToken);
+  if (!user) return err(400, 'That reset link is not valid.');
+  if (!user.reset_expires || new Date(user.reset_expires) < new Date()) {
+    return err(400, 'That reset link has expired. Request a new one.');
+  }
+
+  // Token is single-use: cleared in the same statement that sets the password.
+  run('UPDATE user SET password_hash = ?, reset_token = NULL, reset_expires = NULL WHERE id = ?',
+      hashPassword(password), user.id);
+
+  const sessionToken = createSession(user.id);
+  const agent = one('SELECT * FROM agent WHERE user_id = ?', user.id);
+  return { sessionToken, user: publicUser(user), agent: agent ? publicAgent(agent, false) : null, hasAgent: Boolean(agent) };
 });
 
 route('GET', '/api/me', (ctx) => {

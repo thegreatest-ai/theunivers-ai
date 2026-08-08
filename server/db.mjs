@@ -147,6 +147,13 @@ ensureColumn('mandate', 'max_quantity', `max_quantity TEXT DEFAULT '{"value":40,
 ensureColumn('mandate', 'consumed', `consumed TEXT DEFAULT '{"quantity":0}'`);
 ensureColumn('mandate', 'delivery_window', `delivery_window TEXT DEFAULT '{"from":"1970-01-01","to":"9999-12-31"}'`);
 ensureColumn('mandate', 'counterparty_min_tier', `counterparty_min_tier TEXT DEFAULT 'T2'`);
+
+// Password is NULLABLE on purpose: OAuth users have no password and must never be given a
+// placeholder one. A null here means "this account signs in with a provider", and the login
+// handler says so rather than failing with a generic wrong-password.
+ensureColumn('user', 'password_hash', 'password_hash TEXT');
+ensureColumn('user', 'reset_token', 'reset_token TEXT');
+ensureColumn('user', 'reset_expires', 'reset_expires TEXT');
 ensureColumn('mandate', 'expires_at', `expires_at TEXT DEFAULT '9999-12-31T00:00:00.000Z'`);
 ensureColumn('mandate', 'spec_template_id', `spec_template_id TEXT DEFAULT 'default'`);
 
