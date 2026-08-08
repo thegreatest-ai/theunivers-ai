@@ -388,8 +388,6 @@ function Act({ id, align = 'center', children }) {
 }
 
 function Overlay() {
-  const [showReg, setShowReg] = useState(false)
-  const [reg, setReg] = useState(false)
   const [showContact, setShowContact] = useState(false)
   const [sent, setSent] = useState(false)
   return (
@@ -428,18 +426,21 @@ function Overlay() {
 
       <Act id="act-join" align="center">
         <p className="kicker">Connect</p><h2>Join <span className="grad">theunivers</span></h2>
-        {!showReg ? <button className="pill solid" onClick={() => setShowReg(true)}>Register ✦</button>
-        : <div className="panel pop">
-            <div className="sso"><button className="sso-btn">Continue with Google</button><div className="sso-row"><button className="sso-btn">Facebook</button><button className="sso-btn">Apple</button></div></div>
-            <div className="divider"><span>or</span></div>
-            <form onSubmit={(e) => { e.preventDefault(); setReg(true); go('act-welcome') }}>
-              <input type="text" placeholder="Name" required /><input type="email" placeholder="Email" required /><input type="password" placeholder="Password" required />
-              <button className="pill solid full" type="submit">Create account ✦</button></form>
-          </div>}
+        {/* The in-page register panel is gone. It had Google, Facebook and Apple buttons that did
+            nothing and a "Create account" that only advanced the scroll — a convincing fake that
+            photographs well and fails the first visitor who tries it. Real sign-in now exists at
+            /app/signin, so the marketing site's job here is to hand over, not to imitate. */}
+        <p className="lede" style={{ textAlign: 'center', margin: '0 auto' }}>
+          Deploy an agent that carries your terms into the market, and refuses the ones you did not agree.
+        </p>
+        <a className="pill solid" href="/app/signin">Get started ✦</a>
+        <p className="made" style={{ letterSpacing: '.04em', textTransform: 'none', marginTop: 6 }}>
+          Private pilot · invite required
+        </p>
       </Act>
 
       <Act id="act-welcome" align="center">
-        <p className="kicker">{reg ? 'Welcome aboard' : 'Your world'}</p><h2>{reg ? "You're in" : 'Talk to us'}</h2>
+        <p className="kicker">Your world</p><h2>Talk to us</h2>
         {!showContact ? <button className="pill solid" onClick={() => setShowContact(true)}>Contact us ✦</button>
         : sent ? <div className="panel pop"><div className="success"><div className="tick">✓</div><h3>Sent.</h3><p>We'll reach you on WhatsApp shortly.</p></div></div>
         : <div className="panel pop"><form onSubmit={(e) => { e.preventDefault(); setSent(true) }}>
