@@ -1,0 +1,104 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   /app product shell — "Bridge"
+
+   Extends the marketing tokens in styles.css; it does not fight them. Every colour
+   here comes from :root there (--bg, --cyan, --blue, --purple, --line, --glass, --grad).
+   All classes are prefixed .app- so nothing can collide with the cinematic site.
+
+   Deliberate: no Three.js in the app. The marketing canvas is the spectacle; this is
+   where someone works, and it must stay fast and quiet.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.app-root{min-height:100vh;background:var(--bg);color:var(--text);position:relative;overflow-x:hidden}
+
+/* A static nebula plate instead of a live canvas: same visual language, no GPU cost. */
+.app-root::before{
+  content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:
+    radial-gradient(1100px 600px at 12% -10%, rgba(56,189,248,.12), transparent 60%),
+    radial-gradient(900px 620px at 88% 8%,  rgba(155,92,255,.11), transparent 62%),
+    radial-gradient(760px 520px at 50% 108%, rgba(46,123,255,.10), transparent 60%);
+}
+.app-root > *{position:relative;z-index:1}
+
+/* ── top bar ───────────────────────────────────────────────────────────────── */
+.app-bar{display:flex;align-items:center;gap:16px;padding:16px clamp(18px,4vw,34px);border-bottom:1px solid var(--line)}
+.app-bar .spacer{flex:1}
+.app-brand{font-weight:600;font-size:1.05rem;text-decoration:none;color:var(--text)}
+.app-status{display:flex;align-items:center;gap:8px;font-family:'Space Grotesk',monospace;font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.app-dot{width:7px;height:7px;border-radius:50%;background:var(--cyan);box-shadow:0 0 0 0 rgba(56,189,248,.55);animation:app-beat 2.6s var(--ease) infinite}
+@keyframes app-beat{0%{box-shadow:0 0 0 0 rgba(56,189,248,.5)}70%{box-shadow:0 0 0 9px rgba(56,189,248,0)}100%{box-shadow:0 0 0 0 rgba(56,189,248,0)}}
+.app-link{background:none;border:none;color:var(--muted);font-family:inherit;font-size:.85rem;cursor:pointer;text-decoration:none}
+.app-link:hover{color:var(--text)}
+
+/* ── the three lanes ───────────────────────────────────────────────────────── */
+.app-bridge{display:grid;grid-template-columns:1fr 1fr 1.15fr;gap:1px;background:var(--line);min-height:calc(100vh - 58px)}
+@media (max-width:1000px){.app-bridge{grid-template-columns:1fr;min-height:0}}
+.app-lane{background:var(--bg);padding:26px clamp(16px,2vw,26px);display:flex;flex-direction:column;gap:16px;animation:app-rise .5s var(--ease) both}
+.app-lane:nth-child(2){animation-delay:.07s}
+.app-lane:nth-child(3){animation-delay:.14s}
+@keyframes app-rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.app-lane,.app-dot,.app-msg{animation:none}}
+
+.app-lane-head{font-family:'Space Grotesk',monospace;font-size:.7rem;letter-spacing:.28em;text-transform:uppercase;color:var(--cyan)}
+.app-lane-sub{color:var(--muted);font-size:.84rem;margin-top:-8px}
+
+/* ── panels ───────────────────────────────────────────────────────────────── */
+.app-card{background:var(--glass);border:1px solid var(--line);border-radius:16px;padding:18px;backdrop-filter:blur(14px)}
+.app-card h3{font-size:1rem;font-weight:600;margin:0 0 4px}
+.app-meta{font-family:'Space Grotesk',monospace;font-size:.72rem;color:var(--muted);letter-spacing:.04em}
+
+/* Tier is DERIVED (Corridor invariant 1). It is never rendered alone — always with the
+   anchors and receipts that produced it — so it cannot read as a badge someone granted. */
+.app-tier{display:inline-flex;align-items:baseline;gap:7px;font-family:'Space Grotesk',monospace}
+.app-tier b{font-size:1.5rem;font-weight:500;background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.app-tier span{font-size:.7rem;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+.app-anchor{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid var(--line);font-size:.86rem}
+.app-anchor:last-child{border-bottom:none}
+.app-ok{color:var(--cyan);font-family:'Space Grotesk',monospace;font-size:.68rem;letter-spacing:.14em;text-transform:uppercase}
+.app-pending{color:var(--muted);font-family:'Space Grotesk',monospace;font-size:.68rem;letter-spacing:.14em;text-transform:uppercase}
+
+/* ── typed posts ──────────────────────────────────────────────────────────── */
+.app-post{background:var(--glass);border:1px solid var(--line);border-radius:14px;padding:15px 16px;cursor:pointer;transition:border-color .2s,transform .2s;text-align:left;width:100%;font-family:inherit;color:inherit}
+.app-post:hover{border-color:rgba(56,189,248,.42);transform:translateY(-1px)}
+.app-type{font-family:'Space Grotesk',monospace;font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;padding:3px 8px;border-radius:999px;border:1px solid currentColor}
+.t-availability{color:var(--cyan)} .t-requirement{color:var(--blue)}
+.t-price_signal{color:var(--purple)} .t-result{color:#7fd6a8}
+
+/* ── intents in a thread ──────────────────────────────────────────────────── */
+.app-msg{max-width:78%;padding:12px 15px;border-radius:15px;border:1px solid var(--line);background:var(--glass);animation:app-in .32s var(--ease) both}
+@keyframes app-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.app-msg.us{margin-left:auto;border-color:rgba(56,189,248,.3)}
+.app-kind{font-family:'Space Grotesk',monospace;font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:4px}
+
+/* A refused intent is the product made visible. It is styled to be read, not hidden. */
+.app-guard{margin-top:9px;border-left:2px solid #ff6b5a;padding:8px 11px;background:rgba(255,107,90,.07);border-radius:0 8px 8px 0}
+.app-guard code{font-family:'Space Grotesk',monospace;color:#ff8b7d;font-size:.72rem;letter-spacing:.14em}
+.app-guard p{margin:3px 0 0;font-size:.82rem;color:#e7c9c4}
+
+/* ── controls ─────────────────────────────────────────────────────────────── */
+.app-cta{font-family:inherit;cursor:pointer;border:none;border-radius:999px;padding:12px 26px;font-size:.95rem;color:#06070f;font-weight:600;background:var(--grad);transition:transform .2s,filter .2s}
+.app-cta:hover{transform:translateY(-1px);filter:brightness(1.08)}
+.app-cta:disabled{opacity:.45;cursor:not-allowed;transform:none}
+.app-ghost{font-family:inherit;cursor:pointer;background:rgba(120,140,255,.07);border:1px solid var(--line);color:var(--text);border-radius:999px;padding:9px 18px;font-size:.85rem}
+.app-ghost:hover{border-color:rgba(150,170,255,.42)}
+.app-field{display:flex;flex-direction:column;gap:6px}
+.app-field label{font-family:'Space Grotesk',monospace;font-size:.66rem;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+.app-field input,.app-field select,.app-field textarea{padding:11px 13px;border-radius:11px;font-family:inherit;font-size:.94rem;color:#fff;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);outline:none}
+.app-field input:focus,.app-field select:focus,.app-field textarea:focus{border-color:rgba(56,189,248,.5)}
+.app-field select option{background:#0b0d1b}
+
+/* ── centred flows (sign-in, deploy) ──────────────────────────────────────── */
+.app-centre{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:6vh 6vw;text-align:center}
+.app-hero{font-family:'Sora',sans-serif;font-weight:700;letter-spacing:-.03em;line-height:1;font-size:clamp(2.6rem,7vw,4.6rem)}
+.app-note{color:var(--muted);font-size:.82rem;max-width:34em;line-height:1.6}
+
+/* ── deploy steps ─────────────────────────────────────────────────────────── */
+.app-steps{display:flex;gap:8px;align-items:center;font-family:'Space Grotesk',monospace;font-size:.66rem;letter-spacing:.2em;text-transform:uppercase;color:var(--muted)}
+.app-steps .on{color:var(--cyan)}
+.app-steps i{width:22px;height:1px;background:var(--line);display:inline-block;font-style:normal}
+.app-form{width:100%;max-width:440px;display:flex;flex-direction:column;gap:14px;text-align:left}
+.app-readback{border:1px solid rgba(56,189,248,.3);background:rgba(56,189,248,.05);border-radius:14px;padding:16px;text-align:left}
+.app-readback dl{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;margin:10px 0 0;font-size:.88rem}
+.app-readback dt{font-family:'Space Grotesk',monospace;font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
+.app-readback dd{margin:0}
