@@ -9,6 +9,15 @@
    where someone works, and it must stay fast and quiet.
    ───────────────────────────────────────────────────────────────────────────── */
 
+.app-token-bar{
+  padding:8px clamp(16px,4vw,28px);
+  font-size:.78rem;
+  color:var(--muted);
+  border-bottom:1px solid var(--line);
+  background:rgba(56,189,248,.06);
+}
+.app-token-bar a{color:var(--cyan)}
+
 .app-root{min-height:100vh;background:var(--bg);color:var(--text);position:relative;overflow-x:hidden}
 
 /* A static nebula plate instead of a live canvas: same visual language, no GPU cost. */

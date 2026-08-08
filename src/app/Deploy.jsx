@@ -1,18 +1,19 @@
 /**
- * /app/deploy - first run. Three steps, then a READBACK before the agent goes live.
- *
- * The readback is not decoration. Corridor's onboarding state machine has it as a tested
- * invariant ("a complete interview reaches readback before going live"), because the step that
- * follows is an agent acting on your behalf with a price floor you may have typed wrong.
+ * /app/deploy — first run. Calls the pilot API; returns an agent API token to connect your AI.
  */
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { api, setAgentToken, hasSession } from './api';
+import { useEffect } from 'react';
 
 const STEPS = ['Identity', 'Agent', 'Mandate', 'Confirm'];
 
 export default function Deploy() {
   const nav = useNavigate();
   const [i, setI] = useState(0);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(null);
   const [f, setF] = useState({
     name: '', kind: 'individual', jurisdiction: 'IN',
     agentName: '', purpose: '',
@@ -20,11 +21,69 @@ export default function Deploy() {
   });
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
 
+  useEffect(() => {
+    if (!hasSession()) nav('/app/signin');
+  }, [nav]);
+
   const canNext =
     (i === 0 && f.name.trim()) ||
     (i === 1 && f.agentName.trim() && f.purpose.trim()) ||
     (i === 2 && f.commodity.trim() && f.floor !== '') ||
     i === 3;
+
+  async function deploy() {
+    setBusy(true);
+    setError('');
+    try {
+      const data = await api.deploy({
+        name: f.name,
+        kind: f.kind,
+        jurisdiction: f.jurisdiction,
+        agentName: f.agentName,
+        purpose: f.purpose,
+        commodity: f.commodity,
+        floor: Number(f.floor),
+        scope: f.scope,
+      });
+      setAgentToken(data.agentToken);
+      setDone(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (done) {
+    return (
+      <div className="app-centre">
+        <p className="kicker">Agent live</p>
+        <h1 className="app-hero" style={{ fontSize: 'clamp(1.9rem,4vw,2.8rem)' }}>
+          Connect your AI
+        </h1>
+        <p className="app-note">
+          Paste this token into your agent / MCP / Cursor skill. It is shown once here — copy it now.
+        </p>
+        <div className="app-readback" style={{ maxWidth: 520 }}>
+          <p className="app-meta" style={{ color: 'var(--cyan)' }}>AGENT API TOKEN</p>
+          <code style={{
+            display: 'block', wordBreak: 'break-all', fontFamily: 'Space Grotesk, monospace',
+            fontSize: '.9rem', color: '#eef1fb', marginTop: 8,
+          }}>{done.agentToken}</code>
+          <p className="app-meta" style={{ marginTop: 16 }}>Skill doc</p>
+          <p style={{ fontSize: '.9rem' }}>{done.skillUrl || '/agent/skill.md'}</p>
+          <p className="app-note" style={{ marginTop: 12 }}>
+            Your agent: call <code>GET /api/agent/me</code> with this Bearer token, then
+            message you via <code>POST /api/messages</code>. Always run
+            <code> POST /api/agent/intents/check</code> before offers.
+          </p>
+        </div>
+        <button className="app-cta" style={{ marginTop: 16 }} onClick={() => nav('/app')}>
+          Open Bridge ✦
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="app-centre">
@@ -59,8 +118,6 @@ export default function Deploy() {
               <select value={f.jurisdiction} onChange={set('jurisdiction')}>
                 <option value="IN">India</option><option value="AE">United Arab Emirates</option>
               </select></div>
-            <p className="app-note">No incorporation certificate needed. Standing can come from a
-              Farmer ID, a co-operative that vouches for you, or a trade licence — whichever you have.</p>
           </>
         )}
 
@@ -71,8 +128,6 @@ export default function Deploy() {
             <div className="app-field"><label>What is it for — one sentence</label>
               <textarea rows={3} value={f.purpose} onChange={set('purpose')}
                 placeholder="Sells my onion crop into Gulf buyers without me sitting on the phone." /></div>
-            <p className="app-note">One agent per person. Not several — a second agent would be a
-              place to hide a bad record while keeping your name clean.</p>
           </>
         )}
 
@@ -84,12 +139,10 @@ export default function Deploy() {
               <input type="number" value={f.floor} onChange={set('floor')} placeholder="18" /></div>
             <div className="app-field"><label>Scope</label>
               <select value={f.scope} onChange={set('scope')}>
-                <option value="quote">Quote only — it answers, you decide everything</option>
-                <option value="negotiate">Negotiate — it may haggle above your floor</option>
-                <option value="commit">Commit — it may agree a deal within the floor</option>
+                <option value="quote">Quote only</option>
+                <option value="negotiate">Negotiate</option>
+                <option value="commit">Commit</option>
               </select></div>
-            <p className="app-note">The floor is enforced outside the model. A limit an agent could
-              talk its way past would not be a limit.</p>
           </>
         )}
 
@@ -101,22 +154,22 @@ export default function Deploy() {
               <dt>Agent</dt><dd>{f.agentName || '—'}</dd>
               <dt>Purpose</dt><dd>{f.purpose || '—'}</dd>
               <dt>Commodity</dt><dd>{f.commodity || '—'}</dd>
-              <dt>Floor</dt><dd>{f.floor === '' ? '—' : `${f.floor} per unit — it may never go below`}</dd>
+              <dt>Floor</dt><dd>{f.floor === '' ? '—' : `${f.floor} — never below`}</dd>
               <dt>Scope</dt><dd>{f.scope}</dd>
             </dl>
-            <p className="app-note" style={{ marginTop: 12 }}>
-              From the moment you deploy, this agent speaks for you inside these limits. Check the
-              floor — it is the number that stops a bad deal.
-            </p>
           </div>
         )}
       </div>
+
+      {error && <p className="app-note" style={{ color: '#f87171' }}>{error}</p>}
 
       <div style={{ display: 'flex', gap: 10, marginTop: 6 }}>
         {i > 0 && <button className="app-ghost" onClick={() => setI(i - 1)}>Back</button>}
         {i < 3
           ? <button className="app-cta" disabled={!canNext} onClick={() => setI(i + 1)}>Continue</button>
-          : <button className="app-cta" onClick={() => nav('/app')}>Deploy agent</button>}
+          : <button className="app-cta" disabled={busy} onClick={deploy}>
+              {busy ? 'Deploying…' : 'Deploy agent ✦'}
+            </button>}
       </div>
     </div>
   );

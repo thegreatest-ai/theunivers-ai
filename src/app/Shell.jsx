@@ -1,28 +1,40 @@
 /**
- * Shell — top bar, locale, and outlet for every /app route. No mega-nav, by decision.
- *
- * Locale lives here because both sides of the corridor use this same screen: a farmer in Nashik
- * and a buyer in Dubai see the identical data, each in their own language and currency. The
- * underlying values never change — see locale.js for the rule that keeps that safe.
+ * Shell — auth gate + top bar. Loads /api/me for agent status.
  */
-import { useState } from 'react';
-import { Link, Outlet, useNavigate } from 'react-router-dom';
-import { agent } from './mock';
+import { useEffect, useState } from 'react';
+import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
+import { api, clearAuth, hasSession, getAgentToken } from './api';
 import { LOCALES } from './locale';
 import './app.css';
 
 export default function Shell({ bare = false }) {
   const nav = useNavigate();
-
-  // Defaults to the Indian farmer's view, because that is the harder case and the one the
-  // product exists for. A Gulf buyer switching to English (AE) is the easy direction.
+  const loc = useLocation();
   const [locale, setLocale] = useState('en-IN');
+  const [me, setMe] = useState(null);
   const currency = LOCALES[locale].currency;
+
+  useEffect(() => {
+    if (bare) return;
+    if (!hasSession()) {
+      nav('/app/signin');
+      return;
+    }
+    api.me()
+      .then((data) => {
+        setMe(data);
+        if (!data.agent && loc.pathname === '/app') nav('/app/deploy');
+      })
+      .catch(() => {
+        clearAuth();
+        nav('/app/signin');
+      });
+  }, [bare, nav, loc.pathname]);
 
   if (bare) {
     return (
       <div className="app-root">
-        <Outlet context={{ locale, currency, setLocale }} />
+        <Outlet context={{ locale, currency, setLocale, me, setMe }} />
       </div>
     );
   }
@@ -32,9 +44,6 @@ export default function Shell({ bare = false }) {
       <header className="app-bar">
         <Link to="/" className="app-brand">theunivers<span className="grad">.ai</span></Link>
         <span className="spacer" />
-
-        {/* Language and currency move together, because they always do in practice: nobody
-            reads Hindi and thinks in dollars. One control, not two. */}
         <select
           className="app-locale"
           value={locale}
@@ -45,12 +54,27 @@ export default function Shell({ bare = false }) {
             <option key={k} value={k}>{v.label} · {v.currency}</option>
           ))}
         </select>
-
-        <span className="app-status"><span className="app-dot" /> {agent.name} · {agent.status}</span>
-        <button className="app-link" onClick={() => nav('/app/signin')}>Sign out</button>
+        {me?.agent && (
+          <span className="app-status">
+            <span className="app-dot" /> {me.agent.name} · {me.agent.status}
+          </span>
+        )}
+        <button
+          className="app-link"
+          onClick={() => { clearAuth(); nav('/app/signin'); }}
+        >
+          Sign out
+        </button>
       </header>
 
-      <Outlet context={{ locale, currency, setLocale }} />
+      {getAgentToken() && (
+        <div className="app-token-bar">
+          Agent token saved in this browser — connect your AI with{' '}
+          <a href="/agent/skill.md" target="_blank" rel="noreferrer">skill.md</a>
+        </div>
+      )}
+
+      <Outlet context={{ locale, currency, setLocale, me, setMe }} />
     </div>
   );
 }

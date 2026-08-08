@@ -5,8 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:api": "node server/index.mjs",
+    "dev:all": "node server/index.mjs & vite",
     "build": "vite build",
+    "start": "node server/index.mjs",
     "preview": "vite preview"
+  },
+  "engines": {
+    "node": ">=22.18.0"
   },
   "dependencies": {
     "@react-three/drei": "^9.114.0",

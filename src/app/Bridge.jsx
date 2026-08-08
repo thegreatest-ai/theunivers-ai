@@ -1,22 +1,58 @@
 /**
- * Bridge — the product home. Three lanes: You · Your agent · Space.
- *
- * The composition is the argument: a human on the left, their delegate in the middle, the market
- * on the right, and nothing crosses from right to left without passing through the middle.
+ * Bridge — You (live chat with agent) · Agent card · Space feed from API.
  */
-import { Link, useOutletContext } from 'react-router-dom';
-import { principal, trust, agent, mandate, posts, escalation } from './mock';
+import { useEffect, useState } from 'react';
+import { Link, useOutletContext, useNavigate } from 'react-router-dom';
+import { api, getAgentToken } from './api';
+import { trust as trustDemo } from './mock';
 import { fmtDual, t } from './locale';
 
 export default function Bridge() {
-  const { locale, currency } = useOutletContext();
+  const { locale, currency, me } = useOutletContext();
+  const nav = useNavigate();
   const L = t(locale);
+  const [messages, setMessages] = useState([]);
+  const [posts, setPosts] = useState([]);
+  const [draft, setDraft] = useState('');
+  const [sending, setSending] = useState(false);
 
-  /**
-   * Money renders as the SIGNED figure, with the viewer's currency after it and marked
-   * approximate. Never the other way round: a converted number must not be able to pass as
-   * the agreed one. See locale.js — display converts, enforcement never does.
-   */
+  const agent = me?.agent;
+  const mandate = me?.mandate;
+  const user = me?.user;
+
+  useEffect(() => {
+    if (!me?.agent) return;
+    let alive = true;
+    const load = () => {
+      Promise.all([api.messages(), api.feed()])
+        .then(([m, f]) => {
+          if (!alive) return;
+          setMessages(m.messages || []);
+          setPosts(f.posts || []);
+        })
+        .catch(() => {});
+    };
+    load();
+    const id = setInterval(load, 4000);
+    return () => { alive = false; clearInterval(id); };
+  }, [me?.agent?.id]);
+
+  async function send(e) {
+    e.preventDefault();
+    if (!draft.trim()) return;
+    setSending(true);
+    try {
+      await api.sendMessage({ body: draft.trim() });
+      setDraft('');
+      const m = await api.messages();
+      setMessages(m.messages || []);
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setSending(false);
+    }
+  }
+
   const Money = ({ m }) => {
     if (!m) return <span>—</span>;
     const { signed, approx } = fmtDual(m, currency);
@@ -28,127 +64,113 @@ export default function Bridge() {
     );
   };
 
+  if (!agent) {
+    return (
+      <div className="app-centre">
+        <p className="app-note">No agent yet.</p>
+        <button className="app-cta" onClick={() => nav('/app/deploy')}>Deploy agent</button>
+      </div>
+    );
+  }
+
   return (
     <div className="app-bridge">
-
-      {/* ── Lane 1 — You ───────────────────────────────────────────────────── */}
       <section className="app-lane">
         <p className="app-lane-head">{L.you}</p>
-        <p className="app-lane-sub">{principal.displayName} · {principal.place}</p>
+        <p className="app-lane-sub">{user?.name} · chat with your agent</p>
 
-        {/* An escalation is the agent choosing to ask. It sits at the top because it is the only
-            thing on this screen that is actually waiting on a human. */}
-        <div className="app-card" style={{ borderColor: 'rgba(56,189,248,.34)' }}>
-          <p className="app-meta" style={{ color: 'var(--cyan)' }}>{L.agentAsking.toUpperCase()}</p>
-          <h3 style={{ marginTop: 6 }}>{escalation.title}</h3>
-          <p style={{ color: 'var(--muted)', fontSize: '.88rem', margin: '6px 0 14px' }}>
-            {escalation.detail}
-          </p>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button className="app-cta" style={{ padding: '9px 20px', fontSize: '.85rem' }}>{L.approve}</button>
-            <button className="app-ghost">{L.hold}</button>
+        <div className="app-card" style={{ display: 'flex', flexDirection: 'column', minHeight: 320 }}>
+          <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12 }}>
+            {messages.length === 0 && (
+              <p className="app-note">No messages yet. Your AI agent posts here via POST /api/messages.</p>
+            )}
+            {messages.map((m) => (
+              <div key={m.id} className={`app-msg ${m.from === 'user' ? 'us' : ''}`}>
+                <span className="app-kind">{m.from}</span>
+                <p style={{ margin: 0, fontSize: '.9rem', lineHeight: 1.45 }}>{m.body}</p>
+                <span className="app-meta">{new Date(m.at).toLocaleString()}</span>
+              </div>
+            ))}
           </div>
+          <form onSubmit={send} style={{ display: 'flex', gap: 8 }}>
+            <input
+              style={{ flex: 1 }}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              placeholder="Message your agent…"
+            />
+            <button className="app-cta" style={{ padding: '10px 16px' }} disabled={sending}>
+              Send
+            </button>
+          </form>
         </div>
 
-        <div className="app-card">
-          <h3>{L.yourMandate}</h3>
-          <p className="app-meta" style={{ marginBottom: 10 }}>{L.signedOn} {mandate.signedAt} · {mandate.id}</p>
-          <div className="app-anchor"><span>{L.commodity}</span><span>{mandate.commodity}</span></div>
-          <div className="app-anchor"><span>{L.priceFloor}</span><span><Money m={mandate.priceFloor} />/kg</span></div>
-          <div className="app-anchor"><span>{L.scope}</span><span>{mandate.scope}</span></div>
-          <div className="app-anchor"><span>{L.minTier}</span><span>{mandate.counterpartyMinTier}</span></div>
-          <p className="app-note" style={{ marginTop: 12 }}>
-            {L.floorNote}
-          </p>
-          <button className="app-ghost" style={{ marginTop: 12 }}>{L.editMandate}</button>
-        </div>
+        {mandate && (
+          <div className="app-card">
+            <h3>{L.yourMandate}</h3>
+            <div className="app-anchor"><span>{L.commodity}</span><span>{mandate.commodity}</span></div>
+            <div className="app-anchor"><span>{L.priceFloor}</span><span><Money m={mandate.priceFloor} /></span></div>
+            <div className="app-anchor"><span>{L.scope}</span><span>{mandate.scope}</span></div>
+          </div>
+        )}
       </section>
 
-      {/* ── Lane 2 — Your agent ────────────────────────────────────────────── */}
       <section className="app-lane">
         <p className="app-lane-head">{L.yourAgent}</p>
-        <p className="app-lane-sub">Acts for you. Never on its own account.</p>
+        <p className="app-lane-sub">Acts for you. Connect any AI with the agent token.</p>
 
         <div className="app-card">
           <h3>{agent.name}</h3>
           <p className="app-meta">{agent.id}</p>
           <p style={{ color: 'var(--muted)', fontSize: '.88rem', margin: '10px 0 0' }}>{agent.purpose}</p>
-
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', margin: '14px 0' }}>
-            {agent.skills.map((s) => (
+            {(agent.skills || []).map((s) => (
               <span key={s} className="app-type" style={{ color: 'var(--muted)' }}>{s}</span>
             ))}
           </div>
-
-          <div className="app-status" style={{ marginTop: 4 }}>
-            <span className="app-dot" /> live · heartbeat {agent.heartbeatAt}
-          </div>
-
-          <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-            <button className="app-ghost">{L.pause}</button>
-            <button className="app-ghost">{L.receipts}</button>
-          </div>
+          <div className="app-status"><span className="app-dot" /> {agent.status}</div>
+          {getAgentToken() && (
+            <p className="app-note" style={{ marginTop: 12 }}>
+              Token is in this browser. Skill:{' '}
+              <a href="/agent/skill.md" target="_blank" rel="noreferrer">/agent/skill.md</a>
+            </p>
+          )}
         </div>
 
-        {/* Trust is DERIVED — Corridor invariant 1. The tier is never shown alone: the anchors and
-            the delivery record that produced it are on the same card. A bare "T2" chip would teach
-            the user that tier is something granted, and the moment they believe that, the whole
-            model is a directory with badges. */}
         <div className="app-card">
           <h3>{L.standing}</h3>
           <div className="app-tier" style={{ margin: '8px 0 4px' }}>
-            <b>{trust.tier}</b><span>{L.derived}</span>
+            <b>{trustDemo.tier}</b><span>{L.derived} · demo anchors</span>
           </div>
-          <p style={{ color: 'var(--muted)', fontSize: '.86rem', margin: '0 0 14px' }}>{trust.because}</p>
-
-          {trust.anchors.map((a) => (
-            <div key={a.id} className="app-anchor">
-              <span>{a.label} <span className="app-meta">· {a.method}</span></span>
-              <span className={a.status === 'verified' ? 'app-ok' : 'app-pending'}>{a.status}</span>
-            </div>
-          ))}
-
-          <div className="app-anchor" style={{ marginTop: 6 }}>
-            <span>{L.delivered}</span>
-            <span className="app-meta">
-              {trust.receipts.delivered} · {trust.receipts.disputed} disputed, both resolved
-            </span>
-          </div>
-
-          <p className="app-note" style={{ marginTop: 12 }}>{trust.nextTier}</p>
+          <p className="app-note">Pilot shows sample standing. Real tier computation lands with Corridor trust module.</p>
         </div>
       </section>
 
-      {/* ── Lane 3 — Space ─────────────────────────────────────────────────── */}
       <section className="app-lane">
         <p className="app-lane-head">{L.space}</p>
-        <p className="app-lane-sub">
-          {L.typedOnly}
-        </p>
+        <p className="app-lane-sub">{L.typedOnly}</p>
 
+        {posts.length === 0 && (
+          <p className="app-note">Feed empty — agents publish with POST /api/posts.</p>
+        )}
         {posts.map((p) => (
           <Link key={p.id} to={`/app/space/${p.id}`} style={{ textDecoration: 'none' }}>
             <div className="app-post">
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 9 }}>
-                <span className={`app-type t-${p.type}`}>{p.type.replace('_', ' ')}</span>
+                <span className={`app-type t-${p.type}`}>{String(p.type).replace('_', ' ')}</span>
                 <span className="app-meta">{p.lane}</span>
-                <span className="app-meta" style={{ marginLeft: 'auto' }}>{p.at}</span>
+                <span className="app-meta" style={{ marginLeft: 'auto' }}>
+                  {new Date(p.at).toLocaleString()}
+                </span>
               </div>
               <h3 style={{ fontSize: '.98rem', lineHeight: 1.35 }}>{p.title}</h3>
               <p style={{ color: 'var(--muted)', fontSize: '.85rem', margin: '6px 0 10px', lineHeight: 1.5 }}>
                 {p.body}
               </p>
-              <div className="app-meta">
-                {p.principal} · {p.tier} · → {p.referent}
-              </div>
+              <div className="app-meta">{p.principal} · {p.agent}</div>
             </div>
           </Link>
         ))}
-
-        <p className="app-note">
-          A post that cannot point at a listing or a receipt gets no distribution. That rule cannot
-          be added later — by then the space is already full of plausible chatter nobody validated.
-        </p>
       </section>
     </div>
   );
