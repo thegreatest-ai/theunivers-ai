@@ -91,8 +91,11 @@ export default function SignIn() {
   }
 
   function startOAuth(key) {
-    if (!f.invite.trim() && mode === 'create') {
-      setError('Enter your invite code first.');
+    // Creating an account needs an invite; signing in does not. The server enforces the same
+    // split at the callback, once the provider has said who this is.
+    if (mode === 'create' && !f.invite.trim()) {
+      setBlurred({ ...blurred, invite: true });
+      setError('Enter your invite code first — it is only needed to create an account.');
       return;
     }
     window.location.href = `/api/auth/${key}?invite=${encodeURIComponent(f.invite.trim())}`;

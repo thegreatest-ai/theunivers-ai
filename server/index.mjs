@@ -67,8 +67,9 @@ route('GET', '/api/auth/providers', () => oauthConfigured());
 
 route('GET', '/api/auth/google', (ctx) => {
   try {
+    // No invite required to START the flow. A returning user has none, and we cannot know
+    // which they are until the provider answers. Enforced at the callback instead.
     const invite = String(ctx.query.get('invite') ?? '').trim();
-    if (!invite) return err(400, 'invite code required');
     return { __redirect: googleAuthUrl(invite) };
   } catch (e) {
     return err(400, e.message);
@@ -78,7 +79,6 @@ route('GET', '/api/auth/google', (ctx) => {
 route('GET', '/api/auth/github', (ctx) => {
   try {
     const invite = String(ctx.query.get('invite') ?? '').trim();
-    if (!invite) return err(400, 'invite code required');
     return { __redirect: githubAuthUrl(invite) };
   } catch (e) {
     return err(400, e.message);

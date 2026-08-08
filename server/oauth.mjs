@@ -48,8 +48,11 @@ function frontendBase() {
 export function googleAuthUrl(inviteCode) {
   const cfg = oauthConfigured();
   if (!cfg.google) throw new Error('Google OAuth not configured');
-  const inv = requireInvite(inviteCode);
-  if (!inv.ok) throw new Error(inv.error);
+
+  // The invite is NOT validated here. At this point the provider has not told us who this is,
+  // so we cannot know whether an invite is even required — a returning user does not need one.
+  // It is carried in the signed state and checked at the callback, once we know. Requiring it
+  // here locked existing users out of their own accounts the moment the invite was used up.
 
   const state = signState({
     provider: 'google',
@@ -72,8 +75,9 @@ export function googleAuthUrl(inviteCode) {
 export function githubAuthUrl(inviteCode) {
   const cfg = oauthConfigured();
   if (!cfg.github) throw new Error('GitHub OAuth not configured');
-  const inv = requireInvite(inviteCode);
-  if (!inv.ok) throw new Error(inv.error);
+
+  // Same as Google: the invite is carried in signed state and checked at the callback, once we
+  // know whether this is a new account. See googleAuthUrl above.
 
   const state = signState({
     provider: 'github',
@@ -90,7 +94,11 @@ export function githubAuthUrl(inviteCode) {
   return `https://github.com/login/oauth/authorize?${params}`;
 }
 
-async function upsertOAuthUser({ provider, oauthId, email, name }) {
+/**
+ * @param inviteCode  required only when this creates a NEW account. Returning users sign in
+ *                    without one — the invite gates joining, not logging in.
+ */
+async function upsertOAuthUser({ provider, oauthId, email, name, inviteCode }) {
   if (!email) throw new Error('OAuth account has no email — grant email permission');
 
   let user = one(
@@ -109,6 +117,12 @@ async function upsertOAuthUser({ provider, oauthId, email, name }) {
     return { user: one('SELECT * FROM user WHERE id = ?', user.id), created: false };
   }
 
+  // NEW account: this is the first point at which we know an invite is actually required, so
+  // it is validated here rather than before the redirect. Consumption stays in the callers,
+  // which already do `if (created) consumeInvite(...)`.
+  const inv = requireInvite(inviteCode);
+  if (!inv.ok) throw new Error(`${inv.error} — an invite is needed to create an account.`);
+
   const id = `usr_${randomUUID().slice(0, 8)}`;
   run(
     `INSERT INTO user (id, email, name, kind, jurisdiction, oauth_provider, oauth_id, created_at)
@@ -121,8 +135,6 @@ async function upsertOAuthUser({ provider, oauthId, email, name }) {
 export async function finishGoogle(code, stateRaw) {
   const state = readState(stateRaw);
   if (!state || state.provider !== 'google') throw new Error('invalid OAuth state');
-  const inv = requireInvite(state.invite);
-  if (!inv.ok) throw new Error(inv.error);
 
   const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
@@ -149,6 +161,7 @@ export async function finishGoogle(code, stateRaw) {
     oauthId: String(profile.sub),
     email: profile.email,
     name: profile.name,
+    inviteCode: state.invite,
   });
   if (created) consumeInvite(state.invite);
 
@@ -163,8 +176,6 @@ export async function finishGoogle(code, stateRaw) {
 export async function finishGithub(code, stateRaw) {
   const state = readState(stateRaw);
   if (!state || state.provider !== 'github') throw new Error('invalid OAuth state');
-  const inv = requireInvite(state.invite);
-  if (!inv.ok) throw new Error(inv.error);
 
   const tokenRes = await fetch('https://github.com/login/oauth/access_token', {
     method: 'POST',
@@ -213,6 +224,7 @@ export async function finishGithub(code, stateRaw) {
     oauthId: String(profile.id),
     email,
     name: profile.name || profile.login,
+    inviteCode: state.invite,
   });
   if (created) consumeInvite(state.invite);
 
