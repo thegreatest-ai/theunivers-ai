@@ -13,9 +13,30 @@ import { useNavigate } from 'react-router-dom';
 import { api, setSession } from './api';
 import { checkPassword } from '../../shared/password-policy.mjs';
 
+/**
+ * Inline SVG marks rather than image files: no extra request, no flash of a missing logo, and
+ * nothing to break if an asset path changes. Google's is the official four-colour "G" and must
+ * keep its own colours — their brand guidelines do not permit recolouring it. GitHub's mark is
+ * monochrome and inherits currentColor, so it follows the button's text in either theme.
+ */
+const GoogleMark = () => (
+  <svg width="16" height="16" viewBox="0 0 48 48" aria-hidden="true">
+    <path fill="#4285F4" d="M45.1 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h11.8c-.5 2.7-2 5-4.4 6.6v5.5h7.1c4.1-3.8 6.6-9.4 6.6-16.1z"/>
+    <path fill="#34A853" d="M24 46c5.9 0 10.9-2 14.5-5.4l-7.1-5.5c-2 1.3-4.5 2.1-7.4 2.1-5.7 0-10.5-3.8-12.2-9H4.5v5.7C8.1 41.1 15.4 46 24 46z"/>
+    <path fill="#FBBC05" d="M11.8 28.2c-.4-1.3-.7-2.7-.7-4.2s.2-2.9.7-4.2v-5.7H4.5C3 17.1 2.1 20.4 2.1 24s.9 6.9 2.4 9.9l7.3-5.7z"/>
+    <path fill="#EA4335" d="M24 10.6c3.2 0 6.1 1.1 8.4 3.3l6.3-6.3C34.9 4 29.9 2 24 2 15.4 2 8.1 6.9 4.5 14.1l7.3 5.7c1.7-5.2 6.5-9.2 12.2-9.2z"/>
+  </svg>
+);
+
+const GitHubMark = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <path d="M12 .5A11.5 11.5 0 0 0 .5 12a11.5 11.5 0 0 0 7.86 10.92c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.53-1.34-1.29-1.7-1.29-1.7-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.2 1.77 1.2 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.7 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.79 0c2.2-1.5 3.17-1.18 3.17-1.18.63 1.59.24 2.76.12 3.05.74.81 1.19 1.84 1.19 3.1 0 4.43-2.7 5.4-5.26 5.69.41.36.78 1.06.78 2.14v3.17c0 .31.2.67.8.56A11.5 11.5 0 0 0 23.5 12 11.5 11.5 0 0 0 12 .5z"/>
+  </svg>
+);
+
 const PROVIDERS = [
-  { key: 'google', label: 'Google' },
-  { key: 'github', label: 'GitHub' },
+  { key: 'google', label: 'Google', Mark: GoogleMark },
+  { key: 'github', label: 'GitHub', Mark: GitHubMark },
 ];
 
 export default function SignIn() {
@@ -190,7 +211,7 @@ export default function SignIn() {
           <div className="sso" style={{ maxWidth: 440, width: '100%' }}>
             {PROVIDERS.filter((p) => oauth[p.key]).map((p) => (
               <button key={p.key} type="button" className="sso-btn" onClick={() => startOAuth(p.key)}>
-                Continue with {p.label}
+                <p.Mark /> Continue with {p.label}
               </button>
             ))}
           </div>

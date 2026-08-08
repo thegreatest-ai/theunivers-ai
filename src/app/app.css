@@ -135,3 +135,7 @@
 .app-switch{display:flex;gap:18px;flex-wrap:wrap;justify-content:center;margin-top:6px}
 .app-switch button{background:none;border:none;color:var(--muted);font-family:inherit;font-size:.85rem;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
 .app-switch button:hover{color:var(--text)}
+
+/* Provider buttons: mark + label on one baseline, centred as a pair. */
+.sso-btn{display:flex;align-items:center;justify-content:center;gap:9px}
+.sso-btn svg{flex:0 0 auto;display:block}
