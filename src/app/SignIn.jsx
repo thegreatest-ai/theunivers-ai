@@ -132,7 +132,7 @@ export default function SignIn() {
       <p className="app-note">
         {mode === 'create' ? (oauth.inviteRequired ? 'Invite-only while we run the pilot.' : 'Create your account and deploy an agent.')
           : mode === 'forgot' ? 'We’ll send a link to set a new one.'
-          : 'Sign in to your agent.'}
+          : 'Sign in to your univers.'}
       </p>
 
       <form className="app-form" onSubmit={submit} noValidate>
