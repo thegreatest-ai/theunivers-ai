@@ -130,7 +130,7 @@ export default function SignIn() {
           : <>Welcome <span className="grad">back</span>.</>}
       </h1>
       <p className="app-note">
-        {mode === 'create' ? (oauth.inviteRequired ? 'Invite-only while we run the pilot.' : 'Create your account and deploy an agent.')
+        {mode === 'create' ? (oauth.inviteRequired ? 'Invite-only while we run the pilot.' : 'Create your account and merge the universes.')
           : mode === 'forgot' ? 'We’ll send a link to set a new one.'
           : 'Sign in to your univers.'}
       </p>
