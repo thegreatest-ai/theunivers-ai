@@ -41,7 +41,10 @@ const PROVIDERS = [
 
 export default function SignIn() {
   const nav = useNavigate();
-  const [mode, setMode] = useState('signin');        // signin | create | forgot
+  // A reset link lands here as /app/signin?token=… , so the mode is picked from the URL.
+  const initialToken = new URLSearchParams(window.location.search).get('token') || '';
+  const [mode, setMode] = useState(initialToken ? 'reset' : 'signin');  // signin | create | forgot | reset
+  const [resetToken, setResetToken] = useState(initialToken);
   const [oauth, setOauth] = useState({});
   const [f, setF] = useState({ name: '', email: '', password: '', invite: '' });
   const [error, setError] = useState('');
@@ -72,10 +75,11 @@ export default function SignIn() {
 
   // The checklist appears when the box is selected, and stays if they leave it unsatisfied —
   // otherwise the reason the button is disabled disappears at the moment they need it.
-  const showRules = mode === 'create' && (pwFocus || (blurred.password && f.password && !pw.ok));
+  const showRules = (mode === 'create' || mode === 'reset') && (pwFocus || (blurred.password && f.password && !pw.ok));
 
   const canSubmit =
-    mode === 'forgot' ? emailOk
+    mode === 'reset' ? pw.ok
+    : mode === 'forgot' ? emailOk
     : mode === 'signin' ? Boolean(emailOk && f.password)
     : Boolean(nameOk && emailOk && (!oauth.inviteRequired || f.invite) && pw.ok);   // create: the gate
 
@@ -87,12 +91,21 @@ export default function SignIn() {
     try {
       if (mode === 'forgot') {
         const r = await api.forgot({ email: f.email });
-        setNotice(r.message);
-        // No mailer is wired up in the pilot, so the server hands the token back. Shown as a
-        // link rather than hidden, and clearly labelled as a pilot-only shortcut.
+        // With no mailer, the server hands the token straight back. Rather than printing it and
+        // leaving the user at a dead end, walk them into the reset step — the same screen a real
+        // email link would open. When SMTP exists, this branch stops firing on its own.
         if (r.__pilotOnly?.resetToken) {
-          setNotice(`${r.message}  ·  Pilot shortcut: token ${r.__pilotOnly.resetToken}`);
+          setResetToken(r.__pilotOnly.resetToken);
+          setF({ ...f, password: '' });
+          setMode('reset');
+          setNotice('No mail is configured yet, so you have been taken straight to the reset step.');
+        } else {
+          setNotice(r.message);
         }
+      } else if (mode === 'reset') {
+        const r = await api.reset({ token: resetToken, password: f.password });
+        setSession(r.sessionToken);
+        nav(r.hasAgent ? '/app' : '/app/deploy');
       } else if (mode === 'signin') {
         const r = await api.login({ email: f.email, password: f.password });
         setSession(r.sessionToken);
@@ -127,11 +140,15 @@ export default function SignIn() {
       <h1 className="app-hero" style={{ fontSize: 'clamp(2.1rem,5vw,3.4rem)' }}>
         {mode === 'create' ? <>Deploy your <span className="grad">agent</span>.</>
           : mode === 'forgot' ? 'Reset your password.'
+          : mode === 'reset' ? <>Set a new <span className="grad">password</span>.</>
           : <>Welcome <span className="grad">back</span>.</>}
       </h1>
       <p className="app-note">
         {mode === 'create' ? (oauth.inviteRequired ? 'Invite-only while we run the pilot.' : 'Create your account and merge the universes.')
-          : mode === 'forgot' ? 'We’ll send a link to set a new one.'
+          : mode === 'forgot' ? (oauth.mailer
+              ? 'We’ll send a link to set a new one.'
+              : 'Enter your email and we’ll take you straight to the reset step.')
+          : mode === 'reset' ? 'Choose something you haven’t used elsewhere.'
           : 'Sign in to your univers.'}
       </p>
 
@@ -156,6 +173,7 @@ export default function SignIn() {
           </>
         )}
 
+        {mode !== 'reset' && (
         <div className="app-field">
           <label>Email</label>
           <input
@@ -169,10 +187,11 @@ export default function SignIn() {
             </span>
           )}
         </div>
+        )}
 
         {mode !== 'forgot' && (
           <div className="app-field">
-            <label>Password</label>
+            <label>{mode === 'reset' ? 'New password' : 'Password'}</label>
             <input
               type="password" value={f.password} onChange={set('password')}
               onFocus={() => setPwFocus(true)}
@@ -200,14 +219,15 @@ export default function SignIn() {
         <button className="app-cta" type="submit" disabled={!canSubmit || busy}>
           {busy ? 'One moment…'
             : mode === 'create' ? 'Create account'
-            : mode === 'forgot' ? 'Send reset link'
+            : mode === 'forgot' ? (oauth.mailer ? 'Send reset link' : 'Continue')
+            : mode === 'reset' ? 'Set new password'
             : 'Sign in'}
         </button>
 
 
       </form>
 
-      {anyProvider && mode !== 'forgot' && (
+      {anyProvider && mode !== 'forgot' && mode !== 'reset' && (
         <>
           <div className="divider" style={{ maxWidth: 440, width: '100%' }}>
             <span style={{ flex: 1, height: 1, background: 'var(--line)' }} />or<span style={{ flex: 1, height: 1, background: 'var(--line)' }} />

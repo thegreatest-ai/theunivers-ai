@@ -64,7 +64,13 @@ route('GET', '/api/health', () => ({
 
 // The sign-in surface: which providers work, and whether joining needs a code. The form is
 // drawn from this, so it can never offer something the server will refuse.
-route('GET', '/api/auth/providers', () => ({ ...oauthConfigured(), inviteRequired: inviteRequired() }));
+route('GET', '/api/auth/providers', () => ({
+  ...oauthConfigured(),
+  inviteRequired: inviteRequired(),
+  // No SMTP is wired up yet. The UI reads this so it can say what actually happens rather than
+  // promising an email nobody sends. Set SMTP_HOST to flip it.
+  mailer: Boolean(process.env.SMTP_HOST),
+}));
 
 route('GET', '/api/auth/google', (ctx) => {
   try {
