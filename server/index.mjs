@@ -22,8 +22,7 @@ if (existsSync(envFile)) {
 import { db, one, all, run } from './db.mjs';
 import {
   token, now, requireInvite, consumeInvite, createSession,
-  userFromSession, agentFromToken,
-} from './auth.mjs';
+  userFromSession, agentFromToken, inviteRequired} from './auth.mjs';
 import { checkMandates, resolveTier } from './guard.mjs';
 import { hashPassword, verifyPassword } from './passwords.mjs';
 import { passwordError } from '../shared/password-policy.mjs';
@@ -58,12 +57,14 @@ function route(method, path, handler) {
 route('GET', '/api/health', () => ({
   ok: true,
   service: 'theunivers-bridge-pilot',
-  inviteRequired: true,
+  inviteRequired: inviteRequired(),
   baseUrl: BASE_URL,
   oauth: oauthConfigured(),
 }));
 
-route('GET', '/api/auth/providers', () => oauthConfigured());
+// The sign-in surface: which providers work, and whether joining needs a code. The form is
+// drawn from this, so it can never offer something the server will refuse.
+route('GET', '/api/auth/providers', () => ({ ...oauthConfigured(), inviteRequired: inviteRequired() }));
 
 route('GET', '/api/auth/google', (ctx) => {
   try {
@@ -114,7 +115,8 @@ route('POST', '/api/auth/register', (ctx) => {
   const name = String(ctx.body.name ?? '').trim();
   const password = String(ctx.body.password ?? '');
   const inviteCode = String(ctx.body.inviteCode ?? '').trim();
-  if (!email || !name || !inviteCode) return err(400, 'name, email and invite code are required');
+  if (!email || !name) return err(400, 'name and email are required');
+  if (inviteRequired() && !inviteCode) return err(400, 'an invite code is required');
 
   // THE GATE. The browser checks the same rules live for feedback, but this is the one that
   // counts — the form is not a security boundary and anyone can POST here directly.

@@ -77,7 +77,7 @@ export default function SignIn() {
   const canSubmit =
     mode === 'forgot' ? emailOk
     : mode === 'signin' ? Boolean(emailOk && f.password)
-    : Boolean(nameOk && emailOk && f.invite && pw.ok);   // create: the gate
+    : Boolean(nameOk && emailOk && (!oauth.inviteRequired || f.invite) && pw.ok);   // create: the gate
 
   async function submit(e) {
     e.preventDefault();
@@ -114,8 +114,7 @@ export default function SignIn() {
   function startOAuth(key) {
     // Creating an account needs an invite; signing in does not. The server enforces the same
     // split at the callback, once the provider has said who this is.
-    if (mode === 'create' && !f.invite.trim()) {
-      setBlurred({ ...blurred, invite: true });
+    if (mode === 'create' && oauth.inviteRequired && !f.invite.trim()) {
       setError('Enter your invite code first — it is only needed to create an account.');
       return;
     }
@@ -131,7 +130,7 @@ export default function SignIn() {
           : <>Welcome <span className="grad">back</span>.</>}
       </h1>
       <p className="app-note">
-        {mode === 'create' ? 'Invite-only while we run the pilot.'
+        {mode === 'create' ? (oauth.inviteRequired ? 'Invite-only while we run the pilot.' : 'Create your account and deploy an agent.')
           : mode === 'forgot' ? 'We’ll send a link to set a new one.'
           : 'Sign in to your agent.'}
       </p>
@@ -139,8 +138,13 @@ export default function SignIn() {
       <form className="app-form" onSubmit={submit} noValidate>
         {mode === 'create' && (
           <>
-            <div className="app-field"><label>Invite code</label>
-              <input value={f.invite} onChange={set('invite')} placeholder="univers-pilot" autoComplete="off" /></div>
+            {/* Shown only when the server says joining needs a code (INVITE_REQUIRED). The form
+                is drawn from /api/auth/providers so it can never ask for something the server
+                does not want, or omit something it does. */}
+            {oauth.inviteRequired && (
+              <div className="app-field"><label>Invite code</label>
+                <input value={f.invite} onChange={set('invite')} placeholder="univers-pilot" autoComplete="off" /></div>
+            )}
             <div className="app-field">
               <label>Name</label>
               <input

@@ -9,7 +9,18 @@ export function now() {
   return new Date().toISOString();
 }
 
+/**
+ * Whether joining needs an invite. Default TRUE — an absent or malformed env var must not
+ * silently open registration to the world, so only the exact string 'false' turns it off.
+ */
+export function inviteRequired() {
+  return String(process.env.INVITE_REQUIRED ?? 'true').toLowerCase() !== 'false';
+}
+
 export function requireInvite(code) {
+  // Open registration: nothing to check, nothing to consume.
+  if (!inviteRequired()) return { ok: true, invite: null };
+
   const invite = one('SELECT * FROM invite WHERE code = ?', code);
   if (!invite) return { ok: false, error: 'invalid invite code' };
   if (invite.uses >= invite.max_uses) return { ok: false, error: 'invite code exhausted' };
@@ -17,6 +28,7 @@ export function requireInvite(code) {
 }
 
 export function consumeInvite(code) {
+  if (!inviteRequired() || !code) return;
   run('UPDATE invite SET uses = uses + 1 WHERE code = ?', code);
 }
 
