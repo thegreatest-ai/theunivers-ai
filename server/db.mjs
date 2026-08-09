@@ -161,6 +161,11 @@ ensureColumn('user', 'reset_expires', 'reset_expires TEXT');
 // so it is kept in the clear here — and that difference is a deliberate, temporary divergence,
 // not an oversight. Hash it the moment verification is automated.
 ensureColumn('anchor', 'reference', 'reference TEXT');
+
+// What an individual does. Free text on purpose: the dropdown covers the common cases and
+// "Other" is where the interesting ones arrive — those answers are the demand signal for which
+// trade to open next, so constraining them to a fixed list would discard the useful half.
+ensureColumn('user', 'profession', 'profession TEXT');
 ensureColumn('mandate', 'expires_at', `expires_at TEXT DEFAULT '9999-12-31T00:00:00.000Z'`);
 ensureColumn('mandate', 'spec_template_id', `spec_template_id TEXT DEFAULT 'default'`);
 

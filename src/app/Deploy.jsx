@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import { api, setAgentToken, hasSession } from './api';
 import { COUNTRIES } from './countries';
 import { registrationFor } from './registrations';
+import { PROFESSIONS, OTHER } from './professions';
 import { useEffect } from 'react';
 
 const STEPS = ['Identity', 'Agent', 'Mandate', 'Confirm'];
@@ -18,6 +19,7 @@ export default function Deploy() {
   const [done, setDone] = useState(null);
   const [f, setF] = useState({
     name: '', kind: 'individual', jurisdiction: 'AE', licenceNo: '',
+    profession: '', professionOther: '',
     agentName: '', purpose: '',
     commodity: '', floor: '', scope: 'negotiate',
   });
@@ -28,7 +30,9 @@ export default function Deploy() {
   }, [nav]);
 
   const canNext =
-    (i === 0 && f.name.trim() && (f.kind !== 'business' || f.licenceNo.trim())) ||
+    (i === 0 && f.name.trim()
+      && (f.kind !== 'business' || f.licenceNo.trim())
+      && (f.kind !== 'individual' || (f.profession && (f.profession !== OTHER || f.professionOther.trim())))) ||
     (i === 1 && f.agentName.trim() && f.purpose.trim()) ||
     (i === 2 && f.commodity.trim() && f.floor !== '') ||
     i === 3;
@@ -43,6 +47,7 @@ export default function Deploy() {
         jurisdiction: f.jurisdiction,
         licenceNo: f.licenceNo || null,
         licenceType: registrationFor(f.jurisdiction).anchorType,
+        profession: f.profession === OTHER ? f.professionOther.trim() : f.profession,
         agentName: f.agentName,
         purpose: f.purpose,
         commodity: f.commodity,
@@ -137,6 +142,33 @@ export default function Deploy() {
               </span>
             </div>
 
+            {f.kind === 'individual' && (
+              <div className="app-field">
+                <label>What do you do</label>
+                <select value={f.profession} onChange={set('profession')}>
+                  <option value="">Choose one…</option>
+                  {PROFESSIONS.map((g) => (
+                    <optgroup key={g.group} label={g.group}>
+                      {g.items.map((it) => <option key={it} value={it}>{it}</option>)}
+                    </optgroup>
+                  ))}
+                  <option value={OTHER}>Other…</option>
+                </select>
+                {f.profession === OTHER && (
+                  <input
+                    style={{ marginTop: 8 }}
+                    value={f.professionOther}
+                    onChange={set('professionOther')}
+                    placeholder="Tell us in your own words"
+                    autoFocus
+                  />
+                )}
+                <span className="app-note" style={{ marginTop: 4 }}>
+                  It decides what your agent is shown, and it tells us which trades to open next.
+                </span>
+              </div>
+            )}
+
             {f.kind === 'business' && (() => {
               const reg = registrationFor(f.jurisdiction);
               return (
@@ -184,6 +216,7 @@ export default function Deploy() {
             <dl>
               <dt>{f.kind === 'business' ? 'Registered' : 'You'}</dt><dd>{f.name || '—'} · {f.kind} · {COUNTRIES.find((c) => c.code === f.jurisdiction)?.name || f.jurisdiction}</dd>
               {f.kind === 'business' && <><dt>{registrationFor(f.jurisdiction).label}</dt><dd>{f.licenceNo || '—'}</dd></>}
+              {f.kind === 'individual' && <><dt>Work</dt><dd>{(f.profession === OTHER ? f.professionOther : f.profession) || '—'}</dd></>}
               <dt>Agent</dt><dd>{f.agentName || '—'}</dd>
               <dt>Purpose</dt><dd>{f.purpose || '—'}</dd>
               <dt>Commodity</dt><dd>{f.commodity || '—'}</dd>

@@ -260,10 +260,11 @@ route('POST', '/api/deploy', (ctx) => {
   }
 
   run(
-    'UPDATE user SET name = ?, kind = ?, jurisdiction = ? WHERE id = ?',
+    'UPDATE user SET name = ?, kind = ?, jurisdiction = ?, profession = ? WHERE id = ?',
     String(ctx.body.name ?? user.name),
     String(ctx.body.kind ?? user.kind),
     String(ctx.body.jurisdiction ?? user.jurisdiction),
+    ctx.body.profession ? String(ctx.body.profession).slice(0, 120) : (user.profession ?? null),
     user.id,
   );
 
