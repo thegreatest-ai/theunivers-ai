@@ -154,6 +154,13 @@ ensureColumn('mandate', 'counterparty_min_tier', `counterparty_min_tier TEXT DEF
 ensureColumn('user', 'password_hash', 'password_hash TEXT');
 ensureColumn('user', 'reset_token', 'reset_token TEXT');
 ensureColumn('user', 'reset_expires', 'reset_expires TEXT');
+
+// The anchor's own identifier — the licence number, farmer ID, membership number. Corridor's
+// schema stores only a HASH of this, on the argument that the raw value never needs to leave the
+// verification job. That is right at scale. In a pilot the verification job is a human reading it,
+// so it is kept in the clear here — and that difference is a deliberate, temporary divergence,
+// not an oversight. Hash it the moment verification is automated.
+ensureColumn('anchor', 'reference', 'reference TEXT');
 ensureColumn('mandate', 'expires_at', `expires_at TEXT DEFAULT '9999-12-31T00:00:00.000Z'`);
 ensureColumn('mandate', 'spec_template_id', `spec_template_id TEXT DEFAULT 'default'`);
 

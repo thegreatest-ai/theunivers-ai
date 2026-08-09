@@ -267,6 +267,26 @@ route('POST', '/api/deploy', (ctx) => {
     user.id,
   );
 
+  // A trade licence is an ANCHOR, not a profile field. Corridor scores trade_licence at 1.0 —
+  // the strongest single anchor there is — because it is expensive, revocable and tied to a
+  // person. Recording it here is what lets standing rise above an unregistered seller later.
+  //
+  // status stays 'pending': nobody has checked it. An anchor is worth nothing until verified, and
+  // writing it as verified on the user's own say-so would make tier something you can claim.
+  const licenceNo = String(ctx.body.licenceNo ?? '').trim();
+  if (licenceNo && String(ctx.body.kind ?? user.kind) === 'business') {
+    const existing = one(
+      "SELECT id FROM anchor WHERE user_id = ? AND type = 'trade_licence'", user.id);
+    if (!existing) {
+      run(
+        `INSERT INTO anchor (id, user_id, type, issuer, method, status, reference, created_at)
+         VALUES (?, ?, 'trade_licence', ?, 'document', 'pending', ?, ?)`,
+        `anc_${randomUUID().slice(0, 8)}`, user.id,
+        String(ctx.body.jurisdiction ?? user.jurisdiction), licenceNo, now(),
+      );
+    }
+  }
+
   const agentId = `agt_${randomUUID().slice(0, 8)}`;
   const apiToken = `agt_${token(20)}`;
   run(

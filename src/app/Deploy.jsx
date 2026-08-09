@@ -4,6 +4,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, setAgentToken, hasSession } from './api';
+import { COUNTRIES } from './countries';
 import { useEffect } from 'react';
 
 const STEPS = ['Identity', 'Agent', 'Mandate', 'Confirm'];
@@ -15,7 +16,7 @@ export default function Deploy() {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(null);
   const [f, setF] = useState({
-    name: '', kind: 'individual', jurisdiction: 'IN',
+    name: '', kind: 'individual', jurisdiction: 'AE', licenceNo: '',
     agentName: '', purpose: '',
     commodity: '', floor: '', scope: 'negotiate',
   });
@@ -26,7 +27,7 @@ export default function Deploy() {
   }, [nav]);
 
   const canNext =
-    (i === 0 && f.name.trim()) ||
+    (i === 0 && f.name.trim() && (f.kind !== 'business' || f.licenceNo.trim())) ||
     (i === 1 && f.agentName.trim() && f.purpose.trim()) ||
     (i === 2 && f.commodity.trim() && f.floor !== '') ||
     i === 3;
@@ -39,6 +40,7 @@ export default function Deploy() {
         name: f.name,
         kind: f.kind,
         jurisdiction: f.jurisdiction,
+        licenceNo: f.licenceNo || null,
         agentName: f.agentName,
         purpose: f.purpose,
         commodity: f.commodity,
@@ -107,17 +109,31 @@ export default function Deploy() {
         {i === 0 && (
           <>
             <div className="app-field"><label>Name</label>
-              <input value={f.name} onChange={set('name')} placeholder="Ramesh Bhosale" /></div>
+              <input value={f.name} onChange={set('name')} placeholder="Musa Alkhwarizmi" /></div>
             <div className="app-field"><label>You are a</label>
               <select value={f.kind} onChange={set('kind')}>
                 <option value="individual">Individual</option>
                 <option value="collective">Collective or co-operative</option>
                 <option value="business">Registered business</option>
               </select></div>
-            <div className="app-field"><label>Jurisdiction</label>
+            <div className="app-field"><label>Country</label>
               <select value={f.jurisdiction} onChange={set('jurisdiction')}>
-                <option value="IN">India</option><option value="AE">United Arab Emirates</option>
+                {COUNTRIES.map((c) => (
+                  <option key={c.code} value={c.code} disabled={c.disabled}>{c.name}</option>
+                ))}
               </select></div>
+
+            {f.kind === 'business' && (
+              <div className="app-field">
+                <label>Trade licence number</label>
+                <input value={f.licenceNo} onChange={set('licenceNo')}
+                  placeholder="e.g. 1043829 · CN-1234567 · U74999MH2015PTC123456" />
+                <span className="app-note" style={{ marginTop: 4 }}>
+                  This is your strongest anchor — a licence is expensive, revocable and tied to a
+                  person. Verifying it later is what lifts your standing above an unregistered seller.
+                </span>
+              </div>
+            )}
           </>
         )}
 
@@ -150,7 +166,8 @@ export default function Deploy() {
           <div className="app-readback">
             <p className="app-meta" style={{ color: 'var(--cyan)' }}>BEFORE IT GOES LIVE</p>
             <dl>
-              <dt>You</dt><dd>{f.name || '—'} · {f.kind} · {f.jurisdiction}</dd>
+              <dt>You</dt><dd>{f.name || '—'} · {f.kind} · {COUNTRIES.find((c) => c.code === f.jurisdiction)?.name || f.jurisdiction}</dd>
+              {f.kind === 'business' && <><dt>Licence</dt><dd>{f.licenceNo || '—'}</dd></>}
               <dt>Agent</dt><dd>{f.agentName || '—'}</dd>
               <dt>Purpose</dt><dd>{f.purpose || '—'}</dd>
               <dt>Commodity</dt><dd>{f.commodity || '—'}</dd>
