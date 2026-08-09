@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import { api, setAgentToken, hasSession } from './api';
 import { COUNTRIES } from './countries';
 import { registrationFor } from './registrations';
+import Select from './Select';
 import { PROFESSIONS, OTHER } from './professions';
 
 const STEPS = ['Identity', 'Agent', 'Mandate', 'Confirm'];
@@ -147,17 +148,22 @@ export default function Deploy() {
                 Asking a Dubai trader for an "EIN", or an American for a "trade licence", reads as
                 a form built by someone who has never traded there. */}
             <div className="app-field"><label>Country</label>
-              <select value={f.jurisdiction} onChange={set('jurisdiction')}>
-                {COUNTRIES.map((c) => (
-                  <option key={c.code} value={c.code} disabled={c.disabled}>{c.name}</option>
-                ))}
-              </select></div>
+              <Select
+                value={f.jurisdiction}
+                onChange={(v) => setF((p) => ({ ...p, jurisdiction: v }))}
+                options={COUNTRIES.map((c) => ({ value: c.code, label: c.name }))}
+                placeholder="Choose your country…"
+              /></div>
 
             <div className="app-field"><label>You are a</label>
-              <select value={f.kind} onChange={set('kind')}>
-                <option value="individual">Individual</option>
-                <option value="business">Registered business</option>
-              </select></div>
+              <Select
+                value={f.kind}
+                onChange={(v) => setF((p) => ({ ...p, kind: v }))}
+                options={[
+                  { value: 'individual', label: 'Individual' },
+                  { value: 'business', label: 'Registered business' },
+                ]}
+              /></div>
 
             <div className="app-field">
               <label>{f.kind === 'business' ? 'Registered name' : 'Your name'}</label>
@@ -173,15 +179,18 @@ export default function Deploy() {
             {f.kind === 'individual' && (
               <div className="app-field">
                 <label>What do you do</label>
-                <select value={f.profession} onChange={set('profession')}>
-                  <option value="">Choose one…</option>
-                  {PROFESSIONS.map((g) => (
-                    <optgroup key={g.group} label={g.group}>
-                      {g.items.map((it) => <option key={it} value={it}>{it}</option>)}
-                    </optgroup>
-                  ))}
-                  <option value={OTHER}>Other…</option>
-                </select>
+                <Select
+                  value={f.profession}
+                  onChange={(v) => setF((p) => ({ ...p, profession: v }))}
+                  placeholder="Choose one…"
+                  options={[
+                    ...PROFESSIONS.map((g) => ({
+                      group: g.group,
+                      items: g.items.map((it) => ({ value: it, label: it })),
+                    })),
+                    { value: OTHER, label: 'Other…' },
+                  ]}
+                />
                 {f.profession === OTHER && (
                   <input
                     style={{ marginTop: 8 }}
@@ -246,11 +255,15 @@ export default function Deploy() {
             <div className="app-field"><label>Price floor — it may never go below this</label>
               <input type="number" value={f.floor} onChange={set('floor')} placeholder="the lowest price you would accept" /></div>
             <div className="app-field"><label>Scope</label>
-              <select value={f.scope} onChange={set('scope')}>
-                <option value="quote">Quote only</option>
-                <option value="negotiate">Negotiate</option>
-                <option value="commit">Commit</option>
-              </select></div>
+              <Select
+                value={f.scope}
+                onChange={(v) => setF((p) => ({ ...p, scope: v }))}
+                options={[
+                  { value: 'quote', label: 'Quote only' },
+                  { value: 'negotiate', label: 'Negotiate' },
+                  { value: 'commit', label: 'Commit' },
+                ]}
+              /></div>
           </>
         )}
 
