@@ -138,7 +138,7 @@ export default function SignIn() {
     <div className="app-centre">
       <p className="kicker">theunivers.ai</p>
       <h1 className="app-hero" style={{ fontSize: 'clamp(2.1rem,5vw,3.4rem)' }}>
-        {mode === 'create' ? <>Deploy your <span className="grad">agent</span>.</>
+        {mode === 'create' ? <>Merge the <span className="grad">universes</span></>
           : mode === 'forgot' ? 'Reset your password.'
           : mode === 'reset' ? <>Set a new <span className="grad">password</span>.</>
           : <>Welcome <span className="grad">back</span>.</>}
