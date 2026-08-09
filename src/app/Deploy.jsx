@@ -125,10 +125,10 @@ export default function Deploy() {
                 ))}
               </select></div>
 
-            <div className="app-field"><label>You are</label>
+            <div className="app-field"><label>You are a</label>
               <select value={f.kind} onChange={set('kind')}>
-                <option value="individual">An individual</option>
-                <option value="business">A registered business, co-operative or collective</option>
+                <option value="individual">Individual</option>
+                <option value="business">Registered business</option>
               </select></div>
 
             <div className="app-field">
