@@ -276,12 +276,16 @@ route('POST', '/api/deploy', (ctx) => {
   const licenceNo = String(ctx.body.licenceNo ?? '').trim();
   if (licenceNo && String(ctx.body.kind ?? user.kind) === 'business') {
     const existing = one(
-      "SELECT id FROM anchor WHERE user_id = ? AND type = 'trade_licence'", user.id);
+      'SELECT id FROM anchor WHERE user_id = ? AND method = ?', user.id, 'document');
     if (!existing) {
       run(
         `INSERT INTO anchor (id, user_id, type, issuer, method, status, reference, created_at)
-         VALUES (?, ?, 'trade_licence', ?, 'document', 'pending', ?, ?)`,
+         VALUES (?, ?, ?, ?, 'document', 'pending', ?, ?)`,
         `anc_${randomUUID().slice(0, 8)}`, user.id,
+        // The client sends the anchor type its country implies (GSTIN in India, trade licence in
+        // the UAE …). Fall back to trade_licence: a national business registration carries the
+        // same weight — state-issued, revocable, tied to a legal person who can be pursued.
+        String(ctx.body.licenceType ?? 'trade_licence'),
         String(ctx.body.jurisdiction ?? user.jurisdiction), licenceNo, now(),
       );
     }
