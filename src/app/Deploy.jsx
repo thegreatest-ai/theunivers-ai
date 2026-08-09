@@ -140,19 +140,19 @@ export default function Deploy() {
         {i === 1 && (
           <>
             <div className="app-field"><label>Agent name</label>
-              <input value={f.agentName} onChange={set('agentName')} placeholder="Bhosale Trading" /></div>
+              <input value={f.agentName} onChange={set('agentName')} placeholder="Alkhwarizmi Trading" /></div>
             <div className="app-field"><label>What is it for — one sentence</label>
               <textarea rows={3} value={f.purpose} onChange={set('purpose')}
-                placeholder="Sells my onion crop into Gulf buyers without me sitting on the phone." /></div>
+                placeholder="Finds buyers for our shipments abroad and negotiates within the limits I set." /></div>
           </>
         )}
 
         {i === 2 && (
           <>
             <div className="app-field"><label>Commodity or domain</label>
-              <input value={f.commodity} onChange={set('commodity')} placeholder="onion-red" /></div>
+              <input value={f.commodity} onChange={set('commodity')} placeholder="what you sell — e.g. olive oil, cotton yarn, steel coil" /></div>
             <div className="app-field"><label>Price floor — it may never go below this</label>
-              <input type="number" value={f.floor} onChange={set('floor')} placeholder="18" /></div>
+              <input type="number" value={f.floor} onChange={set('floor')} placeholder="the lowest price you would accept" /></div>
             <div className="app-field"><label>Scope</label>
               <select value={f.scope} onChange={set('scope')}>
                 <option value="quote">Quote only</option>
