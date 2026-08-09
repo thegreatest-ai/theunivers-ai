@@ -53,7 +53,18 @@ export default function SignIn() {
   const [blurred, setBlurred] = useState({});      // per field, so nothing turns red before use
   const [pwFocus, setPwFocus] = useState(false);
 
-  useEffect(() => { api.providers().then(setOauth).catch(() => setOauth({})); }, []);
+  useEffect(() => { api.providers().then(setOauth).catch(() => setOauth({ failed: true })); }, []);
+
+  // The OAuth callback redirects here with ?error=… when it refuses. Without reading it the user
+  // is simply bounced back to sign-in with no explanation — which is exactly what happened: the
+  // server said "an invite is needed to create an account" and nobody ever saw it.
+  useEffect(() => {
+    const e = new URLSearchParams(window.location.search).get('error');
+    if (!e) return;
+    setError(e);
+    setMode('create');   // the refusals are all about joining, so land them where they can fix it
+    window.history.replaceState({}, '', '/app/signin');   // don't let a reload re-raise it
+  }, []);
 
   const set = (k) => (e) => { setF({ ...f, [k]: e.target.value }); setError(''); };
   const blur = (k) => () => setBlurred({ ...blurred, [k]: true });
@@ -127,8 +138,15 @@ export default function SignIn() {
   function startOAuth(key) {
     // Creating an account needs an invite; signing in does not. The server enforces the same
     // split at the callback, once the provider has said who this is.
-    if (mode === 'create' && oauth.inviteRequired && !f.invite.trim()) {
-      setError('Enter your invite code first — it is only needed to create an account.');
+    // `oauth` is {} until /api/auth/providers answers, so inviteRequired is undefined on the
+    // first render. Guarding on it directly let a fast click send an EMPTY invite to Google —
+    // the account was then refused at the callback and the user bounced back here silently.
+    // Treat "not yet known" as "required": the safe direction is to ask.
+    const knowsConfig = 'inviteRequired' in oauth;
+    if (mode === 'create' && (!knowsConfig || oauth.inviteRequired) && !f.invite.trim()) {
+      setError(knowsConfig
+        ? 'Enter your invite code first — it is only needed to create an account.'
+        : 'One moment — still checking whether an invite is needed.');
       return;
     }
     window.location.href = `/api/auth/${key}?invite=${encodeURIComponent(f.invite.trim())}`;
