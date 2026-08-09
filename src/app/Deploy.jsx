@@ -108,14 +108,35 @@ export default function Deploy() {
       <div className="app-form">
         {i === 0 && (
           <>
-            <div className="app-field"><label>Name</label>
-              <input value={f.name} onChange={set('name')} placeholder="Musa Alkhwarizmi" /></div>
+            {/* "You are a" comes FIRST because it decides what the next field means. Asking for a
+                name before knowing whether it is a person or a company forces one vague label to
+                cover both, and the label would change under someone who had already typed. */}
             <div className="app-field"><label>You are a</label>
               <select value={f.kind} onChange={set('kind')}>
                 <option value="individual">Individual</option>
                 <option value="collective">Collective or co-operative</option>
                 <option value="business">Registered business</option>
               </select></div>
+
+            <div className="app-field">
+              <label>
+                {f.kind === 'business' ? 'Business name'
+                  : f.kind === 'collective' ? 'Collective name'
+                  : 'Your name'}
+              </label>
+              <input value={f.name} onChange={set('name')}
+                placeholder={f.kind === 'business' ? 'Alkhwarizmi Trading LLC'
+                  : f.kind === 'collective' ? 'Nashik Onion Growers Co-operative'
+                  : 'Musa Alkhwarizmi'} />
+              <span className="app-note" style={{ marginTop: 4 }}>
+                {f.kind === 'business'
+                  ? 'As it appears on your trade licence — this is the name a counterparty checks against.'
+                  : f.kind === 'collective'
+                  ? 'The name your members and buyers know you by.'
+                  : 'The name a counterparty will see.'}
+              </span>
+            </div>
+
             <div className="app-field"><label>Country</label>
               <select value={f.jurisdiction} onChange={set('jurisdiction')}>
                 {COUNTRIES.map((c) => (
@@ -166,7 +187,7 @@ export default function Deploy() {
           <div className="app-readback">
             <p className="app-meta" style={{ color: 'var(--cyan)' }}>BEFORE IT GOES LIVE</p>
             <dl>
-              <dt>You</dt><dd>{f.name || '—'} · {f.kind} · {COUNTRIES.find((c) => c.code === f.jurisdiction)?.name || f.jurisdiction}</dd>
+              <dt>{f.kind === 'business' ? 'Business' : f.kind === 'collective' ? 'Collective' : 'You'}</dt><dd>{f.name || '—'} · {f.kind} · {COUNTRIES.find((c) => c.code === f.jurisdiction)?.name || f.jurisdiction}</dd>
               {f.kind === 'business' && <><dt>Licence</dt><dd>{f.licenceNo || '—'}</dd></>}
               <dt>Agent</dt><dd>{f.agentName || '—'}</dd>
               <dt>Purpose</dt><dd>{f.purpose || '—'}</dd>
