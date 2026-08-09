@@ -5,8 +5,9 @@
 # Shell:   fly ssh console
 
 app = "theunivers-ai"
-primary_region = "cdg"   # Paris — closest low-latency Fly region to the UAE at the time of writing.
-                          # `fly platform regions` lists current options; move it if a nearer one exists.
+primary_region = "bom"   # Mumbai. ~40ms from Dubai against ~120ms for Paris, and it also sits
+                          # next to the India side of the corridor, which is where the suppliers
+                          # are. Both ends of the route are served well from here.
 
 [build]
 

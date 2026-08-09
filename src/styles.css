@@ -28,7 +28,10 @@ canvas{display:block}
 .nav-links span{color:var(--muted);font-size:.92rem;cursor:pointer;transition:color .2s}
 .nav-links span:hover{color:var(--text)}
 
-.pill{font-family:inherit;cursor:pointer;border:1px solid rgba(150,170,255,.4);color:var(--text);background:rgba(120,140,255,.08);padding:10px 22px;border-radius:999px;font-size:.92rem;transition:all .22s}
+/* text-decoration + inline-block matter because .pill is used on both <button> and <a>:
+   the CTAs became links when they started pointing at /app/signin, and a bare <a> arrives
+   underlined and inline, so vertical padding would not hold. */
+.pill{font-family:inherit;cursor:pointer;border:1px solid rgba(150,170,255,.4);color:var(--text);background:rgba(120,140,255,.08);padding:10px 22px;border-radius:999px;font-size:.92rem;transition:all .22s;text-decoration:none;display:inline-block;line-height:1.2}
 .pill:hover{border-color:var(--blue);box-shadow:0 0 22px rgba(70,110,255,.45)}
 .pill.solid{border:none;color:#fff;background:var(--grad);box-shadow:0 10px 34px rgba(90,70,240,.45)}
 .pill.solid:hover{transform:translateY(-2px);box-shadow:0 14px 44px rgba(90,70,240,.6)}
