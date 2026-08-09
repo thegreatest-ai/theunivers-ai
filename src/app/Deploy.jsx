@@ -1,13 +1,12 @@
 /**
  * /app/deploy — first run. Calls the pilot API; returns an agent API token to connect your AI.
  */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, setAgentToken, hasSession } from './api';
 import { COUNTRIES } from './countries';
 import { registrationFor } from './registrations';
 import { PROFESSIONS, OTHER } from './professions';
-import { useEffect } from 'react';
 
 const STEPS = ['Identity', 'Agent', 'Mandate', 'Confirm'];
 
@@ -16,6 +15,16 @@ export default function Deploy() {
   const [i, setI] = useState(0);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+
+  /**
+   * Live agent-name availability. `null` = not checked yet (name too short, or still typing).
+   * Shape: { available: boolean, reason: string|null }.
+   *
+   * This is a courtesy, not a guarantee — the unique index in the database is the guarantee. It
+   * exists so people find out at the field rather than after filling in three more steps.
+   */
+  const [nameCheck, setNameCheck] = useState(null);
+  const [checking, setChecking] = useState(false);
   const [done, setDone] = useState(null);
   const [f, setF] = useState({
     name: '', kind: 'individual', jurisdiction: 'AE', licenceNo: '',
@@ -23,6 +32,24 @@ export default function Deploy() {
     agentName: '', purpose: '',
     commodity: '', floor: '', scope: 'negotiate',
   });
+  // Debounced so we ask once the typing stops, not once per keystroke. The stale-response guard
+  // matters more than the delay: replies can arrive out of order, and a slow answer about an old
+  // name overwriting a fast answer about the current one is how you get a field that says "taken"
+  // for a name nobody has.
+  useEffect(() => {
+    const name = f.agentName.trim();
+    if (name.length < 3) { setNameCheck(null); setChecking(false); return; }
+    setChecking(true);
+    let current = true;
+    const id = setTimeout(() => {
+      api.agentNameAvailable(name)
+        .then((r) => { if (current) setNameCheck(r); })
+        .catch(() => { if (current) setNameCheck(null); })   // offline: let the server decide
+        .finally(() => { if (current) setChecking(false); });
+    }, 350);
+    return () => { current = false; clearTimeout(id); };
+  }, [f.agentName]);
+
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
 
   useEffect(() => {
@@ -33,7 +60,8 @@ export default function Deploy() {
     (i === 0 && f.name.trim()
       && (f.kind !== 'business' || f.licenceNo.trim())
       && (f.kind !== 'individual' || (f.profession && (f.profession !== OTHER || f.professionOther.trim())))) ||
-    (i === 1 && f.agentName.trim() && f.purpose.trim()) ||
+    (i === 1 && f.agentName.trim().length >= 3 && f.purpose.trim()
+      && !checking && nameCheck?.available === true) ||
     (i === 2 && f.commodity.trim() && f.floor !== '') ||
     i === 3;
 
@@ -188,7 +216,23 @@ export default function Deploy() {
         {i === 1 && (
           <>
             <div className="app-field"><label>Agent name</label>
-              <input value={f.agentName} onChange={set('agentName')} placeholder="Alkhwarizmi Trading" /></div>
+              <input
+                value={f.agentName}
+                onChange={set('agentName')}
+                placeholder="Alkhwarizmi Trading"
+                className={nameCheck && !nameCheck.available ? 'bad' : ''}
+                autoComplete="off"
+              />
+              <span className="app-note" style={{ marginTop: 4 }}>
+                {checking
+                  ? 'Checking…'
+                  : nameCheck?.available
+                    ? '✓ Available'
+                    : nameCheck
+                      ? nameCheck.reason
+                      : 'Unique across theunivers — how counterparties tell you apart.'}
+              </span>
+            </div>
             <div className="app-field"><label>What is it for — one sentence</label>
               <textarea rows={3} value={f.purpose} onChange={set('purpose')}
                 placeholder="Finds buyers for our shipments abroad and negotiates within the limits I set." /></div>

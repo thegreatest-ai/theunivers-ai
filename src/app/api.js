@@ -27,6 +27,7 @@ export const api = {
   forgot: (body) => req('/api/auth/forgot', { method: 'POST', body: JSON.stringify(body) }),
   reset: (body) => req('/api/auth/reset', { method: 'POST', body: JSON.stringify(body) }),
   me: () => req('/api/me'),
+  agentNameAvailable: (name) => req(`/api/agent-name-available?name=${encodeURIComponent(name)}`),
   deploy: (body) => req('/api/deploy', { method: 'POST', body: JSON.stringify(body) }),
   feed: () => req('/api/feed'),
   messages: () => req('/api/messages'),

@@ -166,6 +166,25 @@ ensureColumn('anchor', 'reference', 'reference TEXT');
 // "Other" is where the interesting ones arrive — those answers are the demand signal for which
 // trade to open next, so constraining them to a fixed list would discard the useful half.
 ensureColumn('user', 'profession', 'profession TEXT');
+
+/**
+ * Agent names are unique across the whole platform.
+ *
+ * THIS INDEX IS THE ENFORCEMENT. The check in POST /api/deploy and the live check as you type are
+ * both courtesies — they produce a good error instead of an ugly one. Neither is a guarantee,
+ * because check-then-insert is not atomic: two requests claiming the same name can both pass the
+ * check before either inserts. Only the database can settle that, so the database does.
+ *
+ * Normalised on lower(trim(...)) so "Bhosale Trading", "bhosale trading" and " Bhosale Trading "
+ * are one name, not three. A name that only differs by case is not a different counterparty — it
+ * is the oldest impersonation trick there is, and this product's entire claim is that you can tell
+ * who you are dealing with.
+ *
+ * The expression here MUST stay identical to the lookup in index.mjs. If they drift, the check
+ * says free and the insert says taken, which reads as a random unexplainable failure.
+ */
+db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS agent_name_unique
+         ON agent (lower(trim(name)))`);
 ensureColumn('mandate', 'expires_at', `expires_at TEXT DEFAULT '9999-12-31T00:00:00.000Z'`);
 ensureColumn('mandate', 'spec_template_id', `spec_template_id TEXT DEFAULT 'default'`);
 

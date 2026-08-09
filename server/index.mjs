@@ -242,6 +242,42 @@ route('GET', '/api/me', (ctx) => {
   };
 });
 
+/**
+ * The one normalisation used for agent-name uniqueness. Must match the expression in the
+ * agent_name_unique index exactly — see the comment on that index in db.mjs.
+ */
+const normaliseAgentName = (n) => String(n ?? '').trim().toLowerCase();
+
+const agentNameTaken = (name) =>
+  !!one('SELECT id FROM agent WHERE lower(trim(name)) = ?', normaliseAgentName(name));
+
+/** Shape rules, kept separate from availability so the client can explain which one failed. */
+function agentNameProblem(name) {
+  const n = String(name ?? '').trim();
+  if (n.length < 3) return 'Agent name must be at least 3 characters.';
+  if (n.length > 60) return 'Agent name must be 60 characters or fewer.';
+  if (!/[a-z0-9]/i.test(n)) return 'Agent name needs at least one letter or number.';
+  return null;
+}
+
+/**
+ * Availability, live as the user types.
+ *
+ * Signed-in only. Uniqueness inherently leaks whether a name exists — that is true of every
+ * username field ever built — but there is no reason to hand anonymous callers a free endpoint
+ * for enumerating the whole agent directory.
+ */
+route('GET', '/api/agent-name-available', (ctx) => {
+  if (!ctx.user) return err(401, 'sign in required');
+  const name = ctx.query.get('name') ?? '';
+  const problem = agentNameProblem(name);
+  if (problem) return { available: false, reason: problem };
+  if (agentNameTaken(name)) {
+    return { available: false, reason: 'That name is taken. Agent names are unique.' };
+  }
+  return { available: true, reason: null };
+});
+
 route('POST', '/api/deploy', (ctx) => {
   const user = ctx.user;
   if (!user) return err(401, 'sign in required');
@@ -257,6 +293,12 @@ route('POST', '/api/deploy', (ctx) => {
   const currency = String(ctx.body.currency ?? (user.jurisdiction === 'AE' ? 'AED' : 'INR'));
   if (!name || !purpose || !commodity || Number.isNaN(floor)) {
     return err(400, 'agentName, purpose, commodity, floor required');
+  }
+  const nameProblem = agentNameProblem(name);
+  if (nameProblem) return err(400, nameProblem);
+  // Courtesy check — the unique index is what actually enforces this. See the catch below.
+  if (agentNameTaken(name)) {
+    return err(409, 'That agent name is taken. Agent names are unique.');
   }
 
   run(
@@ -294,13 +336,23 @@ route('POST', '/api/deploy', (ctx) => {
 
   const agentId = `agt_${randomUUID().slice(0, 8)}`;
   const apiToken = `agt_${token(20)}`;
-  run(
-    `INSERT INTO agent (id, user_id, name, purpose, status, api_token, skills, created_at)
-     VALUES (?, ?, ?, ?, 'live', ?, ?, ?)`,
-    agentId, user.id, name, purpose, apiToken,
-    JSON.stringify(['quote', 'negotiate', 'discover', 'message']),
-    now(),
-  );
+  try {
+    run(
+      `INSERT INTO agent (id, user_id, name, purpose, status, api_token, skills, created_at)
+       VALUES (?, ?, ?, ?, 'live', ?, ?, ?)`,
+      agentId, user.id, name, purpose, apiToken,
+      JSON.stringify(['quote', 'negotiate', 'discover', 'message']),
+      now(),
+    );
+  } catch (e) {
+    // The pre-check above passed, so between then and now somebody else took this name. Rare,
+    // but a real race — and without this the user gets a 500 for doing nothing wrong. Same
+    // message either way; from where they sit the two cases are identical.
+    if (String(e?.message ?? '').includes('agent_name_unique') || e?.code === 'SQLITE_CONSTRAINT') {
+      return err(409, 'That agent name was just taken. Please choose another.');
+    }
+    throw e;
+  }
 
   const mandateId = `mnd_${randomUUID().slice(0, 8)}`;
   const maxQty = {
