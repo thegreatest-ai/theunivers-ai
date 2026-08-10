@@ -8,6 +8,7 @@ import { COUNTRIES } from './countries';
 import { registrationFor } from './registrations';
 import Select from './Select';
 import { PROFESSIONS, OTHER } from './professions';
+import { checkHandle, handleError, suggestHandle } from '../../shared/agent-name.mjs';
 
 const STEPS = ['Identity', 'Agent', 'Mandate', 'Confirm'];
 
@@ -47,7 +48,9 @@ export default function Deploy() {
   // for a name nobody has.
   useEffect(() => {
     const name = f.agentName.trim();
-    if (name.length < 3) { setNameCheck(null); setChecking(false); return; }
+    // Do not ask the server about a handle that cannot be used anyway — the shape rules are the
+    // same on both sides, so an invalid handle is answered locally and instantly.
+    if (handleError(name)) { setNameCheck(null); setChecking(false); return; }
     setChecking(true);
     let current = true;
     const id = setTimeout(() => {
@@ -69,7 +72,7 @@ export default function Deploy() {
     (i === 0 && f.name.trim()
       && (f.kind !== 'business' || f.licenceNo.trim())
       && (f.kind !== 'individual' || (f.profession && (f.profession !== OTHER || f.professionOther.trim())))) ||
-    (i === 1 && f.agentName.trim().length >= 3 && f.purpose.trim()
+    (i === 1 && f.purpose.trim() && !handleError(f.agentName.trim())
       && !checking && nameCheck?.available === true) ||
     (i === 2 && f.commodity.trim() && f.floor !== '') ||
     i === 3;
@@ -236,19 +239,48 @@ export default function Deploy() {
               <input
                 value={f.agentName}
                 onChange={set('agentName')}
-                placeholder="Alkhwarizmi Trading"
-                className={nameCheck && !nameCheck.available ? 'bad' : ''}
+                placeholder="alkhwarizmi.trading"
+                className={(f.agentName && handleError(f.agentName)) || nameCheck?.available === false ? 'bad' : ''}
                 autoComplete="off"
+                autoCapitalize="none"
+                spellCheck={false}
+                maxLength={30}
               />
-              <span className="app-note" style={{ marginTop: 4 }}>
-                {checking
-                  ? 'Checking…'
-                  : nameCheck?.available
-                    ? '✓ Available'
-                    : nameCheck
-                      ? nameCheck.reason
-                      : 'Unique across theunivers — how counterparties tell you apart.'}
-              </span>
+
+              {/* Typing a company name here is the natural mistake, so offer the handle rather
+                  than only refusing the sentence. */}
+              {f.agentName && /[^A-Za-z0-9._]/.test(f.agentName) && suggestHandle(f.agentName).length >= 3 && (
+                <button
+                  type="button"
+                  className="app-link"
+                  style={{ alignSelf: 'flex-start', marginTop: 6, fontSize: '.82rem' }}
+                  onClick={() => setF((p) => ({ ...p, agentName: suggestHandle(p.agentName) }))}
+                >
+                  Use <b>{suggestHandle(f.agentName)}</b> instead
+                </button>
+              )}
+
+              {/* Shape first, then availability — a taken handle and a malformed one are
+                  different problems and should not share one message. */}
+              {f.agentName && handleError(f.agentName) ? (
+                <ul className="app-pwrules">
+                  {checkHandle(f.agentName).results.map((r) => (
+                    <li key={r.id} className={r.ok ? 'ok' : 'no'}>
+                      <span className="mark">{r.ok ? '✓' : '·'}</span>{r.label}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <span className="app-note" style={{ marginTop: 4 }}>
+                  {checking
+                    ? 'Checking…'
+                    : nameCheck?.available
+                      ? '✓ Available'
+                      : nameCheck
+                        ? nameCheck.reason
+                        : 'Your handle — unique across theunivers. Letters, numbers, dots, underscores.'}
+                </span>
+              )}
             </div>
             <div className="app-field"><label>What is it for — one sentence</label>
               <textarea rows={3} value={f.purpose} onChange={set('purpose')}

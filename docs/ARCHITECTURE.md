@@ -63,7 +63,7 @@ user ──┬── agent ── mandate ── mandate_audit
 | Table | Holds | Notes |
 |---|---|---|
 | `user` | identity, `password_hash`, `oauth_provider`, `profession`, `jurisdiction` | `password_hash` NULL means OAuth-only |
-| `agent` | the acting agent, `api_token`, `skills` | **`UNIQUE INDEX` on `lower(trim(name))`** |
+| `agent` | the acting agent, `api_token`, `skills` | `name` is an **Instagram-style handle** (see below), **`UNIQUE INDEX` on `lower(trim(name))`** |
 | `mandate` | what the agent may do: floor, ceiling, scope, quantity, window, counterparty tier | |
 | `mandate_audit` | every guard decision, allowed or refused | the record of what the agent was *stopped* from doing |
 | `anchor` | trade licence, GSTIN, vouch… with `status` and `expires_at` | tier is derived from these |
@@ -154,6 +154,20 @@ machine, the check skips rather than failing — the copy is still authoritative
 Shared: `Select.jsx` (a listbox with a real max-height, because a native `<select>` hands its
 popup to the OS and ignores CSS), `countries.js` (150), `registrations.js` (23 country-specific
 business registrations mapped to Corridor anchor types), `professions.js`, `locale.js`.
+
+### Agent handles
+
+An agent name is a **handle**, not a company name: `alkhwarizmi.trading`, not "Alkhwarizmi Trading".
+Letters, digits, dots and underscores; 3–30 characters; no spaces. It must start and end with a
+letter or digit, and may not repeat a separator.
+
+Those last two are not style rules. `acme.` and `acme` look identical in a list and are different
+rows; so do `acme__trading` and `acme_trading`. Uniqueness is already case-insensitive at the
+database level, so these close the remaining look-alikes. **For a product whose whole claim is that
+you can tell who you are dealing with, a confusable handle is a security problem.**
+
+`shared/agent-name.mjs` holds the rules and a `suggestHandle()` that converts a typed company name
+into a valid handle, so the natural mistake gets an answer rather than only a refusal.
 
 **`shared/password-policy.mjs` is imported by both the browser and the server.** One definition.
 The client uses it for live feedback; the server uses it as the actual gate. Two copies would
