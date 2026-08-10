@@ -16,22 +16,6 @@ means rotation.
 
 ---
 
-## MEDIUM — no DMARC record
-
-SPF and DKIM are in place for `send.theunivers.ai` and mail is being delivered. DMARC tells
-receivers what to do when a message fails both, and its absence is a deliverability ceiling rather
-than a fault — Gmail and Outlook increasingly expect it from bulk senders.
-
-**Fix:** add a TXT record at `_dmarc.send.theunivers.ai`, starting permissively:
-
-```
-v=DMARC1; p=none; rua=mailto:theonlygreatofficial@gmail.com
-```
-
-`p=none` only asks for reports. Tighten to `quarantine` once the reports look clean. **Do not add
-this at the root** — the root is Microsoft 365's and has its own posture.
-
----
 
 ## MEDIUM — the Bridge polls every 4 seconds
 
@@ -76,6 +60,41 @@ removes the worst of the drift risk, but the consolidation decision is still ope
 ---
 
 ## Resolved, kept for the lessons
+
+<details><summary>DMARC — the entry was wrong, and the fix would have made things worse</summary>
+
+**What the entry claimed:** no DMARC record; add one at `_dmarc.send.theunivers.ai` starting at
+`p=none`, tighten to `quarantine` later.
+
+**What was actually true.** A DMARC record existed at the ROOT all along —
+`v=DMARC1; p=quarantine; adkim=r; aspf=r` — a GoDaddy default carried over when DNS moved to
+Cloudflare. **DMARC inherits down to subdomains unless `sp=` overrides it, and there is no `sp=`**,
+so `send.theunivers.ai` was already covered at `quarantine`, and already passing: DKIM signs as
+`send.theunivers.ai` and SPF is `send.send.theunivers.ai`, both of which align relaxed against
+`theunivers.ai`. That is why the reset email reached an inbox rather than spam under an active
+quarantine policy.
+
+**Two errors, and the second is the dangerous one.**
+
+1. I checked `_dmarc.send.theunivers.ai`, found nothing, and concluded there was no DMARC — without
+   checking the parent, which is the first place to look for an inheriting record.
+
+2. **The recommended fix was weaker than the status quo.** Adding `p=none` on the subdomain would
+   have OVERRIDDEN the root's `quarantine` and loosened the posture — an improvement in the diff,
+   a regression in effect. Nothing in this repo would have caught it: `claims-check` reads copy,
+   `docs-check` reads references, neither reads DNS.
+
+**Resolved 2026-08-11** by adding `_dmarc.send.theunivers.ai` at `p=quarantine` — same strength as
+the root, reports redirected from GoDaddy's collector to a mailbox we actually read. Verified
+against Cloudflare's nameservers and three public resolvers, with the root and the Microsoft 365 MX
+untouched.
+
+**The general lesson, which is the second time in two days:** "I checked X and found nothing" is not
+"X does not exist". The same shape as reading `busy_timeout = 0` over `fly ssh` and reporting the
+setting as unapplied — the probe was too narrow and the conclusion too broad. When the check is
+cheap, check the layer above before declaring an absence.
+
+</details>
 
 <details><summary>Fly trial ended — the site was down for a day (2026-08-09)</summary>
 
