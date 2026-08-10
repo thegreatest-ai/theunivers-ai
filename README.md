@@ -96,6 +96,7 @@ See `design/theunivers-bridge-ui.pdf` and `design/mockups/`.
 | `docs/OPERATIONS.md` | hosting, running costs, and the runbook for when it breaks |
 | `docs/KNOWN-ISSUES.md` | everything currently wrong or unfinished, worst first |
 | `docs/decisions/` | ADRs — decisions that must survive a refactor |
+| `docs/design/` | design reviews; the mockups themselves live in `design/` |
 | `docs/specs/` | designs not yet built (excluded from `docs-check` for that reason) |
 | `DEPLOY.md` | the build-and-ship loop, and one-time setup |
 | `git log` | why each change was made — **this is the changelog** |
