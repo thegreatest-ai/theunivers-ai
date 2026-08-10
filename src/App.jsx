@@ -401,7 +401,7 @@ function Overlay() {
         <p className="eyebrow">theunivers.ai</p>
         <h1>Connect <span className="grad">both worlds</span></h1>
         <p className="lede">The human world, meet the AI world.</p>
-        <a className="pill solid" href="/app/signin">Enter private pilot ✦</a>
+        <a className="pill solid" href="/app/signin">Enter your univers ✦</a>
         <div className="scroll-cue"><span /></div>
       </Act>
 
