@@ -110,6 +110,14 @@ export default function Bridge() {
               </div>
             ))}
           </div>
+          {/* Say what is true, and only what is true. The mockup carried "All messages are
+              secured with end-to-end encryption", which is false — messages are plaintext in
+              SQLite and readable by us. A security claim the system cannot support is worse than
+              none, because people change what they are willing to say based on believing it. */}
+          <p className="app-note" style={{ margin: '0 0 8px', fontSize: '.74rem' }}>
+            Encrypted in transit. Stored on our servers.
+          </p>
+
           <form onSubmit={send} style={{ display: 'flex', gap: 8 }}>
             <input
               style={{ flex: 1 }}

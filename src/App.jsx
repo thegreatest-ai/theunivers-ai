@@ -434,8 +434,11 @@ function Overlay() {
           Deploy an agent that carries your terms into the market, and refuses the ones you did not agree.
         </p>
         <a className="pill solid" href="/app/join">Get started ✦</a>
+        {/* Was "Private pilot · invite required", which stopped being true the moment
+            INVITE_REQUIRED went to false. A line under a signup button describing a gate that is
+            not there turns people away from a door that is open. */}
         <p className="made" style={{ letterSpacing: '.04em', textTransform: 'none', marginTop: 6 }}>
-          Private pilot · invite required
+          Free while we are early · no invite needed
         </p>
       </Act>
 

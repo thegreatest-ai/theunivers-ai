@@ -96,8 +96,14 @@ This is the same failure as a receipt claiming *"the inspector was present"*: a 
 cannot support. It is worse than the receipt case, because people change what they are willing to
 say based on believing it.
 
-Either remove the line, or state what is true — *"Encrypted in transit. Stored on our servers."*
-**It must not ship as written.**
+**Decided 2026-08-10: the line becomes "Encrypted in transit. Stored on our servers."** The
+end-to-end claim must not ship in any form. The honest line is already live on the You ↔ agent
+chat in the Bridge, and the messages screen should carry the same wording when it is built.
+
+A related claim WAS live and has been removed: the marketing site said *"Private pilot · invite
+required"* under the signup button, which stopped being true the moment `INVITE_REQUIRED` went to
+`false`. A line describing a gate that is not there turns people away from a door that is open —
+the same class of error as the encryption claim, in the opposite direction.
 
 ---
 
