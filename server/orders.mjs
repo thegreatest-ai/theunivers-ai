@@ -88,7 +88,8 @@ export function createOrder({ buyerAgentId, sellerAgentId, commodity, price, qua
  * it to tell a scope escalation (which the principal may answer) from a substantive refusal
  * (which nobody may).
  */
-export function transition(orderId, actorAgentId, to, { system = false, arbiter = false } = {}) {
+export function transition(orderId, actorAgentId, to,
+                           { system = false, arbiter = false, principal = false } = {}) {
   const order = orderRow(orderId);
   if (!order) return { ok: false, reason: 'no such order', code: 'NOT_FOUND' };
   if (isTerminal(order.status)) {
@@ -101,12 +102,27 @@ export function transition(orderId, actorAgentId, to, { system = false, arbiter 
   const allowed = canTransition(order.status, to, role);
   if (!allowed.ok) return allowed;
 
-  // A binding move is the actor committing themselves, so it goes through THEIR mandate.
+  /*
+   * A binding move is the actor committing themselves, so it goes through THEIR mandate.
+   *
+   * `principal: true` means a person is doing this in the app rather than their agent doing it
+   * unattended. That satisfies SCOPE for this one act — scope is a delegation question, "how much
+   * may the AGENT do alone", and it does not constrain the person who granted it. It satisfies
+   * NOTHING ELSE: floor, ceiling, quantity, commodity, spec, expiry and counterparty tier all
+   * still apply, because those are limits on the DEAL. ADR-0001.
+   *
+   * Implemented by elevating scope on a COPY of the mandate rather than by inspecting the refusal
+   * code, for the reason recorded in the proposal flow: the guard checks scope before floor and
+   * short-circuits, so a below-floor accept fails with code SCOPE and never reaches the floor rule.
+   * Reading the code would let a person approve their way through their own floor.
+   */
   if (allowed.transition.binds) {
     const other = role === 'buyer' ? order.seller_agent_id : order.buyer_agent_id;
     const counterparty = one('SELECT user_id FROM agent WHERE id = ?', other);
+    const rows = mandatesOf(actorAgentId);
     const check = checkMandates(
-      mandatesOf(actorAgentId), asIntent(order),
+      principal ? rows.map((m) => ({ ...m, scope: 'commit' })) : rows,
+      asIntent(order),
       { counterpartyTier: resolveTier(counterparty?.user_id) },
     );
     if (!check.ok) {

@@ -582,6 +582,29 @@ route('POST', '/api/orders/confirm-funding', (ctx) => {
 });
 
 /** A principal's orders, across whichever agent is theirs. */
+/**
+ * A principal moves their own order, from the app.
+ *
+ * Distinct from /api/agent/orders/transition, which an unattended agent calls with an agent token.
+ * Same machine, same guard, one difference: a person acting in the app satisfies SCOPE for that
+ * act, because scope limits what the AGENT may do alone and not what its principal may do. Every
+ * other limit is untouched — see the comment in orders.mjs.
+ */
+route('POST', '/api/orders/transition', (ctx) => {
+  const user = ctx.user;
+  if (!user) return err(401, 'sign in required');
+  const agent = one('SELECT * FROM agent WHERE user_id = ?', user.id);
+  if (!agent) return err(409, 'deploy an agent first');
+
+  const result = transition(String(ctx.body.order ?? ''), agent.id, String(ctx.body.to ?? ''),
+                            { principal: true });
+  if (!result.ok) {
+    const status = result.code === 'NOT_FOUND' ? 404 : result.code === 'NOT_A_PARTY' ? 403 : 409;
+    return err(status, result.reason, undefined, result.code);
+  }
+  return { order: publicOrder(result.order, agent.id) };
+});
+
 route('GET', '/api/orders', (ctx) => {
   const user = ctx.user;
   if (!user) return err(401, 'sign in required');

@@ -4,7 +4,9 @@
 import { useEffect, useState } from 'react';
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { api, clearAuth, hasSession, getAgentToken } from './api';
+import { subscribe } from './stream';
 import { LOCALES } from './locale';
+import Nav from './Nav';
 import './app.css';
 
 export default function Shell({ bare = false }) {
@@ -18,6 +20,18 @@ export default function Shell({ bare = false }) {
   });
   useEffect(() => { localStorage.setItem('tu_locale', locale); }, [locale]);
   const [me, setMe] = useState(null);
+
+  // Only a decision waiting on you earns a badge. A count of things that merely happened is a
+  // notification habit; this is a tool.
+  const [pending, setPending] = useState(0);
+  useEffect(() => {
+    if (bare) return;
+    const read = () => api.proposals()
+      .then((d) => setPending((d.proposals || []).filter((p) => p.status === 'pending').length))
+      .catch(() => {});
+    read();
+    return subscribe((kind) => { if (kind === 'proposal' || kind === 'order') read(); });
+  }, [bare]);
   const currency = LOCALES[locale].currency;
 
   useEffect(() => {
@@ -47,8 +61,13 @@ export default function Shell({ bare = false }) {
 
   return (
     <div className="app-root">
+      {/* Five destinations, two shapes. Both from shared/navigation.mjs — the file existed with
+          the decision in it and nothing imported it, which made an ADR look implemented when it
+          was not. */}
+      <Nav counts={{ Deals: pending }} onCreate={() => nav('/app/deploy')} />
+
       <header className="app-bar">
-        <Link to="/" className="app-brand">theunivers<span className="grad">.ai</span></Link>
+        <Link to="/" className="app-brand app-brand-mobile">theunivers<span className="grad">.ai</span></Link>
         <span className="spacer" />
         <select
           className="app-locale"

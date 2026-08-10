@@ -32,6 +32,11 @@ export const api = {
   deploy: (body) => req('/api/deploy', { method: 'POST', body: JSON.stringify(body) }),
   feed: () => req('/api/feed'),
   setMandate: (body) => req('/api/mandate', { method: 'POST', body: JSON.stringify(body) }),
+  orders: () => req('/api/orders'),
+  order: (id) => req(`/api/orders/${id}`),
+  moveOrder: (order, to) => req('/api/orders/transition', {
+    method: 'POST', body: JSON.stringify({ order, to }),
+  }),
   proposals: () => req('/api/proposals'),
   decide: (id, approve) => req('/api/proposals/decide', { method: 'POST', body: JSON.stringify({ id, approve }) }),
   messages: () => req('/api/messages'),

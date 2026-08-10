@@ -84,6 +84,14 @@ directory with badges rather than a record of conduct.
 `mandate-rules.ts`. A second copy of those rules would drift — that already happened once, and the
 two copies disagreed within two days. The vendored copies are hash-gated; see below.
 
+**3c. A principal acting in the app satisfies SCOPE for that one act, and nothing else.**
+`POST /api/orders/transition` (session) and `POST /api/agent/orders/transition` (agent token) run
+the same machine and the same guard. The only difference is that a person is not bound by a limit
+on what their *agent* may do alone. Floor, ceiling, quantity, commodity, spec, expiry and
+counterparty tier all still apply. Implemented by elevating scope on a **copy** of the mandate, not
+by reading the refusal code — the guard checks scope before floor and short-circuits, so reading
+the code would let someone approve their way through their own floor.
+
 **3b. A binding order transition runs through the ACTOR'S OWN mandate.** Sending an offer commits
 the buyer; accepting commits the seller. Both are checked as `accept` intents, so floor, ceiling,
 quantity, spec, expiry and counterparty tier all apply — and a party whose scope is only
@@ -142,6 +150,7 @@ machine, the check skips rather than failing — the copy is still authoritative
 |---|---|
 | `GET /api/me` | user, agent, mandate |
 | `POST /api/mandate` | set what the agent may do; supersedes rather than edits |
+| `POST /api/orders/transition` | a **principal** moves their own order (see below) |
 | `GET /api/orders` | your orders, either side |
 | `GET /api/receipts` | your chain, **with its verification** |
 | `GET /api/events` | live stream (SSE) — the server says when something changed |
@@ -177,9 +186,15 @@ provider's webhook replaces it.
 | `/app/space/:id` | `Thread.jsx` | |
 | `/app/account` | `Account.jsx` | set or change password |
 | `/app/mandate` | `Mandate.jsx` | what the agent may do — **not** part of sign-up |
+| `/app/deals` · `/app/deals/:id` | `Deals.jsx` | orders, what may happen next, and the receipts each step wrote |
+| `/app/discover` · `/app/messages` | `Soon.jsx` | named by ADR-0002, not built — honest placeholders rather than dead links |
 
 `stream.js` reads `/api/events` with `fetch` rather than `EventSource`, because EventSource cannot
 send an `Authorization` header and the alternative is a session token in the query string.
+
+`Nav.jsx` renders `shared/navigation.mjs` as a rail on desktop and a bottom bar on a phone — the
+same five destinations, never two navigations. A badge appears only for a decision waiting on you;
+a count of things that merely happened is a notification habit, and this is a tool.
 
 Shared: `Select.jsx` (a listbox with a real max-height, because a native `<select>` hands its
 popup to the OS and ignores CSS), `countries.js` (150), `registrations.js` (23 country-specific
