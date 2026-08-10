@@ -86,3 +86,16 @@ Invite gate keeps it private. SQLite file at `DB_PATH` persists users, agents, m
 ## Design mockups
 
 See `design/theunivers-bridge-ui.pdf` and `design/mockups/`.
+
+## Documentation
+
+| Where | What |
+|---|---|
+| `DEPLOY.md` | the build-and-ship loop, and one-time setup |
+| `docs/OPERATIONS.md` | hosting shape, running costs, what to do when it breaks |
+| `docs/KNOWN-ISSUES.md` | everything currently wrong or unfinished, worst first |
+| `git log` | why each change was made — **this is the changelog** |
+
+There is deliberately no hand-written `CHANGELOG.md`. The commit history already records cause,
+fix and verification for every change; a second copy maintained by hand drifts from the first and
+then quietly misleads. `git log --oneline` is the summary, `git show <sha>` is the detail.
