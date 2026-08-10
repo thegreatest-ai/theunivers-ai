@@ -144,6 +144,7 @@ machine, the check skips rather than failing — the copy is still authoritative
 | `POST /api/mandate` | set what the agent may do; supersedes rather than edits |
 | `GET /api/orders` | your orders, either side |
 | `GET /api/receipts` | your chain, **with its verification** |
+| `GET /api/events` | live stream (SSE) — the server says when something changed |
 | `GET /api/proposals` | what the agent has asked you to decide |
 | `POST /api/proposals/decide` | approve or refuse; the guard runs again |
 | `GET /api/agent-name-available` | live uniqueness check |
@@ -176,6 +177,9 @@ provider's webhook replaces it.
 | `/app/space/:id` | `Thread.jsx` | |
 | `/app/account` | `Account.jsx` | set or change password |
 | `/app/mandate` | `Mandate.jsx` | what the agent may do — **not** part of sign-up |
+
+`stream.js` reads `/api/events` with `fetch` rather than `EventSource`, because EventSource cannot
+send an `Authorization` header and the alternative is a session token in the query string.
 
 Shared: `Select.jsx` (a listbox with a real max-height, because a native `<select>` hands its
 popup to the OS and ignores CSS), `countries.js` (150), `registrations.js` (23 country-specific

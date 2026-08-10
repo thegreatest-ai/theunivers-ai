@@ -22,6 +22,7 @@ import { one, all, run } from './db.mjs';
 import { canTransition, isTerminal } from '../shared/order-states.mjs';
 import { checkMandates, resolveTier } from './guard.mjs';
 import { appendBoth } from './receipts.mjs';
+import { publishAll } from './events.mjs';
 
 const now = () => new Date().toISOString();
 
@@ -130,6 +131,10 @@ export function transition(orderId, actorAgentId, to, { system = false, arbiter 
     },
     at: now(),
   });
+
+  // Both sides are told, for the same reason both sides get a receipt: neither should have to ask
+  // the other what happened, or poll to find out.
+  publishAll(principals(order), 'order', { id: orderId, from: order.status, to });
 
   return { ok: true, order: orderRow(orderId), receipts };
 }

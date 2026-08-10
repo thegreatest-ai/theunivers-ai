@@ -9,18 +9,6 @@ Last reviewed: 2026-08-10 · registration is OPEN · 1 real user
 
 
 
-## MEDIUM — the Bridge polls every 4 seconds
-
-`src/app/Bridge.jsx:36` runs `setInterval(load, 4000)` against two endpoints, so every open tab
-costs 0.5 requests/second whether or not anything changed.
-
-Four costs: CPU (every request hits SQLite), egress (~450KB per ten-minute session, ~9GB/month at
-1000 users — see `OPERATIONS.md`), mobile battery, and, ironically, latency — you still wait up to
-four seconds to see a message.
-
-**Fix:** Server-Sent Events. The server already knows when a message or post lands.
-
----
 
 ## LOW — rate-limit state is per-process
 
@@ -52,6 +40,45 @@ removes the worst of the drift risk, but the consolidation decision is still ope
 ---
 
 ## Resolved, kept for the lessons
+
+<details><summary>The Bridge polled every 4 seconds — replaced with Server-Sent Events</summary>
+
+`setInterval(load, 4000)` against three endpoints: fifteen requests a minute per open tab, whose
+answer was almost always "nothing changed". It cost CPU (each poll hits SQLite, which is the
+concurrency WAL had to solve), ~450KB of egress per ten-minute session, phone battery, and — the
+part that made it plainly wrong — **up to four seconds of delay showing a message that had already
+arrived**.
+
+Replaced by `GET /api/events`, one open connection per tab. `server/events.mjs` publishes when a
+message, post, proposal or order transition actually happens.
+
+**Not `new EventSource(...)`.** EventSource cannot set request headers, and the session token
+travels in `Authorization`. The usual workaround puts the token in the query string, writing a live
+credential into every access log and proxy trace — a poor trade for a smaller client. The stream is
+read with `fetch` and a ReadableStream instead, which costs reconnection logic and keeps the
+credential in a header.
+
+**Events carry only a KIND, not the changed object.** The client refetches the one resource
+affected, so there is a single code path for "how do I load messages" instead of two that can
+disagree. The saving was the polling, not the payload.
+
+**Details that are bugs if omitted:** a heartbeat comment every 25s (proxies drop quiet
+connections, and Fly is no exception); `no-transform` and `x-accel-buffering: no` so nothing
+buffers the stream; the heartbeat timer cleared on disconnect, or one timer leaks per closed tab;
+exponential backoff to 30s, because every tab retrying once a second turns a brief outage into a
+long one; and a visible "reconnecting…" state, because a screen that quietly goes stale is worse
+than one that admits it.
+
+**Known gap:** `/api/metrics` under-counts stream egress. `measure()` tallies a response when it
+ends, and an SSE response ends only on disconnect, so heartbeats and events are not counted. An
+undercount of a small number, on a feature whose point is sending far less — recorded rather than
+silently accepted.
+
+**Same single-machine constraint as the rate limiter:** subscribers live in memory, so a publish on
+machine A never reaches a subscriber on machine B. It must move to a shared bus before a second
+machine exists, or half of users see nothing and it looks like "sometimes it doesn't update".
+
+</details>
 
 <details><summary>Google OAuth secret exposed in a transcript — rotated, and a worse bug found on the way</summary>
 

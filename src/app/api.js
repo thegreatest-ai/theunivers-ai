@@ -58,6 +58,11 @@ export function clearAuth() {
   setAgentToken(null);
 }
 
+/** The session token, or null. One accessor, so the storage key lives in exactly one file. */
+export function getSession() {
+  return localStorage.getItem('tu_session');
+}
+
 export function hasSession() {
   return Boolean(localStorage.getItem('tu_session'));
 }

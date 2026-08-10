@@ -10,6 +10,7 @@ import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { measure, daily, totals } from './metrics.mjs';
 import { createOrder, transition, ordersFor, orderRow, publicOrder, roleOf } from './orders.mjs';
 import { chainFor, verifyChain } from './receipts.mjs';
+import { subscribe, publish, publishAll, streamStats } from './events.mjs';
 import { take, refund, clientIp, LIMITS } from './ratelimit.mjs';
 import { sendMail, resetEmail, mailConfigured } from './mail.mjs';
 
@@ -392,6 +393,9 @@ route('POST', '/api/agent/proposals', (ctx) => {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       id, agent.id, agent.user_id, kind, JSON.stringify(intent), summary,
       escalation ? 'SCOPE' : null, now());
+
+  // The whole reason the Bridge used to poll: a question can arrive at any moment.
+  publish(agent.user_id, 'proposal', { id });
   return { id, status: 'pending', escalation };
 });
 
@@ -425,6 +429,7 @@ route('POST', '/api/proposals/decide', (ctx) => {
 
   if (!approve) {
     run('UPDATE proposal SET status = ?, decided_at = ? WHERE id = ?', 'refused', now(), id);
+    publish(user.id, 'proposal', { id, status: 'refused' });
     return { id, status: 'refused' };
   }
 
@@ -448,6 +453,8 @@ route('POST', '/api/proposals/decide', (ctx) => {
   }
 
   run('UPDATE proposal SET status = ?, decided_at = ? WHERE id = ?', 'approved', now(), id);
+  // Same person, other tabs — a decision made on a phone should clear on the laptop.
+  publish(user.id, 'proposal', { id, status: 'approved' });
   return { id, status: 'approved' };
 });
 
@@ -681,6 +688,11 @@ route('GET', '/api/metrics', (ctx) => {
       synchronous: pragma('synchronous'),   // 0=OFF 1=NORMAL 2=FULL 3=EXTRA
     },
     mailConfigured: mailConfigured(),
+    // Egress here UNDER-counts the stream: measure() tallies a response when it ends, and an SSE
+    // response ends only on disconnect. Heartbeats and events are not counted. Given the point of
+    // the stream is to send far less than polling did, an undercount of a small number is
+    // acceptable — but it is a known gap, not an oversight.
+    streams: streamStats(),
     daily: daily(60),
   };
 });
@@ -869,6 +881,11 @@ route('POST', '/api/posts', (ctx) => {
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     id, actor.id, actor.user_id, type, lane, title, body, referent, now(),
   );
+  // The feed is shared, so every listener is told. With one machine this is every open tab; when
+  // there are two machines it will be every tab on THIS one, which is why events.mjs says the
+  // registry must move to a shared bus before that happens.
+  publishAll(all('SELECT id FROM user').map((u) => u.id), 'post', {});
+
   return { id, ok: true };
 });
 
@@ -930,6 +947,8 @@ route('POST', '/api/messages', (ctx) => {
     ctx.body.meta ? JSON.stringify(ctx.body.meta) : null,
     now(),
   );
+  publish(ctx.user?.id ?? ctx.agent?.user_id, 'message', {});
+
   return { id, ok: true };
 });
 
@@ -1090,6 +1109,29 @@ const server = createServer(async (req, res) => {
 
   const url = new URL(req.url ?? '/', BASE_URL);
   const parts = url.pathname.split('/').filter(Boolean);
+
+  /*
+   * GET /api/events — the live stream.
+   *
+   * Handled here rather than through route(), because every other handler RETURNS a value and the
+   * server writes it. This one takes the response over and keeps it open, which the route loop has
+   * no way to express.
+   *
+   * Authenticated by the Authorization header like everything else. Note this rules out the
+   * browser's EventSource, which cannot set headers — the client reads the stream with fetch
+   * instead. The alternative, a session token in the query string, would put a live credential
+   * into every access log and proxy trace, which is a poor trade for a smaller client.
+   */
+  if (req.method === 'GET' && url.pathname === '/api/events') {
+    const user = userFromSession(req.headers.authorization);
+    if (!user) {
+      res.writeHead(401, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: 'sign in required' }));
+      return;
+    }
+    subscribe(user.id, req, res);
+    return;
+  }
 
   // API + well-known
   for (const r of routes) {

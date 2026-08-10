@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useOutletContext, useNavigate } from 'react-router-dom';
 import { api, getAgentToken } from './api';
+import { subscribe } from './stream';
 import { trust as trustDemo } from './mock';
 import { fmtDual, t } from './locale';
 
@@ -21,22 +22,44 @@ export default function Bridge() {
   const mandate = me?.mandate;
   const user = me?.user;
 
+  /*
+   * Load once, then let the server say when something changed.
+   *
+   * This replaced `setInterval(load, 4000)` against three endpoints — a question asked fifteen
+   * times a minute per open tab, whose answer was almost always "nothing". It cost CPU on every
+   * ask (each one hits SQLite), roughly 450KB of egress per ten-minute session, phone battery,
+   * and — the part that made it plainly wrong — up to four seconds of delay showing a message
+   * that had already arrived.
+   *
+   * The stream carries only a KIND, so we refetch the one thing that changed. That keeps a single
+   * code path for "how do I load messages" rather than two that can disagree.
+   */
+  const [live, setLive] = useState('connecting');
+
   useEffect(() => {
     if (!me?.agent) return;
     let alive = true;
-    const load = () => {
-      Promise.all([api.messages(), api.feed(), api.proposals()])
-        .then(([m, f, p]) => {
-          if (!alive) return;
-          setMessages(m.messages || []);
-          setPosts(f.posts || []);
-          setProposals(p.proposals || []);
-        })
-        .catch(() => {});
+
+    const loaders = {
+      message: () => api.messages().then((m) => alive && setMessages(m.messages || [])),
+      post: () => api.feed().then((f) => alive && setPosts(f.posts || [])),
+      proposal: () => api.proposals().then((p) => alive && setProposals(p.proposals || [])),
+      // An order transition can create a proposal or close one, so it refreshes both.
+      order: () => Promise.all([
+        api.proposals().then((p) => alive && setProposals(p.proposals || [])),
+        api.feed().then((f) => alive && setPosts(f.posts || [])),
+      ]),
     };
-    load();
-    const id = setInterval(load, 4000);
-    return () => { alive = false; clearInterval(id); };
+
+    // Everything once on mount — the stream reports CHANGES, so the current state still has to be
+    // fetched. Without this a returning user sees an empty screen until something happens.
+    Promise.all([loaders.message(), loaders.post(), loaders.proposal()]).catch(() => {});
+
+    const stop = subscribe(
+      (kind) => loaders[kind]?.().catch(() => {}),
+      (state) => alive && setLive(state),
+    );
+    return () => { alive = false; stop(); };
   }, [me?.agent?.id]);
 
   async function send(e) {
@@ -95,7 +118,15 @@ export default function Bridge() {
     <div className="app-bridge">
       <section className="app-lane">
         <p className="app-lane-head">{L.you}</p>
-        <p className="app-lane-sub">{user?.name} · chat with your agent</p>
+        <p className="app-lane-sub">
+          {user?.name} · chat with your agent
+          {/* Say when updates have stopped. A screen that quietly goes stale is worse than one
+              that admits it — the user cannot tell "nothing is happening" from "I am not being
+              told what is happening", and will trust the wrong one. */}
+          {live === 'retrying' && (
+            <span className="app-stale"> · reconnecting…</span>
+          )}
+        </p>
 
         <div className="app-card" style={{ display: 'flex', flexDirection: 'column', minHeight: 320 }}>
           <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12 }}>
