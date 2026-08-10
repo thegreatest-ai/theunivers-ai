@@ -39,14 +39,39 @@ const SECRETS = {
     looksLike: /^re_[A-Za-z0-9_-]{10,}$/,
     hint: 'starts with re_ · resend.com → API Keys',
     async verify(key) {
-      const r = await fetch('https://api.resend.com/domains', {
-        headers: { Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(15000),
+      // Probe SENDING, not the account.
+      //
+      // The first version of this called GET /domains, which was wrong twice over. Resend keys
+      // can be created with "Sending access" only — the correct, narrower permission for this
+      // app — and such a key cannot list domains, so a perfectly good key was rejected. It also
+      // answers 400 (not 401) for a bad key, so the failure message said "Resend returned 400"
+      // and explained nothing.
+      //
+      // POST /emails with an empty body exercises exactly the permission the app needs and sends
+      // nothing, because from/to/subject are required and validation fails first.
+      const r = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${key}`, 'content-type': 'application/json' },
+        body: '{}',
+        signal: AbortSignal.timeout(15000),
       });
-      if (r.status === 401 || r.status === 403) return { ok: false, why: 'Resend rejected this key' };
-      if (!r.ok) return { ok: false, why: `Resend returned ${r.status}` };
       const d = await r.json().catch(() => ({}));
-      const domains = (d.data ?? []).map((x) => `${x.name} (${x.status})`);
-      return { ok: true, note: domains.length ? `domains: ${domains.join(', ')}` : 'no verified sending domain yet' };
+      const msg = String(d.message ?? '');
+
+      // A complaint about the KEY is a rejection. A complaint about the empty PAYLOAD means the
+      // key authenticated and may send — which is the whole question.
+      const aboutKey = /api key/i.test(msg);
+      if (aboutKey) {
+        return { ok: false, why: `Resend says: "${msg}" (HTTP ${r.status})` };
+      }
+      if (r.status === 403) {
+        return { ok: false, why: `key authenticated but lacks Sending access — "${msg}"` };
+      }
+      if (r.status === 422 || r.status === 400) {
+        return { ok: true, note: 'authenticated · sending permission confirmed' };
+      }
+      if (r.ok) return { ok: true, note: 'authenticated' };
+      return { ok: false, why: `unexpected HTTP ${r.status}${msg ? ` — "${msg}"` : ''}` };
     },
   },
   GITHUB_CLIENT_ID: { what: 'GitHub OAuth client id', looksLike: /^.{8,}$/, hint: 'github.com → Settings → Developer settings → OAuth Apps' },
