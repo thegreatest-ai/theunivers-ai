@@ -24,6 +24,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
 
       <Route path="/app" element={<Shell bare />}>
         <Route path="signin" element={<SignIn />} />
+        <Route path="join" element={<SignIn initialMode="create" />} />
         <Route path="oauth" element={<OAuthCallback />} />
         <Route path="deploy" element={<Deploy />} />
       </Route>

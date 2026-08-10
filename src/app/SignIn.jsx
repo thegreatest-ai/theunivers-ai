@@ -39,11 +39,15 @@ const PROVIDERS = [
   { key: 'github', label: 'GitHub', Mark: GitHubMark },
 ];
 
-export default function SignIn() {
+export default function SignIn({ initialMode = 'signin' }) {
   const nav = useNavigate();
   // A reset link lands here as /app/signin?token=… , so the mode is picked from the URL.
   const initialToken = new URLSearchParams(window.location.search).get('token') || '';
-  const [mode, setMode] = useState(initialToken ? 'reset' : 'signin');  // signin | create | forgot | reset
+  // A reset link always wins: someone arriving with a token came to set a password, whatever the
+  // route said. Otherwise the route decides — /app/join opens on create, /app/signin on sign-in —
+  // so the marketing CTA lands people where it promised instead of on the wrong tab.
+  const [mode, setMode] = useState(
+    initialToken ? 'reset' : (initialMode === 'create' ? 'create' : 'signin'));
   const [resetToken, setResetToken] = useState(initialToken);
   const [oauth, setOauth] = useState({});
   const [f, setF] = useState({ name: '', email: '', password: '', invite: '' });

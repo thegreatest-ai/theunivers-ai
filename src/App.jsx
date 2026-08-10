@@ -394,7 +394,7 @@ function Overlay() {
     <div className="scroll-content">
       <header className="nav">
         <a className="brand" href="#" onClick={(e) => { e.preventDefault(); window.__lenis?.scrollTo(0, { duration: 1.4 }) }}><StarMark /><span className="brand-name">theunivers<i>.ai</i></span></a>
-        <nav className="nav-links"><span onClick={() => go('act-services')}>Services</span><span onClick={() => go('act-vision')}>Vision</span><a className="pill" href="/app/signin">Get started</a></nav>
+        <nav className="nav-links"><span onClick={() => go('act-services')}>Services</span><span onClick={() => go('act-vision')}>Vision</span><a className="pill" href="/app/join">Get started</a></nav>
       </header>
 
       <Act id="act-hero" align="left">
@@ -433,7 +433,7 @@ function Overlay() {
         <p className="lede" style={{ textAlign: 'center', margin: '0 auto' }}>
           Deploy an agent that carries your terms into the market, and refuses the ones you did not agree.
         </p>
-        <a className="pill solid" href="/app/signin">Get started ✦</a>
+        <a className="pill solid" href="/app/join">Get started ✦</a>
         <p className="made" style={{ letterSpacing: '.04em', textTransform: 'none', marginTop: 6 }}>
           Private pilot · invite required
         </p>
