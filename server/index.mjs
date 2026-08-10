@@ -8,6 +8,8 @@ import { join, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { measure, daily, totals } from './metrics.mjs';
+import { take, refund, clientIp, LIMITS } from './ratelimit.mjs';
+import { sendMail, resetEmail, mailConfigured } from './mail.mjs';
 
 // Tiny .env loader — no dependency
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
@@ -118,6 +120,12 @@ route('GET', '/api/auth/github/callback', async (ctx) => {
 });
 
 route('POST', '/api/auth/register', (ctx) => {
+  // Registration is the volume attack: automated signups fill the volume and, because agent names
+  // are globally unique, let one script squat every good name permanently. Limited per IP even
+  // while the invite gate is closed, so opening the gate is a config change and not a risk change.
+  const byIp = take('register-ip', ctx.ip, LIMITS.registerPerIp.max, LIMITS.registerPerIp.windowMs);
+  if (!byIp.ok) return tooMany(byIp.retryAfter);
+
   const email = String(ctx.body.email ?? '').trim().toLowerCase();
   const name = String(ctx.body.name ?? '').trim();
   const password = String(ctx.body.password ?? '');
@@ -158,6 +166,14 @@ route('POST', '/api/auth/login', (ctx) => {
   const password = String(ctx.body.password ?? '');
   if (!email || !password) return err(400, 'email and password are required');
 
+  // Limited on BOTH keys. Per-IP alone misses a distributed attack on one account; per-account
+  // alone misses one host working through many accounts. Checked before the lookup so an attacker
+  // cannot use response timing to tell a rate-limited address from an unknown one.
+  const byIp = take('login-ip', ctx.ip, LIMITS.loginPerIp.max, LIMITS.loginPerIp.windowMs);
+  if (!byIp.ok) return tooMany(byIp.retryAfter);
+  const byAccount = take('login-acct', email, LIMITS.loginPerAccount.max, LIMITS.loginPerAccount.windowMs);
+  if (!byAccount.ok) return tooMany(byAccount.retryAfter);
+
   const user = one('SELECT * FROM user WHERE email = ?', email);
 
   // One message for "no such user" and for "wrong password". Distinguishing them turns this
@@ -172,6 +188,11 @@ route('POST', '/api/auth/login', (ctx) => {
   }
   if (!verifyPassword(password, user.password_hash)) return err(401, REJECT);
 
+  // Correct password: give the attempts back, so someone who mistyped twice and then succeeded is
+  // not left one typo away from a lockout.
+  refund('login-ip', ctx.ip);
+  refund('login-acct', email);
+
   const sessionToken = createSession(user.id);
   const agent = one('SELECT * FROM agent WHERE user_id = ?', user.id);
   return {
@@ -185,13 +206,19 @@ route('POST', '/api/auth/login', (ctx) => {
  * Forgot password. ALWAYS returns the same response whether or not the email exists — the
  * alternative tells an attacker which addresses are registered.
  *
- * Pilot behaviour: there is no mail sender wired up, so the token is returned in the response
- * and logged. That is deliberately unacceptable for production and is labelled as such in the
- * payload, so it cannot quietly ship.
+ * The token now leaves ONLY inside an email. It used to be returned in the response body so the
+ * pilot worked without a mailer; that made account takeover a single POST away for any address an
+ * attacker knew. See server/mail.mjs.
  */
 route('POST', '/api/auth/forgot', (ctx) => {
   const email = String(ctx.body.email ?? '').trim().toLowerCase();
   if (!email) return err(400, 'email is required');
+
+  // Two keys: one address cannot be mail-bombed, and one host cannot sweep many addresses.
+  const byIp = take('forgot-ip', ctx.ip, LIMITS.forgotPerIp.max, LIMITS.forgotPerIp.windowMs);
+  if (!byIp.ok) return tooMany(byIp.retryAfter);
+  const byEmail = take('forgot-email', email, LIMITS.forgotPerEmail.max, LIMITS.forgotPerEmail.windowMs);
+  if (!byEmail.ok) return tooMany(byEmail.retryAfter);
 
   const user = one('SELECT * FROM user WHERE email = ?', email);
   const SAME = { ok: true, message: 'If that email has an account, a reset link is on its way.' };
@@ -200,12 +227,24 @@ route('POST', '/api/auth/forgot', (ctx) => {
   const resetToken = token(24);
   const expires = new Date(Date.now() + 30 * 60 * 1000).toISOString();
   run('UPDATE user SET reset_token = ?, reset_expires = ? WHERE id = ?', resetToken, expires, user.id);
-  console.log(`[pilot] password reset for ${email}: ${resetToken}`);
 
-  return { ...SAME, __pilotOnly: { resetToken, note: 'Returned because no mailer is configured. Remove before production.' } };
+  // NOT awaited, deliberately. Awaiting makes the response slower when the account exists than
+  // when it does not, and that difference is a reliable account-enumeration oracle no matter how
+  // identical the response body is. sendMail never throws and logs its own failures.
+  sendMail(resetEmail({
+    to: email, token: resetToken,
+    baseUrl: process.env.FRONTEND_URL ?? process.env.BASE_URL ?? 'https://theunivers.ai',
+  }));
+
+  return SAME;
 });
 
 route('POST', '/api/auth/reset', (ctx) => {
+  // A reset token is 24 bytes of randomness, so guessing is not the threat — grinding is. Limiting
+  // costs an honest user nothing; they follow one link.
+  const byIp = take('reset-ip', ctx.ip, LIMITS.resetPerIp.max, LIMITS.resetPerIp.windowMs);
+  if (!byIp.ok) return tooMany(byIp.retryAfter);
+
   const resetToken = String(ctx.body.token ?? '').trim();
   const password = String(ctx.body.password ?? '');
   if (!resetToken) return err(400, 'reset token is required');
@@ -295,7 +334,20 @@ route('GET', '/api/metrics', (ctx) => {
   if (got.length !== want.length || !timingSafeEqual(Buffer.from(got), Buffer.from(want))) {
     return err(401, 'bad metrics token');
   }
-  return { ...totals(), daily: daily(60) };
+  // Also report the storage pragmas. busy_timeout and synchronous are PER-CONNECTION, so opening
+  // a second connection over `fly ssh` reads that connection's defaults and tells you nothing
+  // about the running server. Reported from the server's own handle, they become checkable.
+  const pragma = (name) => Object.values(db.prepare(`PRAGMA ${name}`).get() ?? {})[0];
+  return {
+    ...totals(),
+    storage: {
+      journalMode: pragma('journal_mode'),
+      busyTimeout: pragma('busy_timeout'),
+      synchronous: pragma('synchronous'),   // 0=OFF 1=NORMAL 2=FULL 3=EXTRA
+    },
+    mailConfigured: mailConfigured(),
+    daily: daily(60),
+  };
 });
 
 route('POST', '/api/deploy', (ctx) => {
@@ -624,8 +676,14 @@ function publicMandate(m) {
   };
 }
 
-function err(status, message) {
-  return { __error: true, status, message };
+function err(status, message, headers) {
+  return { __error: true, status, message, headers };
+}
+
+/** 429 with a real Retry-After, so a client can back off instead of guessing. */
+function tooMany(retryAfter) {
+  return err(429, `Too many attempts. Try again in ${retryAfter}s.`,
+             { 'retry-after': String(retryAfter) });
 }
 
 function seedDemoFeed() {
@@ -701,13 +759,14 @@ const server = createServer(async (req, res) => {
     }
     const ctx = {
       params, query: url.searchParams, body,
+      ip: clientIp(req),
       user: userFromSession(req.headers.authorization),
       agent: agentFromToken(req.headers.authorization),
     };
     try {
       const out = await r.handler(ctx);
       if (out?.__error) {
-        res.writeHead(out.status, { 'content-type': 'application/json' });
+        res.writeHead(out.status, { 'content-type': 'application/json', ...(out.headers ?? {}) });
         res.end(JSON.stringify({ error: out.message }));
         return;
       }

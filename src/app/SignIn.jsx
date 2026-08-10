@@ -105,14 +105,11 @@ export default function SignIn() {
         // With no mailer, the server hands the token straight back. Rather than printing it and
         // leaving the user at a dead end, walk them into the reset step — the same screen a real
         // email link would open. When SMTP exists, this branch stops firing on its own.
-        if (r.__pilotOnly?.resetToken) {
-          setResetToken(r.__pilotOnly.resetToken);
-          setF({ ...f, password: '' });
-          setMode('reset');
-          setNotice('No mail is configured yet, so you have been taken straight to the reset step.');
-        } else {
-          setNotice(r.message);
-        }
+        // The token is emailed and never returned here. Say what happens next and stop — a
+        // screen that quietly moved the user to the reset step would now be lying about a link
+        // they have not received yet.
+        setNotice(r.message ?? 'If that email has an account, a reset link is on its way.');
+        setMode('signin');
       } else if (mode === 'reset') {
         const r = await api.reset({ token: resetToken, password: f.password });
         setSession(r.sessionToken);

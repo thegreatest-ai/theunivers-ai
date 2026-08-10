@@ -10,6 +10,36 @@ const DB_PATH = process.env.DB_PATH ?? './data/pilot.db';
 mkdirSync(dirname(DB_PATH), { recursive: true });
 
 export const db = new DatabaseSync(DB_PATH);
+
+/**
+ * Concurrency and durability. These run before any schema statement, because journal_mode is a
+ * property of the database file and changing it later means doing so under load.
+ *
+ * WAL is the important one. On the default rollback journal a writer takes an EXCLUSIVE lock over
+ * the whole database and every reader blocks behind it. With one user that is invisible; with
+ * thirty polling clients and somebody registering, requests start failing with SQLITE_BUSY —
+ * surfacing as 500s on unrelated pages, appearing and vanishing with no pattern, and attributed to
+ * the wrong request because the failing one is not the one holding the lock. Under WAL, readers
+ * and the writer proceed concurrently.
+ *
+ *   busy_timeout  wait for a contended lock instead of throwing immediately. Without it WAL still
+ *                 throws the moment two writers overlap, which is the case it is meant to soften.
+ *   synchronous   NORMAL is the documented companion to WAL: safe against process crashes, and
+ *                 only at risk of losing the last transactions in an OS-level crash or power cut.
+ *                 FULL fsyncs every commit, which on a Fly volume is a real cost for a guarantee
+ *                 a pilot does not need.
+ *
+ * journal_mode returns the mode it settled on, so it is asserted rather than assumed — a silent
+ * failure here would leave the exact problem this block exists to fix.
+ */
+const mode = db.prepare('PRAGMA journal_mode = WAL').get();
+const got = String(Object.values(mode ?? {})[0] ?? '').toLowerCase();
+if (got !== 'wal') {
+  console.warn(`[db] WAL not enabled (got "${got}") — expect SQLITE_BUSY under concurrency`);
+}
+db.exec('PRAGMA busy_timeout = 5000');
+db.exec('PRAGMA synchronous = NORMAL');
+
 db.exec(`PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS invite (
