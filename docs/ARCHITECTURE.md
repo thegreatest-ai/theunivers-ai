@@ -69,7 +69,7 @@ user ──┬── agent ── mandate ── mandate_audit
 | `mandate_audit` | every guard decision, allowed or refused | the record of what the agent was *stopped* from doing |
 | `proposal` | what the agent asked the principal to authorise | `pending → approved / refused / invalidated` |
 | `anchor` | trade licence, GSTIN, vouch… with `status` and `expires_at` | tier is derived from these |
-| `receipt` | `seq`, `prev_hash`, `hash` | append-only chain |
+| `receipt` | `seq`, `prev_hash`, `hash` | append-only chain, **one per principal** — a deal writes to both, so neither party depends on the other's copy |
 | `invite` | code, `uses`, `max_uses` | inert while `INVITE_REQUIRED=false` |
 | `metric_daily` | `bytes_out`, `requests` per UTC day | feeds the spend tracker |
 
@@ -83,6 +83,12 @@ directory with badges rather than a record of conduct.
 **2. There is ONE mandate enforcement site.** `server/guard.mjs` is an adapter over Corridor's
 `mandate-rules.ts`. A second copy of those rules would drift — that already happened once, and the
 two copies disagreed within two days. The vendored copies are hash-gated; see below.
+
+**3b. A binding order transition runs through the ACTOR'S OWN mandate.** Sending an offer commits
+the buyer; accepting commits the seller. Both are checked as `accept` intents, so floor, ceiling,
+quantity, spec, expiry and counterparty tier all apply — and a party whose scope is only
+`negotiate` cannot bind itself, which is the same `SCOPE` refusal the proposal flow turns into a
+question.
 
 **3a. A principal may supply a missing SCOPE, and nothing else.** See
 `docs/decisions/ADR-0001-chat-cannot-widen-a-mandate.md`. Approving a proposal grants one act the
@@ -136,6 +142,8 @@ machine, the check skips rather than failing — the copy is still authoritative
 |---|---|
 | `GET /api/me` | user, agent, mandate |
 | `POST /api/mandate` | set what the agent may do; supersedes rather than edits |
+| `GET /api/orders` | your orders, either side |
+| `GET /api/receipts` | your chain, **with its verification** |
 | `GET /api/proposals` | what the agent has asked you to decide |
 | `POST /api/proposals/decide` | approve or refuse; the guard runs again |
 | `GET /api/agent-name-available` | live uniqueness check |
@@ -143,7 +151,14 @@ machine, the check skips rather than failing — the copy is still authoritative
 | `GET/POST /api/messages`, `GET /api/feed`, `POST /api/posts` | |
 
 **Agent token** — `GET /api/agent/me`, `POST /api/agent/intents/check` (the mandate guard),
-`POST /api/agent/proposals` (ask the principal for authority the mandate withholds)
+`POST /api/agent/proposals` (ask the principal for authority the mandate withholds),
+`POST /api/agent/orders` (draft a PO, addressed by the seller's handle),
+`POST /api/agent/orders/transition` (move it; binding moves go through the actor's own mandate)
+
+**Operator** — `POST /api/orders/confirm-funding`, gated by `METRICS_TOKEN`. **The platform funds
+nothing**; this records that a confirmation reached us, and the receipt says the source was
+`operator-manual` rather than pretending a system observed it. It exists only until a licensed
+provider's webhook replaces it.
 
 **Operator** — `GET /api/metrics`, gated by `METRICS_TOKEN`, 404 when unset
 

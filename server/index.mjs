@@ -8,6 +8,8 @@ import { join, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { measure, daily, totals } from './metrics.mjs';
+import { createOrder, transition, ordersFor, orderRow, publicOrder, roleOf } from './orders.mjs';
+import { chainFor, verifyChain } from './receipts.mjs';
 import { take, refund, clientIp, LIMITS } from './ratelimit.mjs';
 import { sendMail, resetEmail, mailConfigured } from './mail.mjs';
 
@@ -476,6 +478,131 @@ route('POST', '/api/mandate', (ctx) => {
   run("UPDATE mandate SET status = 'superseded' WHERE agent_id = ? AND status = 'active'", agent.id);
   const mandate = createMandate(agent.id, ctx.body);
   return { mandate: publicMandate(mandate) };
+});
+
+/**
+ * ── Orders ───────────────────────────────────────────────────────────────────────────────
+ * The customised purchase order and its state machine.
+ * See docs/specs/ORDER-AND-INSPECTION.md and shared/order-states.mjs.
+ */
+
+/** A buyer's agent drafts a PO. Drafting commits nobody — sending it does. */
+route('POST', '/api/agent/orders', (ctx) => {
+  const agent = ctx.agent;
+  if (!agent) return err(401, 'agent token required');
+
+  // The seller is named by HANDLE, resolved here. Accepting a raw agent id from the body would
+  // let a caller address an agent they could not otherwise find or spell.
+  const handle = String(ctx.body.sellerAgent ?? '').trim();
+  const seller = one('SELECT * FROM agent WHERE lower(trim(name)) = ?', handle.toLowerCase());
+  if (!seller) return err(404, 'no agent with that name');
+  if (seller.id === agent.id) return err(400, 'an agent cannot trade with itself');
+
+  const commodity = String(ctx.body.commodity ?? '').trim();
+  const amount = Number(ctx.body.price?.amount);
+  const currency = String(ctx.body.price?.currency ?? '').trim();
+  if (!commodity) return err(400, 'commodity is required');
+  if (Number.isNaN(amount) || amount <= 0) return err(400, 'a positive price is required');
+  if (!currency) return err(400, 'price currency is required');
+
+  const order = createOrder({
+    buyerAgentId: agent.id,
+    sellerAgentId: seller.id,
+    commodity,
+    price: { amount, currency },
+    quantity: ctx.body.quantity ?? { value: 1, unit: 't' },
+    deliveryWindow: ctx.body.deliveryWindow ?? {
+      from: new Date().toISOString().slice(0, 10),
+      to: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString().slice(0, 10),
+    },
+    specTemplateId: ctx.body.specTemplateId,
+    inspectionPolicy: ctx.body.inspectionPolicy,
+  });
+  return { order: publicOrder(order, agent.id) };
+});
+
+/**
+ * Move an order.
+ *
+ * A SCOPE refusal here is not a failure — it means the mandate withholds the authority to bind,
+ * which is exactly what /api/agent/proposals turns into a question for the principal. The code is
+ * returned so the agent can tell that case from a substantive refusal it must not retry.
+ */
+route('POST', '/api/agent/orders/transition', (ctx) => {
+  const agent = ctx.agent;
+  if (!agent) return err(401, 'agent token required');
+
+  const id = String(ctx.body.order ?? '');
+  const to = String(ctx.body.to ?? '');
+  const result = transition(id, agent.id, to);
+  if (!result.ok) {
+    const status = result.code === 'NOT_FOUND' ? 404
+      : result.code === 'NOT_A_PARTY' ? 403 : 409;
+    return err(status, result.reason, undefined, result.code);
+  }
+
+  // Bookkeeping, not a decision: an accepted order is by definition waiting to be funded. Done
+  // here rather than left to a caller so the state cannot sit in a place nobody advances it from.
+  if (result.order.status === 'accepted') {
+    const next = transition(id, agent.id, 'awaiting_funding', { system: true });
+    if (next.ok) return { order: publicOrder(next.order, agent.id) };
+  }
+  return { order: publicOrder(result.order, agent.id) };
+});
+
+/**
+ * Funding confirmation.
+ *
+ * THE PLATFORM DOES NOT FUND ANYTHING. This records that a funding confirmation reached us, and
+ * the receipt says where it came from. Until a licensed provider's webhook exists, the only
+ * source is an operator asserting it by hand — so the receipt records `operator-manual`, never
+ * something that reads as though a system observed it. A receipt that overstates its own source
+ * is worse than no receipt.
+ *
+ * Gated by METRICS_TOKEN, and 404s when that is unset: off by default.
+ */
+route('POST', '/api/orders/confirm-funding', (ctx) => {
+  const want = process.env.METRICS_TOKEN;
+  if (!want) return err(404, 'not found');
+  const got = String(ctx.body.token ?? '');
+  if (got.length !== want.length || !timingSafeEqual(Buffer.from(got), Buffer.from(want))) {
+    return err(401, 'bad operator token');
+  }
+  const id = String(ctx.body.order ?? '');
+  const result = transition(id, null, 'funded', { system: true });
+  if (!result.ok) return err(409, result.reason, undefined, result.code);
+  return { order: publicOrder(result.order, null), source: 'operator-manual' };
+});
+
+/** A principal's orders, across whichever agent is theirs. */
+route('GET', '/api/orders', (ctx) => {
+  const user = ctx.user;
+  if (!user) return err(401, 'sign in required');
+  const agent = one('SELECT * FROM agent WHERE user_id = ?', user.id);
+  if (!agent) return { orders: [] };
+  return { orders: ordersFor(agent.id).map((o) => publicOrder(o, agent.id)) };
+});
+
+route('GET', '/api/orders/:id', (ctx) => {
+  const user = ctx.user;
+  if (!user) return err(401, 'sign in required');
+  const agent = one('SELECT * FROM agent WHERE user_id = ?', user.id);
+  const order = orderRow(ctx.params.id);
+  if (!order || !agent || !roleOf(order, agent.id)) return err(404, 'no such order');
+  return { order: publicOrder(order, agent.id) };
+});
+
+/**
+ * The principal's own receipt chain, and whether it still verifies.
+ *
+ * Verification is returned alongside the receipts rather than hidden behind a separate call: a
+ * chain nobody checks is a table with an extra column, and the cheapest way to make sure it is
+ * checked is to check it every time anyone looks.
+ */
+route('GET', '/api/receipts', (ctx) => {
+  const user = ctx.user;
+  if (!user) return err(401, 'sign in required');
+  return { receipts: chainFor(user.id), verification: verifyChain(user.id) };
 });
 
 route('GET', '/api/me', (ctx) => {
