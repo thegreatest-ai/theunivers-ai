@@ -76,16 +76,42 @@ const sweep = setInterval(() => {
 sweep.unref?.();
 
 /**
- * Limits, in one place so they can be read as a policy rather than hunted through routes.
+ * Limits, in one place so they read as a policy rather than being hunted through routes.
+ * Login is checked on TWO keys and both must pass.
  *
- * Login is limited on TWO keys at once. Per-IP alone misses a distributed attack on one account;
- * per-account alone misses one host working through many accounts. Both must pass.
+ * THE PRINCIPLE THESE NUMBERS FOLLOW
+ *
+ *   per-ACCOUNT limits protect accounts.  per-IP limits protect infrastructure.
+ *
+ * Only the per-account limit stops a targeted attack, because an attacker can rotate addresses.
+ * The per-IP limit exists to stop one host flooding us — not to stop a person signing up. So the
+ * per-account numbers stay tight and the per-IP numbers are generous, because an IP is a terrible
+ * proxy for a person:
+ *
+ *   - mobile carriers in the UAE and India run carrier-grade NAT, so THOUSANDS of real users can
+ *     share one address. registerPerIp was 5/hour, which would have blocked a whole carrier's
+ *     users after five signups on launch day.
+ *   - offices, cafés, universities and VPNs all present one address for many people.
+ *
+ * Found the hard way: six test signups from one machine locked that machine out for 50 minutes.
+ * That was the limit doing exactly what it was told, and what it was told was wrong.
  */
 export const LIMITS = {
-  loginPerIp:      { max: 30, windowMs: 15 * 60_000 },
-  loginPerAccount: { max: 6,  windowMs: 15 * 60_000 },
-  registerPerIp:   { max: 5,  windowMs: 60 * 60_000 },
-  forgotPerIp:     { max: 10, windowMs: 60 * 60_000 },
-  forgotPerEmail:  { max: 3,  windowMs: 60 * 60_000 },
-  resetPerIp:      { max: 10, windowMs: 60 * 60_000 },
+  // Tight, and the one that actually matters: 6 wrong passwords for ONE account per 15 minutes,
+  // no matter how many addresses the attempts come from.
+  loginPerAccount: { max: 6,   windowMs: 15 * 60_000 },
+
+  // Generous: a shared office should never lock itself out. Brute force is already bounded by
+  // the per-account limit above, so this is only a flood ceiling.
+  loginPerIp:      { max: 100, windowMs: 15 * 60_000 },
+
+  // A busy launch day behind one carrier NAT must not hit this. Automated signup floods look
+  // nothing like 20/hour anyway — they look like hundreds per minute.
+  registerPerIp:   { max: 20,  windowMs: 60 * 60_000 },
+
+  // Per-EMAIL is what stops someone being mail-bombed; per-IP is again just a flood ceiling.
+  forgotPerEmail:  { max: 3,   windowMs: 60 * 60_000 },
+  forgotPerIp:     { max: 30,  windowMs: 60 * 60_000 },
+
+  resetPerIp:      { max: 30,  windowMs: 60 * 60_000 },
 };
