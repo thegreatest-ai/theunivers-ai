@@ -244,7 +244,7 @@ export default function Deploy() {
                 autoComplete="off"
                 autoCapitalize="none"
                 spellCheck={false}
-                maxLength={30}
+                maxLength={64}
               />
 
               {/* Typing a company name here is the natural mistake, so offer the handle rather

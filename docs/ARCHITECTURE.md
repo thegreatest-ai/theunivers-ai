@@ -155,11 +155,27 @@ Shared: `Select.jsx` (a listbox with a real max-height, because a native `<selec
 popup to the OS and ignores CSS), `countries.js` (150), `registrations.js` (23 country-specific
 business registrations mapped to Corridor anchor types), `professions.js`, `locale.js`.
 
+### Who must be unique, and who need not be
+
+| | Unique? | Enforced by |
+|---|---|---|
+| `user.name` — a person or business name | **No** | nothing, deliberately — three people may all be "Mohamed Baharoon" |
+| `user.email` | Yes | `UNIQUE` on the column; all emails are lowercased before storage, including the OAuth path |
+| `agent.name` — the handle | **Yes, platform-wide** | `UNIQUE INDEX` on `lower(trim(name))` |
+
+A real name is not an identifier and should never be forced to be one. The **handle** is the
+identifier, and it is the thing a counterparty actually uses to tell two parties apart.
+
 ### Agent handles
 
 An agent name is a **handle**, not a company name: `alkhwarizmi.trading`, not "Alkhwarizmi Trading".
-Letters, digits, dots and underscores; 3–30 characters; no spaces. It must start and end with a
+**English** letters (A–Z, a–z), digits, dots and underscores; 3–64 characters; no spaces. It must start and end with a
 letter or digit, and may not repeat a separator.
+
+ASCII-only is a security rule, not a typographic preference: it rejects `é`, but it also rejects
+Cyrillic `а` (U+0430) and Greek `ο` (U+03BF), which are indistinguishable on screen from their
+Latin twins. Allowing them would let anyone register a handle that looks exactly like someone
+else's.
 
 Those last two are not style rules. `acme.` and `acme` look identical in a list and are different
 rows; so do `acme__trading` and `acme_trading`. Uniqueness is already case-insensitive at the

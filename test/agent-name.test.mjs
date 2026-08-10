@@ -7,7 +7,8 @@ import assert from 'node:assert/strict';
 import { checkHandle, handleError, suggestHandle, MIN, MAX } from '../shared/agent-name.mjs';
 
 test('accepts Instagram-style handles', () => {
-  for (const h of ['alkhwarizmi.trading', 'musa_1', 'abc', 'a.b_c9', 'A1b2c3']) {
+  for (const h of ['alkhwarizmi.trading', 'musa_1', 'abc', 'a.b_c9', 'A1b2c3',
+                   'alkhwarizmi.trading.international.dubai']) {
     assert.equal(handleError(h), null, `${h} should be valid`);
   }
 });
@@ -19,8 +20,23 @@ test('rejects spaces — the most common mistake', () => {
 });
 
 test('rejects characters outside the allowed set', () => {
-  for (const h of ['acme-trading', 'acme@x', 'acme/x', 'acme!', 'acmé']) {
+  for (const h of ['acme-trading', 'acme@x', 'acme/x', 'acme!', 'acmé', 'acme ']) {
     assert.ok(handleError(h), `${h} should be rejected`);
+  }
+});
+
+test('rejects non-ASCII look-alikes, which is the point of ASCII-only', () => {
+  // Not about tidiness. These are indistinguishable on screen from their Latin twins, so allowing
+  // them would let anyone register a handle that LOOKS exactly like someone else's.
+  const homoglyphs = {
+    '\u0430cme': 'Cyrillic a (U+0430)',
+    '\u03bfmega': 'Greek omicron (U+03BF)',
+    '\u0435xample': 'Cyrillic e (U+0435)',
+    'acm\u00e9': 'e-acute',
+    'm\u00fcnster': 'u-umlaut',
+  };
+  for (const [h, why] of Object.entries(homoglyphs)) {
+    assert.ok(handleError(h), `${why} must be rejected`);
   }
 });
 
@@ -29,6 +45,7 @@ test('enforces length bounds', () => {
   assert.equal(handleError('abc'), null, `${MIN} is the minimum`);
   assert.equal(handleError('a'.repeat(MAX)), null, `${MAX} is allowed`);
   assert.ok(handleError('a'.repeat(MAX + 1)), 'over the maximum');
+  assert.ok(MAX >= 64, 'the cap must stay generous — long handles are legitimate');
 });
 
 test('rejects handles that are confusable with another handle', () => {

@@ -18,12 +18,27 @@
  */
 
 export const MIN = 3;
-export const MAX = 30;
+
+/**
+ * Generous rather than unlimited.
+ *
+ * A handle should not be capped at some arbitrary short number — a real one like
+ * `alkhwarizmi.trading.international.dubai` is 39 characters and perfectly reasonable. But an
+ * unbounded text field is a liability, not a feature: it breaks table layouts, floods logs, and
+ * hands anyone a cheap way to write megabytes into the database one row at a time. 64 is well past
+ * any handle a person would actually type, and still a bound.
+ */
+export const MAX = 64;
 
 /** Shown next to the field, and reused in error messages. */
 export const HANDLE_RULES = [
   { id: 'length',  label: `${MIN}–${MAX} characters`,          test: (h) => h.length >= MIN && h.length <= MAX },
-  { id: 'charset', label: 'Letters, numbers, dots, underscores', test: (h) => /^[A-Za-z0-9._]*$/.test(h) },
+  // A-Z and a-z ONLY — plain ASCII. This rejects é and ü, but the reason is not tidiness: it also
+  // rejects Cyrillic а (U+0430), Greek ο (U+03BF) and the rest of the homoglyph family, which are
+  // indistinguishable on screen from their Latin twins. Allowing them would let anyone register a
+  // handle that looks exactly like someone else's — the precise attack unique handles exist to
+  // prevent.
+  { id: 'charset', label: 'English letters, numbers, dots, underscores', test: (h) => /^[A-Za-z0-9._]*$/.test(h) },
   { id: 'nospace', label: 'No spaces',                          test: (h) => !/\s/.test(h) },
   { id: 'edges',   label: 'Starts and ends with a letter or number', test: (h) => /^[A-Za-z0-9].*[A-Za-z0-9]$|^[A-Za-z0-9]$/.test(h) },
   { id: 'runs',    label: 'No repeated dots or underscores',    test: (h) => !/[._]{2,}/.test(h) },
@@ -61,7 +76,7 @@ export function handleError(handle) {
   const first = results.find((r) => !r.ok);
   switch (first.id) {
     case 'length':  return `Agent name must be ${MIN}–${MAX} characters.`;
-    case 'charset': return 'Agent name can use letters, numbers, dots and underscores only.';
+    case 'charset': return 'Agent name can use English letters, numbers, dots and underscores only.';
     case 'nospace': return 'Agent name cannot contain spaces — try a dot or underscore.';
     case 'edges':   return 'Agent name must start and end with a letter or number.';
     case 'runs':    return 'Agent name cannot repeat a dot or underscore.';
