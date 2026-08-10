@@ -230,6 +230,71 @@ did not have to accept.
 
 ---
 
+## Anchoring the record
+
+### What anchoring is for
+
+The receipt chain is already hash-linked — `seq`, `prev_hash`, `hash` — so tampering is detectable
+*within* the platform. What that cannot do is answer a party who does not trust **us**. The
+platform arbitrates disputes, which makes it an interested party, and "our database says so" is a
+weak answer from someone with a stake in the outcome.
+
+Anchoring the chain to a public ledger removes the platform from its own evidence. That is the
+whole value, and it is worth having.
+
+### What it does not do
+
+**A chain proves a hash existed by a time and has not changed since. It cannot make the content
+true.** It cannot show that the tomatoes were organic or that the inspector stood in that
+warehouse.
+
+"Recorded forever on the blockchain" is routinely sold as anti-fraud when it prevents exactly one
+fraud: retroactive alteration. That is a real fraud and worth preventing. It is not the only one,
+and claiming otherwise repeats the overclaiming failure this spec already refuses elsewhere.
+
+### Hashes on-chain. Never files, never personal data.
+
+```
+receipts (SQLite, hash-linked)      ← the operational record
+        │
+        │  batched daily into a Merkle root
+        ▼
+one anchor transaction              ← the ONLY thing that touches a chain
+        │
+files (object storage / IPFS), addressed by SHA-256, never on-chain
+```
+
+One anchor per day, not per receipt. A single root commits every receipt in the batch, and any
+individual receipt is provable against it with a short Merkle path. Cost is cents per day instead
+of per event; the guarantee is identical.
+
+**The erasure constraint is a hard rule, not a preference.**
+
+Immutability and data-protection law are structurally incompatible. Inspection photos will contain
+faces, vehicle plates, warehouse interiors, sometimes documents. Under the UAE PDPL — open as
+counsel question **Q4** — a data subject may request erasure.
+
+**If personal data reaches a public immutable ledger, that request can never be honoured, and no
+later engineering can fix it.** It is not a risk to be managed; it is a breach that cannot be
+undone. A hash of a photo is not personal data. The photo is.
+
+So: hashes and Merkle roots on-chain. Images, forms, contracts and anything naming a person stay
+off-chain, addressed by hash, deletable.
+
+### Sequencing
+
+The `receipt` table exists but **nothing writes to it yet** — there is no `createHash` call in the
+server. Anchoring an empty chain proves nothing, so receipts must first be written by the order
+state machine. That is already step 1 of the build order.
+
+### Out of scope, and deliberately
+
+Token or stablecoin **settlement** is a different question from anchoring. Anchoring writes a hash
+and moves no value; settlement reopens CBUAE Article 62 and brings UAE virtual-asset regulation
+into scope as well. Storage and anchoring do not touch the payment boundary. Payments do.
+
+---
+
 ## Open questions
 
 1. **Who arbitrates?** "The platform authorised person" needs a defined role, a standard of proof,
@@ -239,14 +304,19 @@ did not have to accept.
    should lose something, or inspection quality has no feedback.
 4. **Is `device-attested` worth a native app?** Only measurable once web-attested inspections exist
    and their dispute rate is known.
+5. **Which chain, and who pays the anchor fee?** The choice matters less than the property — a
+   public chain with predictable cost and durable history. Worth deciding late, since one anchor
+   per day makes switching cheap and nothing depends on the chain's identity.
 
 ## Build order
 
-1. **Order object + state machine + receipts** — the spine everything attaches to
+1. **Order object + state machine + receipts** — the spine everything attaches to, and the
+   prerequisite for anchoring: an empty chain is not worth anchoring
 2. **Listing and quote** so discovery returns something real
 3. **Inspection job + evidence capture** at `web-attested`
 4. **Agent-to-agent messaging**
-5. **The runner** — last, so it operates a loop that already exists
+5. **Anchoring** — a daily Merkle root, once the chain has content
+6. **The runner** — last, so it operates a loop that already exists
 
 The runner comes last on purpose. Its hard requirement is already recorded in ADR-0001:
 counterparty text reaches a model as delimited data, never as instruction.
