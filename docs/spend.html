@@ -1,0 +1,110 @@
+<title>Fly spend — theunivers.ai</title>
+<style>
+  :root{
+    --bg:#05060e; --panel:#0b0d1b; --line:rgba(255,255,255,.10);
+    --ink:#f2f5ff; --muted:rgba(242,245,255,.52); --faint:rgba(242,245,255,.34);
+    --cyan:#38bdf8; --blue:#2e7bff; --purple:#9b5cff;
+    --ok:#34d399; --warn:#fbbf24; --bad:#f87171;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+    padding:42px 26px 70px}
+  .wrap{max-width:940px;margin:0 auto;display:flex;flex-direction:column;gap:26px}
+  .eyebrow{font-size:.7rem;letter-spacing:.16em;text-transform:uppercase;color:var(--faint);margin:0}
+  h1{margin:6px 0 0;font-size:1.5rem;font-weight:600;letter-spacing:-.01em}
+  .hero{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:26px 28px;
+    display:flex;flex-wrap:wrap;gap:30px;align-items:flex-end;justify-content:space-between}
+  .big{font-size:3.4rem;line-height:1;font-weight:650;font-variant-numeric:tabular-nums;
+    background:linear-gradient(96deg,var(--cyan),var(--purple));-webkit-background-clip:text;
+    background-clip:text;color:transparent}
+  .sub{color:var(--muted);font-size:.86rem;margin-top:8px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px 24px}
+  h2{margin:0 0 14px;font-size:.74rem;letter-spacing:.13em;text-transform:uppercase;color:var(--faint);font-weight:600}
+  table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+  th,td{text-align:left;padding:9px 0;border-bottom:1px solid var(--line);font-size:.9rem}
+  th{color:var(--faint);font-weight:500;font-size:.72rem;letter-spacing:.08em;text-transform:uppercase}
+  td:last-child,th:last-child{text-align:right}
+  tr:last-child td{border-bottom:none}
+  .chip{display:inline-block;padding:2px 9px;border-radius:99px;font-size:.68rem;letter-spacing:.05em;
+    text-transform:uppercase;border:1px solid var(--line);color:var(--muted)}
+  .chip.run{color:var(--ok);border-color:rgba(52,211,153,.35)}
+  .total td{border-top:1px solid var(--line);font-weight:650;padding-top:13px}
+  .muted{color:var(--muted);font-size:.86rem}
+  .spark{width:100%;height:90px;display:block}
+  .bars{display:flex;align-items:flex-end;gap:5px;height:130px;overflow-x:auto;padding-top:8px}
+  .bar{flex:1;min-width:19px;height:100%;display:flex;flex-direction:column;justify-content:flex-end;
+    align-items:center;gap:6px}
+  .fill{width:100%;border-radius:4px 4px 0 0;background:linear-gradient(180deg,var(--cyan),rgba(46,123,255,.28))}
+  .bar span{font-size:.6rem;color:var(--faint);white-space:nowrap}
+  .budget{height:9px;border-radius:99px;background:rgba(255,255,255,.07);overflow:hidden;margin:12px 0 8px}
+  .budget div{height:100%;border-radius:99px;background:var(--ok)}
+  .budget.near div{background:var(--warn)} .budget.over div{background:var(--bad)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:16px}
+  .stat b{display:block;font-size:1.5rem;font-variant-numeric:tabular-nums;font-weight:600}
+  .stat span{font-size:.72rem;letter-spacing:.09em;text-transform:uppercase;color:var(--faint)}
+  footer{color:var(--faint);font-size:.78rem;line-height:1.7;border-top:1px solid var(--line);padding-top:18px}
+  .scroll{overflow-x:auto}
+</style>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Fly.io · theunivers.ai · bom</p>
+    <h1>Spend tracker</h1>
+  </header>
+
+  <div class="hero">
+    <div>
+      <p class="eyebrow">Projected monthly</p>
+      <div class="big">$3.67</div>
+      <p class="sub">$3.67 fixed · $0.00 egress · credit $0.00</p>
+    </div>
+    <div style="flex:1;min-width:260px"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Budget · $15.00 per month</h2>
+    <div class="budget ok"><div style="width:24.5%"></div></div>
+    <p class="muted">24% used</p>
+  </div>
+
+  <div class="panel">
+    <h2>Fixed — priced from real inventory</h2>
+    <div class="scroll"><table>
+      <tr><th>Resource</th><th>State</th><th>Per month</th></tr>
+      <tr><td>shared-cpu-1x 512MB</td>
+        <td><span class="chip run">running</span></td>
+        <td>$3.32</td></tr><tr><td>Volume theunivers_data · 1GB</td>
+        <td><span class="chip">provisioned</span></td>
+        <td>$0.15</td></tr><tr><td>Certificate theunivers.ai</td>
+        <td><span class="chip">issued</span></td>
+        <td>$0.10</td></tr><tr><td>Certificate www.theunivers.ai</td>
+        <td><span class="chip">issued</span></td>
+        <td>$0.10</td></tr>
+      <tr class="total"><td>Subtotal</td><td></td><td>$3.67</td></tr>
+    </table></div>
+  </div>
+
+  <div class="panel">
+    <h2>Egress — measured at the origin · $0.12/GB (africa-india)</h2>
+    
+      <div class="grid" style="margin-bottom:18px">
+        <div class="stat"><b>6.0 KB</b><span>per day</span></div>
+        <div class="stat"><b>181.3 KB</b><span>per month</span></div>
+        <div class="stat"><b>17</b><span>requests</span></div>
+        <div class="stat"><b>$0.00</b><span>projected</span></div>
+      </div>
+      <div class="bars"><div class="bar" title="2026-08-10 · 0.0 MB · 17 requests">
+              <div class="fill" style="height:100.0%"></div>
+              <span>08-10</span>
+            </div></div>
+  </div>
+
+  <footer>
+    Rates checked 2026-08-10 against fly.io/docs/about/pricing.
+    Compute, volumes, certificates and IPs are arithmetic from inventory. Egress is counted by the
+    app itself and slightly under-reports, because Fly meters at its edge including TLS framing the
+    origin never sees. Fly exposes no spend figure through its API, so <strong>this is a projection,
+    not an invoice</strong> — fly.io/dashboard → Billing is the authority.<br>
+    Generated 2026-08-10T07:05:46.883Z · 1 snapshot(s).
+  </footer>
+</div>

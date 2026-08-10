@@ -6,7 +6,8 @@ import { createServer } from 'node:http';
 import { readFileSync, existsSync } from 'node:fs';
 import { join, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, timingSafeEqual } from 'node:crypto';
+import { measure, daily, totals } from './metrics.mjs';
 
 // Tiny .env loader — no dependency
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
@@ -276,6 +277,25 @@ route('GET', '/api/agent-name-available', (ctx) => {
     return { available: false, reason: 'That name is taken. Agent names are unique.' };
   }
   return { available: true, reason: null };
+});
+
+/**
+ * Egress and request counts, for scripts/fly-spend.mjs.
+ *
+ * Guarded by METRICS_TOKEN. The numbers themselves are aggregate and carry no personal data, but
+ * an open endpoint that reports your traffic volume tells a stranger when you are busy and how
+ * big you are. If METRICS_TOKEN is unset the endpoint returns 404 — off by default, rather than
+ * open by default, so a forgotten variable fails closed.
+ */
+route('GET', '/api/metrics', (ctx) => {
+  const want = process.env.METRICS_TOKEN;
+  if (!want) return err(404, 'not found');
+  const got = String(ctx.query.get('token') ?? '');
+  // Length check first: timingSafeEqual throws on a length mismatch.
+  if (got.length !== want.length || !timingSafeEqual(Buffer.from(got), Buffer.from(want))) {
+    return err(401, 'bad metrics token');
+  }
+  return { ...totals(), daily: daily(60) };
 });
 
 route('POST', '/api/deploy', (ctx) => {
@@ -651,6 +671,10 @@ function serveStatic(req, res, urlPath) {
 }
 
 const server = createServer(async (req, res) => {
+  // Count what we send. Must be the first thing that touches `res`, so no path can finish a
+  // response before the wrapper is in place — an uncounted reply is a silently wrong bill.
+  measure(res);
+
   res.setHeader('Access-Control-Allow-Origin', process.env.CORS_ORIGIN ?? '*');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');

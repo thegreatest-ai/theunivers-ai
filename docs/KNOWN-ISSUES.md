@@ -7,7 +7,16 @@ Last reviewed: 2026-08-10
 
 ---
 
-## BLOCKER — the site is down: Fly trial ended
+## RESOLVED 2026-08-10 — Fly trial ended (kept for the lesson)
+
+The site returned `ERR_CONNECTION_CLOSED` for a day. Card added; `billingStatus` is now `CURRENT`
+and the site returns 200. The lesson is in OPERATIONS.md and worth repeating: **a 200 immediately
+after `npm run deploy` is not proof the site is up.** The machine was alive for the few minutes it
+took to answer, then stopped. Re-check some minutes later before believing a deploy held.
+
+<details><summary>original entry</summary>
+
+### BLOCKER — the site is down: Fly trial ended
 
 `https://theunivers.ai` returns `ERR_CONNECTION_CLOSED` (curl: exit 000).
 
@@ -27,6 +36,8 @@ machine about four minutes later. From the logs:
 there is no route around it, and the legacy free allowances apply only to organisations that
 predate the Pay-As-You-Go plan. The machine is *stopped*, not destroyed — the volume and its data
 are intact.
+
+</details>
 
 ---
 

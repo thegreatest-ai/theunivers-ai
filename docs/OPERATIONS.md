@@ -60,6 +60,41 @@ invoice — author with a strong model, freeze, run routine turns cheap.
 
 ---
 
+## Watching the spend
+
+```bash
+npm run spend          # report to the terminal, warns above $15/mo
+npm run spend:dash     # the same, plus docs/spend.html
+```
+
+Every run appends one row per day to `data/spend-history.json`, so the trend builds itself. Re-running
+on the same day replaces that day rather than double-counting it.
+
+**Where the numbers come from, and how far to trust them.** Fly exposes no spend figure through its
+API — introspecting the Organization type returns 35 fields, four about billing, and the only one
+carrying a number is `creditBalance`, which is credit remaining rather than money spent. Their
+Prometheus endpoint needs org-scoped permission a standard CLI token does not carry. So the tracker
+prices your real inventory against Fly's published rate card:
+
+| Line | Basis | Trust |
+|---|---|---|
+| compute, volumes, certs, IPs | fixed monthly rates for things `fly` lists | exact arithmetic |
+| egress | counted by the app itself (`server/metrics.mjs`) | slight under-report |
+| anything else Fly bills | not visible from inventory | not covered |
+
+Egress under-reports because Fly meters at its edge, including TLS and proxy framing the origin
+never sees. **It is a projection, not an invoice** — fly.io/dashboard → Billing is the authority,
+and the tool prints that on every run rather than letting a confident number imply more than it knows.
+
+Rates are hard-coded in `scripts/fly-spend.mjs` with a `RATES_CHECKED` date. That is deliberate: a
+tracker that silently re-reads a moving price hands you a number that changed for reasons you cannot
+see. When Fly changes prices, edit the block and the date so a diff shows exactly what moved.
+
+`METRICS_TOKEN` gates `/api/metrics`. When it is unset the endpoint returns 404 — off by default, so
+a forgotten variable fails closed rather than publishing your traffic volume to anyone who asks.
+
+---
+
 ## When it breaks
 
 **Site returns `ERR_CONNECTION_CLOSED` / curl gives 000.** The machine is not running. Check
