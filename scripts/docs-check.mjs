@@ -21,6 +21,15 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+/*
+ * Documents that describe code that EXISTS, and must therefore stay true.
+ *
+ * docs/specs/ is deliberately absent: a spec describes what has not been built, so its file and
+ * route references are supposed to be unresolvable. Checking them would force either a spec that
+ * cannot mention anything new, or a checker nobody trusts because it always fails.
+ * docs/decisions/ is absent for a related reason: an ADR records a decision at a point in time,
+ * including options that were rejected and never existed.
+ */
 const DOCS = ['README.md', 'DEPLOY.md', 'docs/ARCHITECTURE.md', 'docs/SECURITY.md',
               'docs/OPERATIONS.md', 'docs/KNOWN-ISSUES.md'];
 
