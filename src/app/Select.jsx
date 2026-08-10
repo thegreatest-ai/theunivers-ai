@@ -46,6 +46,10 @@ export default function Select({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
+  // Which way the panel opens. On a phone — especially with the keyboard raised by the filter
+  // box — a field low on the screen has no room beneath it, and a panel that renders off-screen
+  // looks like a panel that does not open.
+  const [drop, setDrop] = useState('down');
 
   const wrapRef = useRef(null);
   const triggerRef = useRef(null);
@@ -77,6 +81,15 @@ export default function Select({
     setActive(i >= 0 ? i : 0);
     // The search box takes focus when present; otherwise the panel does, so keys reach us.
     requestAnimationFrame(() => (showSearch ? searchRef.current : listRef.current)?.focus());
+  }, [open]);
+
+  // Decide the direction once per open, from the actual space available.
+  useEffect(() => {
+    if (!open) return;
+    const r = triggerRef.current?.getBoundingClientRect();
+    if (!r) return;
+    const below = window.innerHeight - r.bottom;
+    setDrop(below < 260 && r.top > below ? 'up' : 'down');
   }, [open]);
 
   // Filtering can leave the highlight past the end of a shorter list.
@@ -147,7 +160,7 @@ export default function Select({
       </button>
 
       {open && (
-        <div className="app-select-panel">
+        <div className={`app-select-panel${drop === 'up' ? ' up' : ''}`}>
           {showSearch && (
             <input
               ref={searchRef}
@@ -205,9 +218,19 @@ function Row({ opt, i, active, value, setActive, choose }) {
       role="option"
       aria-selected={opt.value === value}
       className={`app-select-opt${i === active ? ' on' : ''}${opt.value === value ? ' sel' : ''}`}
-      // pointerdown, not click: the trigger's blur would otherwise close the panel first.
-      onPointerDown={(e) => { e.preventDefault(); choose(opt); }}
-      onMouseEnter={() => setActive(i)}
+      // CLICK, not pointerdown. pointerdown fires the instant a finger lands, so on a phone the
+      // first frame of a scroll gesture selected whatever was under the thumb — you could not
+      // scroll the list at all. The browser already distinguishes a tap from a drag and only
+      // synthesises click for the former, which is exactly the discrimination needed here.
+      //
+      // Safe because the outside-dismiss listener checks `wrapRef.contains(e.target)`, and options
+      // are inside the wrapper — so the panel is still present when the click arrives. (The
+      // original comment claiming a blur would tear it down first was simply wrong: nothing
+      // closes this panel on blur.)
+      onClick={() => choose(opt)}
+      // Mouse only. On touch, pointerenter fires during a scroll and would drag the highlight
+      // along under the finger.
+      onPointerEnter={(e) => { if (e.pointerType === 'mouse') setActive(i); }}
     >
       {opt.label}
     </div>
