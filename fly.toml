@@ -18,9 +18,26 @@ primary_region = "bom"   # Mumbai. ~40ms from Dubai against ~120ms for Paris, an
   BASE_URL = "https://theunivers.ai"
   FRONTEND_URL = "https://theunivers.ai"
 
-  # Registration is CLOSED in production. It is open locally for convenience; shipping it open
-  # would let anyone create an account on a product that has never been tested with strangers.
-  INVITE_REQUIRED = "true"
+  # Outbound mail identity. NOT a secret — it is an address, printed on every email we send — so
+  # it lives here in version control rather than in `fly secrets`, where it would be invisible.
+  #
+  # The mailbox is on send.theunivers.ai, which is the domain verified with Resend. It is a
+  # SUBDOMAIN deliberately: the root already carries an SPF record for Microsoft 365, and a domain
+  # may have only one, so sending from the root would have meant editing the record the business
+  # email depends on. The display name still reads "theunivers.ai" to recipients.
+  MAIL_FROM = "theunivers.ai <noreply@send.theunivers.ai>"
+
+  # Registration is OPEN as of 2026-08-10. It was gated until three things were true, because the
+  # gate was the only thing making their absence survivable:
+  #   1. no reset-token leak      — the token now leaves only inside an email
+  #   2. SQLite in WAL mode       — concurrent readers no longer block on a writer
+  #   3. rate limiting everywhere — login had NO throttle and is not invite-gated, so the gate was
+  #                                 accidentally doing that job by keeping the user table tiny
+  # and a fourth that only surfaced by testing: mail must actually reach strangers, not just the
+  # account owner. Resend refused every non-owner address until send.theunivers.ai was verified.
+  #
+  # To close it again: set this to "true" and deploy. Only the exact string "false" opens it.
+  INVITE_REQUIRED = "false"
 
 [http_service]
   internal_port = 8790
