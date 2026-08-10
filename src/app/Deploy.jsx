@@ -83,7 +83,10 @@ export default function Deploy() {
       && (f.kind !== 'individual' || (f.profession && (f.profession !== OTHER || f.professionOther.trim())))) ||
     (i === 1 && f.purpose.trim() && !handleError(f.agentName.trim())
       && !checking && nameCheck?.available === true) ||
-    i === 3;
+    // The confirm step has nothing to validate — everything on it was gated on the way in.
+    // Written against STEPS.length rather than a literal: this clause said `i === 3` after the
+    // mandate step was removed, which left the final button permanently disabled.
+    i === STEPS.length - 1;
 
   async function deploy() {
     setBusy(true);
@@ -310,7 +313,10 @@ export default function Deploy() {
 
       <div style={{ display: 'flex', gap: 10, marginTop: 6 }}>
         {i > 0 && <button className="app-ghost" onClick={() => setI(i - 1)}>Back</button>}
-        {i < 3
+        {/* STEPS.length, never a literal — this said `i < 3` after the mandate step was removed,
+            so the confirm step still offered "Continue" and advanced to a step that does not
+            exist. Both step indices in this file are now derived from STEPS. */}
+        {i < STEPS.length - 1
           ? <button className="app-cta" disabled={!canNext} onClick={() => setI(i + 1)}>Continue</button>
           : <button className="app-cta" disabled={busy} onClick={deploy}>
               {busy ? 'Deploying…' : 'Deploy agent ✦'}
