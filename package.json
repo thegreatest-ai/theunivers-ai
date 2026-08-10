@@ -9,7 +9,7 @@
     "dev:all": "node server/index.mjs & vite",
     "build": "vite build",
     "start": "node server/index.mjs",
-    "test": "node scripts/rules.mjs check && node --test test/guard.test.mjs test/ratelimit.test.mjs test/password-policy.test.mjs",
+    "test": "node scripts/rules.mjs check && node scripts/docs-check.mjs && node --test test/guard.test.mjs test/ratelimit.test.mjs test/password-policy.test.mjs",
     "rules:sync": "node scripts/rules.mjs sync",
     "rules:check": "node scripts/rules.mjs check",
     "test:corridor": "node --test ../../products/corridor/test/smoke.ts || echo '(corridor not present \u2014 skipped)'",

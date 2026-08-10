@@ -97,6 +97,35 @@ a forgotten variable fails closed rather than publishing your traffic volume to 
 
 ## When it breaks
 
+**A legitimate user is rate limited.** Counters are in memory, so a restart clears every bucket:
+
+```bash
+fly apps restart theunivers-ai
+```
+
+Check the limits in `server/ratelimit.mjs` before assuming the user is at fault — a limit that
+catches real people is a wrong limit, not a working one. See `SECURITY.md` for why per-IP limits
+are generous and per-account limits are tight.
+
+**Mail is not arriving.**
+
+```bash
+fly logs --no-tail | grep '\[mail\]'
+```
+
+`[mail] sent to … · resend id …` means Resend accepted it — quote that id to Resend support if it
+never lands. `[mail] send failed: resend 403 …` means the sending domain is not verified for that
+recipient. Successes are logged as well as failures on purpose: silence used to be
+indistinguishable from "never called", which made one debugging session take three passes.
+
+**Mail setup, for reference.** The sending domain is `send.theunivers.ai` — a SUBDOMAIN, because
+the root already carries an SPF record for Microsoft 365 and a domain may have only one. Sending
+from the root would mean editing the record the business email depends on. Records live at
+`send.send.theunivers.ai` (MX + SPF) and `resend._domainkey.send.theunivers.ai` (DKIM). **Never
+touch the root MX or root TXT.**
+
+
+
 **Site returns `ERR_CONNECTION_CLOSED` / curl gives 000.** The machine is not running. Check
 billing first — this exact symptom was the trial ending, not a code fault:
 

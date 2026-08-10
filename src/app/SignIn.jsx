@@ -102,9 +102,6 @@ export default function SignIn() {
     try {
       if (mode === 'forgot') {
         const r = await api.forgot({ email: f.email });
-        // With no mailer, the server hands the token straight back. Rather than printing it and
-        // leaving the user at a dead end, walk them into the reset step — the same screen a real
-        // email link would open. When SMTP exists, this branch stops firing on its own.
         // The token is emailed and never returned here. Say what happens next and stop — a
         // screen that quietly moved the user to the reset step would now be lying about a link
         // they have not received yet.

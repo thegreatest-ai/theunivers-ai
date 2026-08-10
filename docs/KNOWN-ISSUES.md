@@ -1,110 +1,102 @@
 # Known issues
 
-Everything currently wrong or unfinished, worst first. If you fix one, delete it from here in the
-same commit — a stale known-issues file is worse than none, because people stop trusting it.
+Everything currently wrong or unfinished, worst first. **If you fix one, delete it here in the same
+commit** — a stale known-issues file is worse than none, because people stop trusting it.
 
-Last reviewed: 2026-08-10
+Last reviewed: 2026-08-10 · registration is OPEN · 1 real user
 
 ---
 
-## RESOLVED 2026-08-10 — Fly trial ended (kept for the lesson)
+## MEDIUM — the Google OAuth client secret was pasted into a chat transcript
 
-The site returned `ERR_CONNECTION_CLOSED` for a day. Card added; `billingStatus` is now `CURRENT`
-and the site returns 200. The lesson is in OPERATIONS.md and worth repeating: **a 200 immediately
-after `npm run deploy` is not proof the site is up.** The machine was alive for the few minutes it
-took to answer, then stopped. Re-check some minutes later before believing a deploy held.
+Treat it as public. `SECRETS-POLICY.md` settles it without needing to judge likelihood: exposure
+means rotation.
 
-<details><summary>original entry</summary>
+**Fix:** rotate in Google Cloud Console, then `npm run secret GOOGLE_CLIENT_SECRET`.
 
-### BLOCKER — the site is down: Fly trial ended
+---
 
-`https://theunivers.ai` returns `ERR_CONNECTION_CLOSED` (curl: exit 000).
+## MEDIUM — no DMARC record
 
-Not a code fault. The app boots clean and passes its health check every time; Fly stops the
-machine about four minutes later. From the logs:
+SPF and DKIM are in place for `send.theunivers.ai` and mail is being delivered. DMARC tells
+receivers what to do when a message fails both, and its absence is a deliverability ceiling rather
+than a fault — Gmail and Outlook increasingly expect it from bulk senders.
+
+**Fix:** add a TXT record at `_dmarc.send.theunivers.ai`, starting permissively:
 
 ```
-17:43:27  theunivers Bridge pilot on https://theunivers.ai     ← boots
-17:43:28  Health check 'servicecheck-00-http-8790' is passing   ← healthy
-17:48:23  Trial machine stopping. To run for longer than 5m0s, add a credit card
-18:30:06  Machine stopping. trial has ended
+v=DMARC1; p=none; rua=mailto:theonlygreatofficial@gmail.com
 ```
 
-`fly status` also refuses: *failed to list active VMs: trial has ended*.
+`p=none` only asks for reports. Tighten to `quarantine` once the reports look clean. **Do not add
+this at the root** — the root is Microsoft 365's and has its own posture.
 
-**Fix:** add a card at https://fly.io/trial. Fly requires a card on file for every organisation;
-there is no route around it, and the legacy free allowances apply only to organisations that
-predate the Pay-As-You-Go plan. The machine is *stopped*, not destroyed — the volume and its data
-are intact.
+---
 
+## MEDIUM — the Bridge polls every 4 seconds
+
+`src/app/Bridge.jsx:36` runs `setInterval(load, 4000)` against two endpoints, so every open tab
+costs 0.5 requests/second whether or not anything changed.
+
+Four costs: CPU (every request hits SQLite), egress (~450KB per ten-minute session, ~9GB/month at
+1000 users — see `OPERATIONS.md`), mobile battery, and, ironically, latency — you still wait up to
+four seconds to see a message.
+
+**Fix:** Server-Sent Events. The server already knows when a message or post lands.
+
+---
+
+## LOW — rate-limit state is per-process
+
+`server/ratelimit.mjs` holds counters in memory. Correct for one machine, wrong the moment there
+are two: per-process limits multiply by the number of processes. **Move this to shared storage
+before scaling to a second machine**, not after.
+
+Recovery if a legitimate user is locked out: `fly apps restart theunivers-ai` clears all counters.
+
+---
+
+## LOW — GitHub OAuth has no credentials
+
+`GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` are unset, so the server reports `Github off` and the
+button correctly does not render — no broken link, no error. The code path is finished and tested;
+only the credentials are missing.
+
+**Fix:** register an OAuth app on GitHub, then `npm run secret GITHUB_CLIENT_ID` and
+`npm run secret GITHUB_CLIENT_SECRET`.
+
+---
+
+## LOW — three codebases still exist
+
+`corridor` (the engine), `verified-work` (the platform build) and this pilot all hold versions of
+the same ideas. The mandate and trust rules are already shared by vendoring with a hash gate, which
+removes the worst of the drift risk, but the consolidation decision is still open.
+
+---
+
+## Resolved, kept for the lessons
+
+<details><summary>Fly trial ended — the site was down for a day (2026-08-09)</summary>
+
+`ERR_CONNECTION_CLOSED`. Not a code fault: the app booted clean and passed health checks every
+time, and Fly stopped the machine ~4 minutes later because the trial had expired.
+
+**The lesson: a 200 immediately after `npm run deploy` is not proof the site is up.** The machine
+was alive for the minutes it took to answer. Re-check some minutes later before believing a deploy
+held. This hid the expiry for two days.
 </details>
 
----
+<details><summary>Reset token returned in the HTTP response</summary>
 
-## HIGH — mail works, but the sending DOMAIN may not be verified
+`/api/auth/forgot` returned the token in a `__pilotOnly` field and logged it. That is account
+takeover as an API. Fixed: the token now leaves only inside an email, `__pilotOnly` appears nowhere
+in the codebase, and with no provider configured the send is dropped rather than the token exposed.
+</details>
 
-**Done:** the token leaks nowhere (verified against production), `RESEND_API_KEY` is set and
-deployed, `/api/metrics` reports `mailConfigured: true`, and a real send was accepted by Resend
-(message id returned). The key is correctly scoped to *sending only* — it answers
-`"This API key is restricted to only send emails"` on any other route, which is the right
-permission for an app that never manages domains.
+<details><summary>SQLite without WAL</summary>
 
-**Unverified and gate-blocking:** whether `theunivers.ai` is a verified sending domain in Resend.
-Until it is, `MAIL_FROM` must stay `onboarding@resend.dev` and **Resend only delivers to the account
-owner's own address**. Reset emails to real users would be refused, so opening registration would
-lock out anyone who forgets a password — the same failure the leak fix was meant to prevent, by a
-different route.
-
-Check at resend.com/domains (the API cannot be used: a sending-only key is refused there). If the
-domain is not verified, add its SPF and DKIM records in Cloudflare — **without touching the existing
-MS365 MX record**, which has been broken by DNS edits before.
-
-Then:
-
-```bash
-npm run secret MAIL_FROM      # theunivers.ai <noreply@theunivers.ai>
-```
-
----
-
-## ~~HIGH — production has no mail provider~~ (superseded)
-
-**The dangerous half is done.** The reset token no longer leaves the server in an HTTP response;
-it leaves only inside an email (`server/mail.mjs`). Verified against production: `/api/auth/forgot`
-returns nothing but the neutral message.
-
-**The remaining half needs a credential I cannot create.** `RESEND_API_KEY` is unset, so in
-production `sendMail` logs an error and drops the message — `/api/metrics` reports
-`mailConfigured: false`. Password reset is therefore *safe but non-functional*: a user who forgets
-their password currently has no route back in.
-
-**Fix:** create a key at resend.com, verify theunivers.ai as a sending domain (SPF + DKIM records
-in Cloudflare — note the existing MS365 MX must not be disturbed), then:
-
-```bash
-fly secrets set RESEND_API_KEY=re_… MAIL_FROM='theunivers.ai <noreply@theunivers.ai>'
-```
-
-Swapping to Postmark or SES means one more function in `mail.mjs` and no change anywhere else.
-
----
-
-## ~~HIGH — no SMTP~~ (superseded by the entry above)
-
-`/api/auth/forgot` returns the reset token in a `__pilotOnly` field instead of emailing it. That is
-fine for one tester and unusable the moment strangers sign up.
-
-**Fix:** wire a mailer (Resend or Postmark; free to ~3000/month) and delete the `__pilotOnly`
-field. It is labelled "Remove before production" at the call site.
-
----
-
-## RESOLVED 2026-08-10 — SQLite now runs WAL
-
-Verified in production from the server's own connection (`/api/metrics` → `storage`):
-`journal_mode = wal`, `busy_timeout = 5000`, `synchronous = 1` (NORMAL).
-
-Measured with 8 concurrent processes × 400 mixed read/write ops:
+Measured, 8 processes x 400 mixed ops:
 
 | configuration | failed | wall time |
 |---|---|---|
@@ -113,93 +105,42 @@ Measured with 8 concurrent processes × 400 mixed read/write ops:
 | WAL, no timeout | 981 / 3200 | — |
 | **WAL + busy_timeout (production)** | **0** | **0.16s** |
 
-The nuance worth keeping: `busy_timeout` is what removes the *errors* — it makes callers wait
-instead of throwing. WAL is what removes the *waiting*, roughly 4x on this workload. Both are
-wanted, and neither substitutes for the other.
+`busy_timeout` removes the *errors* by making callers wait. WAL removes the *waiting*, ~4x here.
+Both are wanted; neither substitutes for the other.
 
-**Careful when reading pragmas in production:** `busy_timeout` and `synchronous` are PER-CONNECTION.
-Opening a second connection over `fly ssh` reports that connection's defaults and tells you nothing
-about the running server — only `journal_mode` persists in the file. Use `/api/metrics`.
+**Reading pragmas in production:** `busy_timeout` and `synchronous` are PER-CONNECTION. Opening a
+second connection over `fly ssh` reports that connection's defaults and tells you nothing about the
+running server — which briefly looked like the settings had not applied. Only `journal_mode`
+persists in the file. Use `/api/metrics` → `storage`.
+</details>
 
----
+<details><summary>No rate limiting at all</summary>
 
-## ~~HIGH — SQLite without WAL~~ (superseded)
+`/api/auth/login` is not invite-gated and had no throttle: unlimited password guessing against any
+known address. The invite gate had been doing that job by accident, purely by keeping the user
+table tiny.
 
-`server/db.mjs` sets no PRAGMAs, so the database is on the default rollback journal where a writer
-blocks every reader and vice versa. Invisible at one user. At ~30 concurrent it produces
-`SQLITE_BUSY` errors that look random and are hard to attribute.
+Then the first limits were too strict — `registerPerIp` at 5/hour would have blocked an entire
+carrier-NAT of users. See the principle in `SECURITY.md`.
+</details>
 
-**Fix** (three lines, in `db.mjs` before any query runs):
+<details><summary>Mail could not reach anyone but the account owner</summary>
 
-```js
-db.exec('PRAGMA journal_mode = WAL');    // readers no longer block the writer
-db.exec('PRAGMA busy_timeout = 5000');   // wait for a lock instead of throwing
-db.exec('PRAGMA synchronous = NORMAL');  // safe under WAL, much faster writes
-```
+Everything looked finished — a real reset email had arrived, `mailConfigured: true`, valid key —
+and Resend still refused every non-owner address with a 403 until `send.theunivers.ai` was verified.
 
-Note for backups: snapshotting a live SQLite file mid-write can capture a torn state. With WAL,
-checkpoint before snapshotting, or accept that restore may lose the last few writes.
+**Found only by sending to an address that was not the account owner's.** Testing with your own
+address proves less than it appears to.
 
----
+A subdomain was used because the root already carries an SPF record for Microsoft 365 and a domain
+may have only one; sending from the root would have meant editing the record the business email
+depends on.
+</details>
 
-## MEDIUM — the Google OAuth client secret was pasted into a chat transcript
+<details><summary>providers.mailer read a variable nothing used</summary>
 
-Treat it as public. Per SECRETS-POLICY.md, exposure means rotation, not judgement about whether
-anyone saw it.
-
-**Fix:** rotate in Google Cloud Console, then `fly secrets set GOOGLE_CLIENT_SECRET=…`.
-
----
-
-## MEDIUM — the Bridge polls every 4 seconds
-
-`src/app/Bridge.jsx:36` runs `setInterval(load, 4000)` against two endpoints, so every open tab
-costs 0.5 requests/second whether or not anything changed. At scale this is both CPU and the
-largest single source of egress: a ten-minute session spends ~450KB asking "anything new?".
-
-**Fix:** replace with Server-Sent Events. The server already knows when a message or post lands.
-
----
-
-## LOW — GitHub OAuth is configured but has no credentials
-
-`GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` are empty, so the server reports `Github off` at boot
-and the button correctly does not render. The code path is finished and tested; only the
-credentials are missing.
-
----
-
-## RESOLVED 2026-08-10 — rate limiting exists
-
-There is now a limiter (`server/ratelimit.mjs`) on every endpoint that guesses, enumerates or costs
-money. Verified in production: the 7th wrong login returns 429 with `Retry-After: 876`.
-
-| endpoint | limit |
-|---|---|
-| login | 30 / 15 min per IP **and** 6 / 15 min per account |
-| register | 5 / hour per IP |
-| forgot | 10 / hour per IP **and** 3 / hour per email |
-| reset | 10 / hour per IP |
-
-Login is limited on two keys because per-IP alone misses a distributed attack on one account, and
-per-account alone misses one host working through many accounts. A successful login refunds an
-attempt, so someone who mistypes twice then succeeds is not left one typo from a lockout.
-
-`X-Forwarded-For` is deliberately ignored in favour of `Fly-Client-IP` — anyone can send the former,
-and treating it as identity would let an attacker mint a fresh limit per request by varying a
-header, which is worse than no limit because it looks protected.
-
-**In memory, so single-machine only.** The moment a second machine runs, per-process limits multiply
-by the number of processes and this must move to shared storage.
-
----
-
-## LOW — the invite gate is still closed
-
-`INVITE_REQUIRED = "true"` in `fly.toml`. The three things that had to be true before opening it —
-no token leak, WAL, rate limiting — now are. What remains is a judgement call, not a defect, plus
-the mail provider above: opening registration while password reset cannot deliver means anyone who
-forgets a password is locked out permanently.
-
-`INVITE_REQUIRED=true` is the only thing currently preventing open registration. Before switching
-it off, add rate limiting to `/api/auth/register` — right now nothing stops automated signups.
+`GET /api/auth/providers` reported `mailer` from `SMTP_HOST`, which nothing had used since mail
+moved to Resend. The API said mail was off while it worked, and the client reads that flag — so the
+forgot-password button read "Continue" instead of "Send reset link". Now derived from
+`mailConfigured()` so it cannot drift from what actually sends.
+</details>

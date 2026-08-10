@@ -91,9 +91,11 @@ See `design/theunivers-bridge-ui.pdf` and `design/mockups/`.
 
 | Where | What |
 |---|---|
-| `DEPLOY.md` | the build-and-ship loop, and one-time setup |
-| `docs/OPERATIONS.md` | hosting shape, running costs, what to do when it breaks |
+| `docs/ARCHITECTURE.md` | what it is, the data model, the HTTP surface, the rules that must not break |
+| `docs/SECURITY.md` | what protects what, and why each control is shaped that way |
+| `docs/OPERATIONS.md` | hosting, running costs, and the runbook for when it breaks |
 | `docs/KNOWN-ISSUES.md` | everything currently wrong or unfinished, worst first |
+| `DEPLOY.md` | the build-and-ship loop, and one-time setup |
 | `git log` | why each change was made — **this is the changelog** |
 
 There is deliberately no hand-written `CHANGELOG.md`. The commit history already records cause,

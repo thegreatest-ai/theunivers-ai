@@ -70,9 +70,10 @@ route('GET', '/api/health', () => ({
 route('GET', '/api/auth/providers', () => ({
   ...oauthConfigured(),
   inviteRequired: inviteRequired(),
-  // No SMTP is wired up yet. The UI reads this so it can say what actually happens rather than
-  // promising an email nobody sends. Set SMTP_HOST to flip it.
-  mailer: Boolean(process.env.SMTP_HOST),
+  // Derived from the mail module rather than from an env var read here, so it cannot drift from
+  // what actually sends. It did drift: this checked SMTP_HOST, which nothing has used since mail
+  // moved to Resend, so the API reported mail as OFF while it was working.
+  mailer: mailConfigured(),
 }));
 
 route('GET', '/api/auth/google', (ctx) => {
