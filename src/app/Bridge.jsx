@@ -13,6 +13,7 @@ export default function Bridge() {
   const L = t(locale);
   const [messages, setMessages] = useState([]);
   const [posts, setPosts] = useState([]);
+  const [proposals, setProposals] = useState([]);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
 
@@ -24,11 +25,12 @@ export default function Bridge() {
     if (!me?.agent) return;
     let alive = true;
     const load = () => {
-      Promise.all([api.messages(), api.feed()])
-        .then(([m, f]) => {
+      Promise.all([api.messages(), api.feed(), api.proposals()])
+        .then(([m, f, p]) => {
           if (!alive) return;
           setMessages(m.messages || []);
           setPosts(f.posts || []);
+          setProposals(p.proposals || []);
         })
         .catch(() => {});
     };
@@ -73,6 +75,22 @@ export default function Bridge() {
     );
   }
 
+  async function decide(id, approve) {
+    try {
+      await api.decide(id, approve);
+      const p = await api.proposals();
+      setProposals(p.proposals || []);
+    } catch (e) {
+      // A mandate can expire or be edited between the question and the answer. Show why rather
+      // than letting the button appear to do nothing.
+      alert(e.message);
+      const p = await api.proposals().catch(() => null);
+      if (p) setProposals(p.proposals || []);
+    }
+  }
+
+  const pending = proposals.filter((p) => p.status === 'pending');
+
   return (
     <div className="app-bridge">
       <section className="app-lane">
@@ -104,6 +122,31 @@ export default function Bridge() {
             </button>
           </form>
         </div>
+
+        {/* Asked before answered: a decision waiting on you sits above the chat, not below it. */}
+        {pending.map((p) => (
+          <div key={p.id} className="app-card app-ask">
+            <h3 style={{ margin: '0 0 6px' }}>{L.agentAsking}</h3>
+            <p style={{ margin: '0 0 12px', fontSize: '.92rem', lineHeight: 1.5 }}>{p.summary}</p>
+            <dl className="app-kv">
+              {Object.entries(p.intent).slice(0, 6).map(([k, v]) => (
+                <div key={k}><dt>{k}</dt><dd>{typeof v === 'object' ? JSON.stringify(v) : String(v)}</dd></div>
+              ))}
+            </dl>
+            <p className="app-note" style={{ margin: '10px 0 12px' }}>
+              Your mandate is checked again when you approve — approving agrees to this, it does not
+              set the rules aside.
+            </p>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="app-cta" style={{ flex: 1 }} onClick={() => decide(p.id, true)}>
+                {L.approve}
+              </button>
+              <button className="app-link" style={{ flex: 1 }} onClick={() => decide(p.id, false)}>
+                {L.hold}
+              </button>
+            </div>
+          </div>
+        ))}
 
         {mandate && (
           <div className="app-card">

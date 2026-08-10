@@ -322,6 +322,133 @@ route('POST', '/api/auth/set-password', (ctx) => {
   return { ok: true, user: publicUser(fresh) };
 });
 
+/**
+ * ── The proposal flow ────────────────────────────────────────────────────────────────────
+ *
+ * An agent proposes; the principal decides; the guard has the final word at BOTH ends.
+ * See docs/decisions/ADR-0001-chat-cannot-widen-a-mandate.md.
+ */
+
+/** Agent asks permission for something its scope does not let it do alone. */
+route('POST', '/api/agent/proposals', (ctx) => {
+  const agent = ctx.agent;
+  if (!agent) return err(401, 'agent token required');
+
+  const kind = String(ctx.body.kind ?? 'commit').trim();
+  const summary = String(ctx.body.summary ?? '').trim().slice(0, 300);
+  const intent = ctx.body.intent;
+  if (!summary) return err(400, 'summary is required');
+  if (!intent || typeof intent !== 'object') return err(400, 'intent is required');
+
+  /*
+   * THE GUARD RUNS FIRST, and its refusal code decides whether a question is even askable.
+   *
+   *   SCOPE      → this is precisely what a proposal is for. The mandate says the agent may
+   *                negotiate but not commit; the principal supplying that authority for ONE act is
+   *                what "bring it back to me" means. Becomes a pending question.
+   *   passes     → the agent may act alone and is asking voluntarily. Allowed; caution is not an
+   *                error.
+   *   anything   → a substantive limit: FLOOR, CEILING, QUANTITY, COMMODITY, EXPIRED,
+   *   else         COUNTERPARTY_TIER. Refused outright and never shown to the principal.
+   *
+   * That last line is ADR-0001 made concrete. A principal may supply a missing SCOPE, because
+   * scope is a delegation question — how much the AGENT may do alone. They may not supply a
+   * missing FLOOR by tapping Approve, because that is a limit on the DEAL, and moving it through
+   * an approval prompt is widening a mandate by chat. Doing it any other way would let a
+   * counterparty put "approve selling below your floor" in front of the principal simply by
+   * proposing it, and train them to wave refusals through.
+   */
+  // checkMandates takes mandate ROWS, not an agent id — passing an id yields a snapshot whose
+  // status is undefined, every mandate is skipped, and the result is a misleading NO_MATCH that
+  // looks like a legitimate refusal. Load them the same way /api/agent/intents/check does.
+  const mandateRows = all(
+    "SELECT * FROM mandate WHERE agent_id = ? AND status = 'active'", agent.id);
+  const tier = resolveTier(ctx.body.counterpartyUserId);
+  const check = checkMandates(mandateRows, intent, { counterpartyTier: tier });
+
+  /*
+   * "Is scope the ONLY obstacle?" — asked by re-running the guard against a copy of the mandate
+   * with scope raised, and seeing whether everything else passes.
+   *
+   * Testing `check.code === 'SCOPE'` is NOT sufficient and was a real bug. evaluateOne checks
+   * scope BEFORE floor and short-circuits, so a below-floor `accept` fails on SCOPE and never
+   * reaches the floor rule. Reading that code as "just needs approval" turned a floor breach into
+   * an approvable question — and approving it would have bypassed the floor completely.
+   */
+  const asIfPermitted = checkMandates(
+    mandateRows.map((m) => ({ ...m, scope: 'commit' })), intent, { counterpartyTier: tier });
+
+  if (!asIfPermitted.ok) {
+    // A substantive limit. Report ITS code, not the SCOPE mask that hid it.
+    return err(409, `Refused by your mandate: ${asIfPermitted.reason}`,
+               undefined, asIfPermitted.code);
+  }
+  const escalation = !check.ok;   // passes on its own? then this is a voluntary check-in
+
+  const id = `prp_${randomUUID().slice(0, 8)}`;
+  run(`INSERT INTO proposal (id, agent_id, user_id, kind, intent, summary, guard_code, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      id, agent.id, agent.user_id, kind, JSON.stringify(intent), summary,
+      escalation ? 'SCOPE' : null, now());
+  return { id, status: 'pending', escalation };
+});
+
+/** What the principal has been asked. Newest first. */
+route('GET', '/api/proposals', (ctx) => {
+  const user = ctx.user;
+  if (!user) return err(401, 'sign in required');
+  const rows = all(
+    `SELECT id, kind, intent, summary, status, guard_code, created_at, decided_at
+     FROM proposal WHERE user_id = ? ORDER BY created_at DESC LIMIT 50`, user.id);
+  return { proposals: rows.map((r) => ({ ...r, intent: JSON.parse(r.intent) })) };
+});
+
+/**
+ * Approve or refuse.
+ *
+ * The guard runs AGAIN on approval. A mandate can expire, be edited, or have its quantity consumed
+ * between the question being asked and answered, and approval is not permission to skip the check
+ * — it says "I agree to this", not "ignore the rules". A proposal that no longer passes is marked
+ * `invalidated` with the code, so the principal sees what changed rather than a silent failure.
+ */
+route('POST', '/api/proposals/decide', (ctx) => {
+  const user = ctx.user;
+  if (!user) return err(401, 'sign in required');
+
+  const id = String(ctx.body.id ?? '');
+  const approve = ctx.body.approve === true;
+  const row = one('SELECT * FROM proposal WHERE id = ? AND user_id = ?', id, user.id);
+  if (!row) return err(404, 'no such proposal');
+  if (row.status !== 'pending') return err(409, `Already ${row.status}.`);
+
+  if (!approve) {
+    run('UPDATE proposal SET status = ?, decided_at = ? WHERE id = ?', 'refused', now(), id);
+    return { id, status: 'refused' };
+  }
+
+  /*
+   * Re-checked, because a mandate can expire, be edited, or have its quantity consumed between the
+   * question and the answer. Approval says "I agree to this", not "ignore the rules".
+   *
+   * A SCOPE refusal is the one the principal is entitled to answer — that is the delegation
+   * question they were asked. Every other code is a limit on the deal, and no amount of tapping
+   * Approve may move it (ADR-0001).
+   */
+  const rows = all("SELECT * FROM mandate WHERE agent_id = ? AND status = 'active'", row.agent_id);
+  // Same question as at submission, and for the same reason: scope is the principal's to supply,
+  // every other limit is not. Elevating scope isolates exactly that.
+  const check = checkMandates(
+    rows.map((m) => ({ ...m, scope: 'commit' })), JSON.parse(row.intent), {});
+  if (!check.ok) {
+    run('UPDATE proposal SET status = ?, guard_code = ?, decided_at = ? WHERE id = ?',
+        'invalidated', check.code, now(), id);
+    return err(409, `Your mandate no longer allows this: ${check.reason}`);
+  }
+
+  run('UPDATE proposal SET status = ?, decided_at = ? WHERE id = ?', 'approved', now(), id);
+  return { id, status: 'approved' };
+});
+
 route('GET', '/api/me', (ctx) => {
   const user = ctx.user;
   if (!user) return err(401, 'sign in required');
@@ -732,8 +859,8 @@ function publicMandate(m) {
   };
 }
 
-function err(status, message, headers) {
-  return { __error: true, status, message, headers };
+function err(status, message, headers, code) {
+  return { __error: true, status, message, headers, code };
 }
 
 /** 429 with a real Retry-After, so a client can back off instead of guessing. */
@@ -824,7 +951,7 @@ const server = createServer(async (req, res) => {
       const out = await r.handler(ctx);
       if (out?.__error) {
         res.writeHead(out.status, { 'content-type': 'application/json', ...(out.headers ?? {}) });
-        res.end(JSON.stringify({ error: out.message }));
+        res.end(JSON.stringify({ error: out.message, ...(out.code ? { code: out.code } : {}) }));
         return;
       }
       if (out?.__redirect) {

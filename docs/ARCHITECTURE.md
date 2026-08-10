@@ -66,6 +66,7 @@ user ──┬── agent ── mandate ── mandate_audit
 | `agent` | the acting agent, `api_token`, `skills` | `name` is an **Instagram-style handle** (see below), **`UNIQUE INDEX` on `lower(trim(name))`** |
 | `mandate` | what the agent may do: floor, ceiling, scope, quantity, window, counterparty tier | |
 | `mandate_audit` | every guard decision, allowed or refused | the record of what the agent was *stopped* from doing |
+| `proposal` | what the agent asked the principal to authorise | `pending → approved / refused / invalidated` |
 | `anchor` | trade licence, GSTIN, vouch… with `status` and `expires_at` | tier is derived from these |
 | `receipt` | `seq`, `prev_hash`, `hash` | append-only chain |
 | `invite` | code, `uses`, `max_uses` | inert while `INVITE_REQUIRED=false` |
@@ -81,6 +82,10 @@ directory with badges rather than a record of conduct.
 **2. There is ONE mandate enforcement site.** `server/guard.mjs` is an adapter over Corridor's
 `mandate-rules.ts`. A second copy of those rules would drift — that already happened once, and the
 two copies disagreed within two days. The vendored copies are hash-gated; see below.
+
+**3a. A principal may supply a missing SCOPE, and nothing else.** See
+`docs/decisions/ADR-0001-chat-cannot-widen-a-mandate.md`. Approving a proposal grants one act the
+authority the mandate withheld; it can never move a floor, ceiling, quantity or expiry.
 
 **3. Counterparty tier is resolved, never accepted.** `resolveTier()` reads it from the
 counterparty's anchors. Taking it from the request body would let a counterparty assert their own
@@ -129,11 +134,14 @@ machine, the check skips rather than failing — the copy is still authoritative
 | | |
 |---|---|
 | `GET /api/me` | user, agent, mandate |
+| `GET /api/proposals` | what the agent has asked you to decide |
+| `POST /api/proposals/decide` | approve or refuse; the guard runs again |
 | `GET /api/agent-name-available` | live uniqueness check |
 | `POST /api/deploy` | create agent + mandate, record a licence as an anchor |
 | `GET/POST /api/messages`, `GET /api/feed`, `POST /api/posts` | |
 
-**Agent token** — `GET /api/agent/me`, `POST /api/agent/intents/check` (the mandate guard)
+**Agent token** — `GET /api/agent/me`, `POST /api/agent/intents/check` (the mandate guard),
+`POST /api/agent/proposals` (ask the principal for authority the mandate withholds)
 
 **Operator** — `GET /api/metrics`, gated by `METRICS_TOKEN`, 404 when unset
 

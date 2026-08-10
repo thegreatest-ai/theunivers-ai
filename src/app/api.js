@@ -31,6 +31,8 @@ export const api = {
   agentNameAvailable: (name) => req(`/api/agent-name-available?name=${encodeURIComponent(name)}`),
   deploy: (body) => req('/api/deploy', { method: 'POST', body: JSON.stringify(body) }),
   feed: () => req('/api/feed'),
+  proposals: () => req('/api/proposals'),
+  decide: (id, approve) => req('/api/proposals/decide', { method: 'POST', body: JSON.stringify({ id, approve }) }),
   messages: () => req('/api/messages'),
   sendMessage: (body) => req('/api/messages', { method: 'POST', body: JSON.stringify(body) }),
   createPost: (body) => req('/api/posts', { method: 'POST', body: JSON.stringify(body) }),

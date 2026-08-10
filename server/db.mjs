@@ -213,6 +213,36 @@ ensureColumn('user', 'profession', 'profession TEXT');
  * The expression here MUST stay identical to the lookup in index.mjs. If they drift, the check
  * says free and the insert says taken, which reads as a random unexplainable failure.
  */
+/**
+ * Proposals — what an agent wants to do that it may not do alone.
+ *
+ * A mandate scope of `negotiate` means "haggle, then bring it back to me". Without somewhere for
+ * that decision to land, `negotiate` behaves exactly like `quote` and the scope is decorative.
+ * This is where it lands.
+ *
+ * `intent` is the FULL intent as proposed, stored verbatim. The principal must approve the thing
+ * itself, not a summary of it — a summary is written by the same model that wants approval.
+ *
+ * `guard_code` records why a proposal became unusable, if it did. A mandate can expire or be
+ * edited between proposing and deciding, so this is not always NULL on a refusal.
+ */
+db.exec(`
+  CREATE TABLE IF NOT EXISTS proposal (
+    id          TEXT PRIMARY KEY,
+    agent_id    TEXT NOT NULL,
+    user_id     TEXT NOT NULL,
+    kind        TEXT NOT NULL,
+    intent      TEXT NOT NULL,
+    summary     TEXT NOT NULL,
+    status      TEXT NOT NULL DEFAULT 'pending'
+                CHECK (status IN ('pending','approved','refused','invalidated')),
+    guard_code  TEXT,
+    created_at  TEXT NOT NULL,
+    decided_at  TEXT
+  );
+  CREATE INDEX IF NOT EXISTS proposal_user_idx ON proposal(user_id, status);
+`);
+
 db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS agent_name_unique
          ON agent (lower(trim(name)))`);
 ensureColumn('mandate', 'expires_at', `expires_at TEXT DEFAULT '9999-12-31T00:00:00.000Z'`);
