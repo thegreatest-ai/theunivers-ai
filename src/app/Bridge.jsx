@@ -148,12 +148,28 @@ export default function Bridge() {
           </div>
         ))}
 
+        {!mandate && (
+          <div className="app-card app-ask">
+            <h3 style={{ margin: '0 0 6px' }}>No mandate yet</h3>
+            <p className="app-note" style={{ margin: '0 0 12px', lineHeight: 1.5 }}>
+              Your agent cannot act until you say what it may do. That is deliberate — an agent
+              that could act before being told its limits is the thing this product prevents.
+            </p>
+            <button className="app-cta" style={{ width: '100%' }} onClick={() => nav('/app/mandate')}>
+              Set what it may do
+            </button>
+          </div>
+        )}
+
         {mandate && (
           <div className="app-card">
             <h3>{L.yourMandate}</h3>
             <div className="app-anchor"><span>{L.commodity}</span><span>{mandate.commodity}</span></div>
             <div className="app-anchor"><span>{L.priceFloor}</span><span><Money m={mandate.priceFloor} /></span></div>
             <div className="app-anchor"><span>{L.scope}</span><span>{mandate.scope}</span></div>
+            <button className="app-link" style={{ marginTop: 10 }} onClick={() => nav('/app/mandate')}>
+              {L.editMandate}
+            </button>
           </div>
         )}
       </section>

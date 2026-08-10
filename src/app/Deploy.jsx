@@ -10,7 +10,17 @@ import Select from './Select';
 import { PROFESSIONS, OTHER } from './professions';
 import { checkHandle, handleError, suggestHandle } from '../../shared/agent-name.mjs';
 
-const STEPS = ['Identity', 'Agent', 'Mandate', 'Confirm'];
+/*
+ * Three steps, not four. "What may it do?" used to sit here and was asked before anyone had
+ * anything for the agent to do — a floor and a commodity are per-deal decisions, and guessing them
+ * during sign-up produces a mandate nobody meant. It now lives at /app/mandate, set when there is
+ * a reason to set it.
+ *
+ * An agent with no mandate can do nothing: the guard answers NO_MANDATE to every intent. That is
+ * the correct default — an agent that could act before being told what it may do is the failure
+ * this whole product exists to prevent.
+ */
+const STEPS = ['Identity', 'Agent', 'Confirm'];
 
 export default function Deploy() {
   const nav = useNavigate();
@@ -40,7 +50,6 @@ export default function Deploy() {
     name: '', kind: 'individual', jurisdiction: 'AE', licenceNo: '',
     profession: '', professionOther: '',
     agentName: '', purpose: '',
-    commodity: '', floor: '', scope: 'negotiate',
   });
   // Debounced so we ask once the typing stops, not once per keystroke. The stale-response guard
   // matters more than the delay: replies can arrive out of order, and a slow answer about an old
@@ -74,7 +83,6 @@ export default function Deploy() {
       && (f.kind !== 'individual' || (f.profession && (f.profession !== OTHER || f.professionOther.trim())))) ||
     (i === 1 && f.purpose.trim() && !handleError(f.agentName.trim())
       && !checking && nameCheck?.available === true) ||
-    (i === 2 && f.commodity.trim() && f.floor !== '') ||
     i === 3;
 
   async function deploy() {
@@ -90,9 +98,6 @@ export default function Deploy() {
         profession: f.profession === OTHER ? f.professionOther.trim() : f.profession,
         agentName: f.agentName,
         purpose: f.purpose,
-        commodity: f.commodity,
-        floor: Number(f.floor),
-        scope: f.scope,
       });
       setAgentToken(data.agentToken);
       setDone(data);
@@ -148,8 +153,7 @@ export default function Deploy() {
       <h1 className="app-hero" style={{ fontSize: 'clamp(1.9rem,4vw,2.8rem)' }}>
         {i === 0 && 'Who are you?'}
         {i === 1 && 'Name your agent.'}
-        {i === 2 && 'What may it do?'}
-        {i === 3 && 'Read this back.'}
+        {i === 2 && 'Read this back.'}
       </h1>
 
       <div className="app-form">
@@ -289,25 +293,6 @@ export default function Deploy() {
         )}
 
         {i === 2 && (
-          <>
-            <div className="app-field"><label>Commodity or domain</label>
-              <input value={f.commodity} onChange={set('commodity')} placeholder="what you sell — e.g. olive oil, cotton yarn, steel coil" /></div>
-            <div className="app-field"><label>Price floor — it may never go below this</label>
-              <input type="number" value={f.floor} onChange={set('floor')} placeholder="the lowest price you would accept" /></div>
-            <div className="app-field"><label>Scope</label>
-              <Select
-                value={f.scope}
-                onChange={(v) => setF((p) => ({ ...p, scope: v }))}
-                options={[
-                  { value: 'quote', label: 'Quote only' },
-                  { value: 'negotiate', label: 'Negotiate' },
-                  { value: 'commit', label: 'Commit' },
-                ]}
-              /></div>
-          </>
-        )}
-
-        {i === 3 && (
           <div className="app-readback">
             <p className="app-meta" style={{ color: 'var(--cyan)' }}>BEFORE IT GOES LIVE</p>
             <dl>
@@ -316,9 +301,6 @@ export default function Deploy() {
               {f.kind === 'individual' && <><dt>Work</dt><dd>{(f.profession === OTHER ? f.professionOther : f.profession) || '—'}</dd></>}
               <dt>Agent</dt><dd>{f.agentName || '—'}</dd>
               <dt>Purpose</dt><dd>{f.purpose || '—'}</dd>
-              <dt>Commodity</dt><dd>{f.commodity || '—'}</dd>
-              <dt>Floor</dt><dd>{f.floor === '' ? '—' : `${f.floor} — never below`}</dd>
-              <dt>Scope</dt><dd>{f.scope}</dd>
             </dl>
           </div>
         )}

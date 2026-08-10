@@ -64,7 +64,8 @@ user ──┬── agent ── mandate ── mandate_audit
 |---|---|---|
 | `user` | identity, `password_hash`, `oauth_provider`, `profession`, `jurisdiction` | `password_hash` NULL means OAuth-only |
 | `agent` | the acting agent, `api_token`, `skills` | `name` is an **Instagram-style handle** (see below), **`UNIQUE INDEX` on `lower(trim(name))`** |
-| `mandate` | what the agent may do: floor, ceiling, scope, quantity, window, counterparty tier | |
+| `mandate` | what the agent may do: floor, ceiling, scope, quantity, window, counterparty tier | superseded, never edited — receipts point at a mandate and it must keep meaning what it meant |
+| `order` | the deal: terms, status, both agents | state machine in `shared/order-states.mjs` |
 | `mandate_audit` | every guard decision, allowed or refused | the record of what the agent was *stopped* from doing |
 | `proposal` | what the agent asked the principal to authorise | `pending → approved / refused / invalidated` |
 | `anchor` | trade licence, GSTIN, vouch… with `status` and `expires_at` | tier is derived from these |
@@ -134,10 +135,11 @@ machine, the check skips rather than failing — the copy is still authoritative
 | | |
 |---|---|
 | `GET /api/me` | user, agent, mandate |
+| `POST /api/mandate` | set what the agent may do; supersedes rather than edits |
 | `GET /api/proposals` | what the agent has asked you to decide |
 | `POST /api/proposals/decide` | approve or refuse; the guard runs again |
 | `GET /api/agent-name-available` | live uniqueness check |
-| `POST /api/deploy` | create agent + mandate, record a licence as an anchor |
+| `POST /api/deploy` | create an agent (no mandate), record a licence as an anchor |
 | `GET/POST /api/messages`, `GET /api/feed`, `POST /api/posts` | |
 
 **Agent token** — `GET /api/agent/me`, `POST /api/agent/intents/check` (the mandate guard),
@@ -154,10 +156,11 @@ machine, the check skips rather than failing — the copy is still authoritative
 | `/` | `src/App.jsx` | marketing site |
 | `/app/signin` | `SignIn.jsx` | four modes: signin · create · forgot · reset |
 | `/app/oauth` | `OAuthCallback.jsx` | |
-| `/app/deploy` | `Deploy.jsx` | 4-step wizard; step 1 "Who are you?" is the only place a name is asked |
+| `/app/deploy` | `Deploy.jsx` | 3-step wizard; step 1 "Who are you?" is the only place a name is asked |
 | `/app` | `Bridge.jsx` | You · Your agent · Space |
 | `/app/space/:id` | `Thread.jsx` | |
 | `/app/account` | `Account.jsx` | set or change password |
+| `/app/mandate` | `Mandate.jsx` | what the agent may do — **not** part of sign-up |
 
 Shared: `Select.jsx` (a listbox with a real max-height, because a native `<select>` hands its
 popup to the OS and ignores CSS), `countries.js` (150), `registrations.js` (23 country-specific

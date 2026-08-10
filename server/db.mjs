@@ -214,6 +214,40 @@ ensureColumn('user', 'profession', 'profession TEXT');
  * says free and the insert says taken, which reads as a random unexplainable failure.
  */
 /**
+ * Orders — the spine of a deal. See docs/specs/ORDER-AND-INSPECTION.md.
+ *
+ * "order" is quoted everywhere it appears: ORDER is a SQL keyword and an unquoted table of that
+ * name is a syntax error waiting for the first query that forgets.
+ *
+ * price_amount and price_currency are separate columns rather than a JSON blob because the
+ * currency is load-bearing — a floor is enforced in the currency it was agreed in and never
+ * converted, so the currency must be as queryable as the number.
+ *
+ * status has no CHECK constraint listing the states. The state machine lives in
+ * shared/order-states.mjs, where the browser can read it too, and duplicating the list here would
+ * give two places to update and one to forget.
+ */
+db.exec(`
+  CREATE TABLE IF NOT EXISTS "order" (
+    id                TEXT PRIMARY KEY,
+    buyer_agent_id    TEXT NOT NULL REFERENCES agent(id),
+    seller_agent_id   TEXT NOT NULL REFERENCES agent(id),
+    commodity         TEXT NOT NULL,
+    spec_template_id  TEXT NOT NULL DEFAULT 'default',
+    price_amount      REAL NOT NULL,
+    price_currency    TEXT NOT NULL,
+    quantity          TEXT NOT NULL,
+    delivery_window   TEXT NOT NULL,
+    inspection_policy TEXT NOT NULL,
+    status            TEXT NOT NULL DEFAULT 'drafted',
+    created_at        TEXT NOT NULL,
+    updated_at        TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS order_buyer_idx  ON "order"(buyer_agent_id, status);
+  CREATE INDEX IF NOT EXISTS order_seller_idx ON "order"(seller_agent_id, status);
+`);
+
+/**
  * Proposals — what an agent wants to do that it may not do alone.
  *
  * A mandate scope of `negotiate` means "haggle, then bring it back to me". Without somewhere for

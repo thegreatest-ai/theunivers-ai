@@ -449,6 +449,35 @@ route('POST', '/api/proposals/decide', (ctx) => {
   return { id, status: 'approved' };
 });
 
+/**
+ * Set what an agent may do.
+ *
+ * Replaces the old mandate step in sign-up. Mandates are per-deal decisions and asking for them
+ * during onboarding produced terms nobody meant.
+ *
+ * A new mandate SUPERSEDES the old one rather than editing it: the previous row is retired to
+ * 'superseded' and a new row is written. Editing in place would rewrite history that receipts
+ * already point at — a receipt saying "checked against mandate X" must keep meaning what it meant.
+ */
+route('POST', '/api/mandate', (ctx) => {
+  const user = ctx.user;
+  if (!user) return err(401, 'sign in required');
+  const agent = one('SELECT * FROM agent WHERE user_id = ?', user.id);
+  if (!agent) return err(409, 'deploy an agent first');
+
+  const commodity = String(ctx.body.commodity ?? '').trim();
+  const floor = Number(ctx.body.floor);
+  if (!commodity) return err(400, 'A commodity or domain is required.');
+  if (Number.isNaN(floor) || floor < 0) return err(400, 'A price floor is required.');
+  if (ctx.body.ceiling != null && ctx.body.ceiling !== '' && Number(ctx.body.ceiling) < floor) {
+    return err(400, 'The ceiling cannot be below the floor.');
+  }
+
+  run("UPDATE mandate SET status = 'superseded' WHERE agent_id = ? AND status = 'active'", agent.id);
+  const mandate = createMandate(agent.id, ctx.body);
+  return { mandate: publicMandate(mandate) };
+});
+
 route('GET', '/api/me', (ctx) => {
   const user = ctx.user;
   if (!user) return err(401, 'sign in required');
@@ -529,6 +558,41 @@ route('GET', '/api/metrics', (ctx) => {
   };
 });
 
+/**
+ * Create a mandate for an agent. Shared by /api/deploy (when terms are supplied) and
+ * /api/mandate (the normal path). One definition, because two would drift on defaults — and a
+ * default that differs between paths is a mandate the principal did not choose.
+ */
+function createMandate(agentId, body) {
+  const commodity = String(body.commodity ?? '').trim();
+  const floor = Number(body.floor);
+  if (!commodity || Number.isNaN(floor)) return null;
+
+  const id = `mnd_${randomUUID().slice(0, 8)}`;
+  run(
+    `INSERT INTO mandate (
+       id, agent_id, commodity, scope, price_floor, price_ceiling, currency,
+       max_quantity, consumed, delivery_window, counterparty_min_tier,
+       expires_at, spec_template_id, status, created_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
+    id, agentId, commodity, String(body.scope ?? 'negotiate'), floor,
+    body.ceiling != null && body.ceiling !== '' ? Number(body.ceiling) : null,
+    String(body.currency ?? 'AED'),
+    JSON.stringify({ value: Number(body.maxQuantity ?? 40), unit: String(body.quantityUnit ?? 't') }),
+    JSON.stringify({ quantity: 0 }),
+    JSON.stringify(body.deliveryWindow ?? {
+      from: new Date().toISOString().slice(0, 10),
+      to: new Date(Date.now() + 180 * 24 * 3600 * 1000).toISOString().slice(0, 10),
+    }),
+    String(body.counterpartyMinTier ?? 'T2'),
+    body.expiresAt ? String(body.expiresAt)
+                   : new Date(Date.now() + 90 * 24 * 3600 * 1000).toISOString(),
+    String(body.specTemplateId ?? `${commodity}-v1`),
+    now(),
+  );
+  return one('SELECT * FROM mandate WHERE id = ?', id);
+}
+
 route('POST', '/api/deploy', (ctx) => {
   const user = ctx.user;
   if (!user) return err(401, 'sign in required');
@@ -542,9 +606,14 @@ route('POST', '/api/deploy', (ctx) => {
   const scope = String(ctx.body.scope ?? 'negotiate');
   const floor = Number(ctx.body.floor);
   const currency = String(ctx.body.currency ?? (user.jurisdiction === 'AE' ? 'AED' : 'INR'));
-  if (!name || !purpose || !commodity || Number.isNaN(floor)) {
-    return err(400, 'agentName, purpose, commodity, floor required');
+  // No mandate at sign-up. Commodity and floor are per-deal decisions and asking for them during
+  // onboarding produced a mandate nobody meant. An agent with no mandate can do nothing — the
+  // guard answers NO_MANDATE to every intent — which is the correct default. Set one at
+  // /app/mandate when there is something to do.
+  if (!name || !purpose) {
+    return err(400, 'agentName and purpose are required');
   }
+  const wantsMandate = Boolean(commodity) && !Number.isNaN(floor);
   const nameProblem = agentNameProblem(name);
   if (nameProblem) return err(400, nameProblem);
   // Courtesy check — the unique index is what actually enforces this. See the catch below.
@@ -605,53 +674,24 @@ route('POST', '/api/deploy', (ctx) => {
     throw e;
   }
 
-  const mandateId = `mnd_${randomUUID().slice(0, 8)}`;
-  const maxQty = {
-    value: Number(ctx.body.maxQuantity ?? 40),
-    unit: String(ctx.body.quantityUnit ?? 't'),
-  };
-  const expiresAt = ctx.body.expiresAt
-    ? String(ctx.body.expiresAt)
-    : new Date(Date.now() + 90 * 24 * 3600 * 1000).toISOString();
-  const minTier = String(ctx.body.counterpartyMinTier ?? 'T2');
-  const deliveryWindow = ctx.body.deliveryWindow ?? {
-    from: new Date().toISOString().slice(0, 10),
-    to: new Date(Date.now() + 180 * 24 * 3600 * 1000).toISOString().slice(0, 10),
-  };
-  const specTemplateId = String(ctx.body.specTemplateId ?? `${commodity}-v1`);
-
-  run(
-    `INSERT INTO mandate (
-       id, agent_id, commodity, scope, price_floor, price_ceiling, currency,
-       max_quantity, consumed, delivery_window, counterparty_min_tier,
-       expires_at, spec_template_id, status, created_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
-    mandateId, agentId, commodity, scope, floor,
-    ctx.body.ceiling != null ? Number(ctx.body.ceiling) : null,
-    currency,
-    JSON.stringify(maxQty),
-    JSON.stringify({ quantity: 0 }),
-    JSON.stringify(deliveryWindow),
-    minTier,
-    expiresAt,
-    specTemplateId,
-    now(),
-  );
+  // Only when terms were supplied. Sign-up no longer asks for them.
+  const mandate = wantsMandate ? createMandate(agentId, ctx.body) : null;
 
   run(
     `INSERT INTO message (id, user_id, agent_id, from_role, body, meta, created_at)
      VALUES (?, ?, ?, 'system', ?, ?, ?)`,
     `msg_${randomUUID().slice(0, 8)}`, user.id, agentId,
-    `${name} is live. Mandate: ${commodity}, floor ${floor} ${currency}, scope ${scope}.`,
+    mandate
+      ? `${name} is live. Mandate: ${commodity}, floor ${floor} ${mandate.currency}, scope ${mandate.scope}.`
+      : `${name} is live. It cannot act until you set what it may do.`,
     JSON.stringify({ kind: 'deployed' }),
     now(),
   );
 
   const agent = one('SELECT * FROM agent WHERE id = ?', agentId);
-  const mandate = one('SELECT * FROM mandate WHERE id = ?', mandateId);
   return {
     agent: publicAgent(agent, true),
-    mandate: publicMandate(mandate),
+    mandate: mandate ? publicMandate(mandate) : null,
     agentToken: apiToken,
     skillUrl: `${BASE_URL}/agent/skill.md`,
   };

@@ -14,6 +14,7 @@ import Deploy from './app/Deploy.jsx'
 import Bridge from './app/Bridge.jsx'
 import Thread from './app/Thread.jsx'
 import Account from './app/Account.jsx'
+import Mandate from './app/Mandate.jsx'
 import './styles.css'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
@@ -31,6 +32,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         <Route index element={<Bridge />} />
         <Route path="space/:id" element={<Thread />} />
         <Route path="account" element={<Account />} />
+        <Route path="mandate" element={<Mandate />} />
       </Route>
     </Routes>
   </BrowserRouter>
