@@ -41,7 +41,33 @@ are intact.
 
 ---
 
-## HIGH — production has no mail provider (the LEAK is fixed; delivery is not)
+## HIGH — mail works, but the sending DOMAIN may not be verified
+
+**Done:** the token leaks nowhere (verified against production), `RESEND_API_KEY` is set and
+deployed, `/api/metrics` reports `mailConfigured: true`, and a real send was accepted by Resend
+(message id returned). The key is correctly scoped to *sending only* — it answers
+`"This API key is restricted to only send emails"` on any other route, which is the right
+permission for an app that never manages domains.
+
+**Unverified and gate-blocking:** whether `theunivers.ai` is a verified sending domain in Resend.
+Until it is, `MAIL_FROM` must stay `onboarding@resend.dev` and **Resend only delivers to the account
+owner's own address**. Reset emails to real users would be refused, so opening registration would
+lock out anyone who forgets a password — the same failure the leak fix was meant to prevent, by a
+different route.
+
+Check at resend.com/domains (the API cannot be used: a sending-only key is refused there). If the
+domain is not verified, add its SPF and DKIM records in Cloudflare — **without touching the existing
+MS365 MX record**, which has been broken by DNS edits before.
+
+Then:
+
+```bash
+npm run secret MAIL_FROM      # theunivers.ai <noreply@theunivers.ai>
+```
+
+---
+
+## ~~HIGH — production has no mail provider~~ (superseded)
 
 **The dangerous half is done.** The reset token no longer leaves the server in an HTTP response;
 it leaves only inside an email (`server/mail.mjs`). Verified against production: `/api/auth/forgot`

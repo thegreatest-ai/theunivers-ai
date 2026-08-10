@@ -28,7 +28,8 @@ const FROM = process.env.MAIL_FROM ?? 'theunivers.ai <onboarding@resend.dev>';
 const isProd = process.env.NODE_ENV === 'production';
 
 /** Resend's HTTP API. Returns their message id so a delivery can be traced later. */
-async function viaResend({ to, subject, text, html }) {
+async function viaResend(msg) {
+  const { to, subject, text, html } = msg;
   const r = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: {
@@ -40,6 +41,10 @@ async function viaResend({ to, subject, text, html }) {
   });
   const body = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(`resend ${r.status}: ${body?.message ?? 'unknown error'}`);
+  // Log successes too, not just failures. Silence on success is indistinguishable from "never
+  // called", which is exactly the ambiguity that made the first live test unreadable. The message
+  // id is what you quote to Resend support when a mail is accepted but never arrives.
+  console.log(`[mail] sent to ${msg.to} · resend id ${body?.id ?? 'none'}`);
   return { ok: true, provider: 'resend', id: body?.id ?? null };
 }
 
