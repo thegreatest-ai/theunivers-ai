@@ -74,6 +74,15 @@ const SECRETS = {
       return { ok: false, why: `unexpected HTTP ${r.status}${msg ? ` — "${msg}"` : ''}` };
     },
   },
+  GOOGLE_CLIENT_ID: {
+    // Not secret — it appears in the browser URL during sign-in — but it lives here so that
+    // rotating a Google client is one flow rather than two, and so nobody types it as a shell
+    // argument out of habit and puts the wrong thing in their history.
+    what: 'Google OAuth client id',
+    looksLike: /^[0-9]+-[a-z0-9]+\.apps\.googleusercontent\.com$/,
+    hint: 'console.cloud.google.com → Credentials → your Web application client',
+    secret: false,
+  },
   GITHUB_CLIENT_ID: { what: 'GitHub OAuth client id', looksLike: /^.{8,}$/, hint: 'github.com → Settings → Developer settings → OAuth Apps' },
   GITHUB_CLIENT_SECRET: { what: 'GitHub OAuth client secret', looksLike: /^.{20,}$/, hint: 'shown once when created' },
   GOOGLE_CLIENT_SECRET: { what: 'Google OAuth client secret (rotate: it was exposed in a transcript)', looksLike: /^GOCSPX-.{10,}$/, hint: 'console.cloud.google.com → Credentials' },

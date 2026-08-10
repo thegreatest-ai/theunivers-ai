@@ -18,6 +18,25 @@ than statelessness, and a JWT you cannot revoke is a problem at exactly the mome
 **OAuth** — Google and GitHub, state signed with `OAUTH_STATE_SECRET`. An account created through
 OAuth has `password_hash NULL`.
 
+**`providers.google` means "both variables are set", not "sign-in works".** It cannot mean more:
+the redirect URI is only validated by Google, at the moment a user is sent there. Google sign-in
+was broken in production for two days behind a `google: true` flag, because the client authorised
+`localhost` and nothing else. **A configuration check that tests presence will report a broken
+integration as healthy** — the only real test is completing a sign-in.
+
+Rotating an OAuth client, in order, because the wrong order fails confusingly:
+
+1. add BOTH environments' origins and redirect URIs to the new client, exactly — `https`, no
+   trailing slash, no `www`
+2. set the client **id and secret together**; an id from one client with a secret from another
+   passes the consent screen and fails at token exchange
+3. complete a real sign-in
+4. **then** delete the old client — that is the step that ends an exposure; everything before it
+   only stops using the leaked value
+
+Changing client is safe for existing users: the callback matches on `oauth_id` and falls back to
+email, so an account is re-linked rather than orphaned.
+
 ### Setting a password on an OAuth account
 
 `POST /api/auth/set-password` is two operations, and the difference is the security property:

@@ -7,14 +7,6 @@ Last reviewed: 2026-08-10 · registration is OPEN · 1 real user
 
 ---
 
-## MEDIUM — the Google OAuth client secret was pasted into a chat transcript
-
-Treat it as public. `SECRETS-POLICY.md` settles it without needing to judge likelihood: exposure
-means rotation.
-
-**Fix:** rotate in Google Cloud Console, then `npm run secret GOOGLE_CLIENT_SECRET`.
-
----
 
 
 ## MEDIUM — the Bridge polls every 4 seconds
@@ -60,6 +52,50 @@ removes the worst of the drift risk, but the consolidation decision is still ope
 ---
 
 ## Resolved, kept for the lessons
+
+<details><summary>Google OAuth secret exposed in a transcript — rotated, and a worse bug found on the way</summary>
+
+`GOOGLE_CLIENT_SECRET` was pasted into a chat transcript during setup. Transcripts are stored,
+synced and backed up, so the value was treated as public from that moment.
+
+**Resolved 2026-08-11** by creating a new OAuth client and deleting the old one. Deleting the old
+client is the step that ends the exposure — rotating a secret while the old client still exists
+merely stops *using* the leaked value.
+
+**A worse problem surfaced during the rotation.** The client's authorised URIs were localhost only:
+
+```
+origins        http://localhost:5188
+redirect URIs  http://localhost:8790/api/auth/google/callback
+```
+
+while production sends `https://theunivers.ai/api/auth/google/callback`. **Google sign-in had never
+worked in production.** The account that exists was created on 2026-08-09 at 11:13, hours before
+the Fly machine was launched — signed in against localhost. The one other user signed up with a
+password the following day, and "clicked Google, saw an error, used the form instead" is the
+obvious explanation for a signup that nearly did not happen.
+
+Nothing surfaced it. `/api/auth/providers` reports `google: true` whenever both variables are
+merely *set*, so every dashboard said the feature was on. **A configuration check that only tests
+presence will report a broken integration as healthy.**
+
+**Sequencing that mattered:** the client ID was updated before the secret, leaving production with a
+new id and the old client's secret — a pair that passes the consent screen and fails at token
+exchange. The sign-in page loading proves the id and redirect URI; only completing a sign-in proves
+the secret.
+
+**Why creating a new client was safe:** `server/oauth.mjs` looks a user up by `oauth_id` and falls
+back to **email**, so the existing Google account was matched and re-linked to the new client's
+subject id rather than orphaned. Verified after the fact.
+
+**Two of my own errors during this, recorded because both were reported as system faults:**
+
+- I flagged the Keychain entry as possibly concatenated. It was not — a Google client id is 71
+  characters. The bug was in my shell: `${V:+mask}${V:-fallback}` prints the mask *and then the
+  whole value*, because `${V:-…}` returns `V` when `V` is set.
+- The original "no DMARC record" entry, corrected separately below.
+
+</details>
 
 <details><summary>DMARC — the entry was wrong, and the fix would have made things worse</summary>
 
