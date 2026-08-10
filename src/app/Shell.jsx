@@ -10,7 +10,13 @@ import './app.css';
 export default function Shell({ bare = false }) {
   const nav = useNavigate();
   const loc = useLocation();
-  const [locale, setLocale] = useState('en-IN');
+  // Persisted. It was component state, so every reload reset a Hindi reader to English (IN) —
+  // and moving the control into Account would have been pointless while the choice did not last.
+  const [locale, setLocale] = useState(() => {
+    const saved = localStorage.getItem('tu_locale');
+    return saved && LOCALES[saved] ? saved : 'en-IN';
+  });
+  useEffect(() => { localStorage.setItem('tu_locale', locale); }, [locale]);
   const [me, setMe] = useState(null);
   const currency = LOCALES[locale].currency;
 

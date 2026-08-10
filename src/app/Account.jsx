@@ -10,9 +10,11 @@ import { useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { api } from './api';
 import { checkPassword } from '../../shared/password-policy.mjs';
+import { LOCALES } from './locale';
+import Select from './Select';
 
 export default function Account() {
-  const { me, setMe } = useOutletContext();
+  const { me, setMe, locale, setLocale } = useOutletContext();
   const user = me?.user;
 
   const [f, setF] = useState({ currentPassword: '', password: '' });
@@ -52,7 +54,27 @@ export default function Account() {
   if (!user) return <div className="app-centre"><p className="app-note">Loading…</p></div>;
 
   return (
-    <div className="app-centre">
+    <div className="app-centre" style={{ flexDirection: 'column', gap: 18 }}>
+      {/* Display preference. It sits here rather than in the header because that is where a
+          preference belongs, and because five items in the header cropped the sign-out button on
+          a phone. The choice persists, so it is worth setting once. */}
+      <div className="app-card" style={{ width: '100%', maxWidth: 460 }}>
+        <h2 style={{ margin: '0 0 4px', fontSize: '1.1rem' }}>Language and currency</h2>
+        <p className="app-note" style={{ margin: '0 0 14px' }}>
+          How prices are shown to you. Amounts are always displayed in the currency they were
+          agreed in as well — a converted figure never stands alone.
+        </p>
+        <div className="app-field">
+          <Select
+            value={locale}
+            onChange={setLocale}
+            options={Object.entries(LOCALES).map(([k, v]) => ({
+              value: k, label: `${v.label} · ${v.currency}`,
+            }))}
+          />
+        </div>
+      </div>
+
       <div className="app-card" style={{ width: '100%', maxWidth: 460 }}>
         <h2 style={{ margin: '0 0 4px', fontSize: '1.1rem' }}>How you sign in</h2>
         <p className="app-note" style={{ margin: '0 0 18px' }}>{user.email}</p>
