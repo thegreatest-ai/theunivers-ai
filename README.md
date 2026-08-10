@@ -99,6 +99,7 @@ See `design/theunivers-bridge-ui.pdf` and `design/mockups/`.
 | `docs/design/` | design reviews; the mockups themselves live in `design/` |
 | `docs/specs/` | designs not yet built (excluded from `docs-check` for that reason) |
 | `DEPLOY.md` | the build-and-ship loop, and one-time setup |
+| `docs/COPY-CLAIMS.md` | what user-facing copy may and may not assert, and why |
 | `git log` | why each change was made — **this is the changelog** |
 
 There is deliberately no hand-written `CHANGELOG.md`. The commit history already records cause,

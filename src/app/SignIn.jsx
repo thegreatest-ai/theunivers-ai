@@ -158,6 +158,8 @@ export default function SignIn({ initialMode = 'signin' }) {
           : <>Welcome <span className="grad">back</span>.</>}
       </h1>
       <p className="app-note">
+        {/* claims-ok: invite-gate — rendered only when providers.inviteRequired is true, so this
+            sentence cannot appear while the gate is open. See scripts/claims-check.mjs. */}
         {mode === 'create' ? (oauth.inviteRequired ? 'Invite-only while we run the pilot.' : 'Create your account and merge the universes.')
           : mode === 'forgot' ? (oauth.mailer
               ? 'We’ll send a link to set a new one.'

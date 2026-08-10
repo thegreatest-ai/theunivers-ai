@@ -31,7 +31,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
  * including options that were rejected and never existed.
  */
 const DOCS = ['README.md', 'DEPLOY.md', 'docs/ARCHITECTURE.md', 'docs/SECURITY.md',
-              'docs/OPERATIONS.md', 'docs/KNOWN-ISSUES.md'];
+              'docs/OPERATIONS.md', 'docs/KNOWN-ISSUES.md', 'docs/COPY-CLAIMS.md'];
 
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
 const problems = [];
