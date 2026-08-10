@@ -25,6 +25,10 @@ export function checkPassword(password) {
 export function passwordError(password) {
   const { ok, results } = checkPassword(password);
   if (ok) return null;
-  const missing = results.filter((r) => !r.ok).map((r) => r.label.toLowerCase());
+  // Lowercase only the FIRST letter, so the label reads naturally mid-sentence without mangling
+  // what is inside it. Lowercasing the whole label turned "(A–Z)" into "(a–z)", which told users
+  // to add a capital letter and then showed them a lowercase range as the example.
+  const missing = results.filter((r) => !r.ok)
+    .map((r) => r.label.charAt(0).toLowerCase() + r.label.slice(1));
   return `Password needs: ${missing.join(', ')}.`;
 }

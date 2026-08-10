@@ -59,6 +59,7 @@ export default function Shell({ bare = false }) {
             <span className="app-dot" /> {me.agent.name} · {me.agent.status}
           </span>
         )}
+        <Link to="/app/account" className="app-link">Account</Link>
         <button
           className="app-link"
           onClick={() => { clearAuth(); nav('/app/signin'); }}

@@ -267,6 +267,56 @@ route('POST', '/api/auth/reset', (ctx) => {
   return { sessionToken, user: publicUser(user), agent: agent ? publicAgent(agent, false) : null, hasAgent: Boolean(agent) };
 });
 
+/**
+ * Set or change this account's password.
+ *
+ * Two different operations behind one endpoint, and the difference matters:
+ *
+ *   FIRST password (OAuth account, password_hash IS NULL)
+ *     A valid session is sufficient. There is no current password to prove, and demanding one
+ *     would make the feature impossible for exactly the accounts that need it. This closes a real
+ *     gap: a Google-only account whose owner loses access to Google is otherwise locked out
+ *     permanently, because /api/auth/forgot has nothing to reset.
+ *
+ *   CHANGE (a password already exists)
+ *     The current password is required, even though the caller is already signed in. A stolen or
+ *     borrowed session must not be enough to seize the account — that turns a temporary
+ *     compromise (someone at your unlocked laptop) into a permanent one.
+ */
+route('POST', '/api/auth/set-password', (ctx) => {
+  const user = ctx.user;
+  if (!user) return err(401, 'sign in required');
+
+  // Guessing the CURRENT password through this endpoint is the attack, so it is limited like login.
+  const byIp = take('setpw-ip', ctx.ip, LIMITS.loginPerIp.max, LIMITS.loginPerIp.windowMs);
+  if (!byIp.ok) return tooMany(byIp.retryAfter);
+
+  const next = String(ctx.body.password ?? '');
+  const pwErr = passwordError(next);
+  if (pwErr) return err(400, pwErr);
+
+  if (user.password_hash) {
+    const current = String(ctx.body.currentPassword ?? '');
+    if (!current) return err(400, 'Enter your current password.');
+    if (!verifyPassword(current, user.password_hash)) {
+      return err(401, 'That current password is incorrect.');
+    }
+    if (current === next) return err(400, 'That is already your password.');
+  }
+
+  run('UPDATE user SET password_hash = ?, reset_token = NULL, reset_expires = NULL WHERE id = ?',
+      hashPassword(next), user.id);
+
+  // Every OTHER session is dropped. A password change is what you do when you fear someone else
+  // has access, and leaving their session alive would make the change theatre. The caller's own
+  // session survives, so they are not signed out of the tab they just used.
+  const mine = String(ctx.headers?.authorization ?? '').replace(/^Bearer /i, '');
+  run('DELETE FROM session WHERE user_id = ? AND token != ?', user.id, mine);
+
+  const fresh = one('SELECT * FROM user WHERE id = ?', user.id);
+  return { ok: true, user: publicUser(fresh) };
+});
+
 route('GET', '/api/me', (ctx) => {
   const user = ctx.user;
   if (!user) return err(401, 'sign in required');
@@ -638,6 +688,10 @@ function publicUser(u) {
   return {
     id: u.id, email: u.email, name: u.name,
     kind: u.kind, jurisdiction: u.jurisdiction,
+    // Whether a password exists — never the hash. The UI needs this to say "set" vs "change",
+    // and to warn an OAuth-only account that it currently has no way back in without Google.
+    hasPassword: Boolean(u.password_hash),
+    signInMethod: u.password_hash ? 'password' : (u.oauth_provider || 'oauth'),
   };
 }
 
@@ -760,6 +814,7 @@ const server = createServer(async (req, res) => {
     const ctx = {
       params, query: url.searchParams, body,
       ip: clientIp(req),
+      headers: req.headers,
       user: userFromSession(req.headers.authorization),
       agent: agentFromToken(req.headers.authorization),
     };

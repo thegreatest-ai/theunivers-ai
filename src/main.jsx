@@ -13,6 +13,7 @@ import OAuthCallback from './app/OAuthCallback.jsx'
 import Deploy from './app/Deploy.jsx'
 import Bridge from './app/Bridge.jsx'
 import Thread from './app/Thread.jsx'
+import Account from './app/Account.jsx'
 import './styles.css'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
@@ -29,6 +30,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       <Route path="/app" element={<Shell />}>
         <Route index element={<Bridge />} />
         <Route path="space/:id" element={<Thread />} />
+        <Route path="account" element={<Account />} />
       </Route>
     </Routes>
   </BrowserRouter>
