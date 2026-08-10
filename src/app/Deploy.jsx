@@ -17,6 +17,14 @@ export default function Deploy() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
+  // Name is asked here and nowhere else. OAuth accounts already carry one from the provider, so
+  // prefill it rather than making someone retype what Google just told us.
+  useEffect(() => {
+    api.me()
+      .then((d) => { if (d?.user?.name) setF((p) => (p.name ? p : { ...p, name: d.user.name })); })
+      .catch(() => {});
+  }, []);
+
   /**
    * Live agent-name availability. `null` = not checked yet (name too short, or still typing).
    * Shape: { available: boolean, reason: string|null }.

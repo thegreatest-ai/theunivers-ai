@@ -117,7 +117,7 @@ machine, the check skips rather than failing — the copy is still authoritative
 
 | | |
 |---|---|
-| `POST /api/auth/register` | name, email, password (+ `inviteCode` when gated) |
+| `POST /api/auth/register` | email, password (+ `inviteCode` when gated). **No name** — that is asked once in the deploy wizard |
 | `POST /api/auth/login` | |
 | `POST /api/auth/forgot` | always the same response; the token leaves only by email |
 | `POST /api/auth/reset` | consumes a single-use token |
@@ -146,7 +146,7 @@ machine, the check skips rather than failing — the copy is still authoritative
 | `/` | `src/App.jsx` | marketing site |
 | `/app/signin` | `SignIn.jsx` | four modes: signin · create · forgot · reset |
 | `/app/oauth` | `OAuthCallback.jsx` | |
-| `/app/deploy` | `Deploy.jsx` | 4-step wizard |
+| `/app/deploy` | `Deploy.jsx` | 4-step wizard; step 1 "Who are you?" is the only place a name is asked |
 | `/app` | `Bridge.jsx` | You · Your agent · Space |
 | `/app/space/:id` | `Thread.jsx` | |
 | `/app/account` | `Account.jsx` | set or change password |

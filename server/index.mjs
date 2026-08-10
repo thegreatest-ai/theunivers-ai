@@ -131,7 +131,10 @@ route('POST', '/api/auth/register', (ctx) => {
   const name = String(ctx.body.name ?? '').trim();
   const password = String(ctx.body.password ?? '');
   const inviteCode = String(ctx.body.inviteCode ?? '').trim();
-  if (!email || !name) return err(400, 'name and email are required');
+  // Name is NOT asked at signup — it belongs to "Who are you?" in the deploy wizard, where it is
+  // asked once alongside country and kind. Requiring it here made the user type it twice.
+  // OAuth accounts arrive with a name from the provider; password accounts fill it in at deploy.
+  if (!email) return err(400, 'email is required');
   if (inviteRequired() && !inviteCode) return err(400, 'an invite code is required');
 
   // THE GATE. The browser checks the same rules live for feedback, but this is the one that

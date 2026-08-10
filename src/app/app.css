@@ -163,6 +163,18 @@
   background:rgba(255,255,255,.04);border:none;border-bottom:1px solid rgba(255,255,255,.1);outline:none}
 /* THE POINT OF THE WHOLE COMPONENT: a fixed ceiling, scrolling inside itself. */
 .app-select-list{max-height:264px;overflow-y:auto;padding:5px;outline:none;overscroll-behavior:contain}
+/* Long, filterable lists: a constant height so the panel never resizes under the pointer, and
+   overflow-y:scroll rather than auto so the track is always reserved. */
+.app-select-list.fixed{height:264px;max-height:none;overflow-y:scroll}
+
+/* macOS hides overlay scrollbars until you scroll, so a scrollable list looks unscrollable and
+   people assume the list is simply short. These make the bar permanently visible. */
+.app-select-list{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.28) transparent}
+.app-select-list::-webkit-scrollbar{width:10px}
+.app-select-list::-webkit-scrollbar-track{background:rgba(255,255,255,.04);border-radius:0 12px 12px 0}
+.app-select-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,.26);border-radius:8px;
+  border:2px solid transparent;background-clip:content-box}
+.app-select-list::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.42);background-clip:content-box}
 .app-select-group{margin:8px 0 3px;padding:0 9px;font-size:.68rem;letter-spacing:.09em;
   text-transform:uppercase;color:rgba(255,255,255,.35)}
 .app-select-opt{padding:9px 11px;border-radius:8px;font-size:.9rem;color:rgba(255,255,255,.85);cursor:pointer}

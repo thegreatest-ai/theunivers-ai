@@ -75,11 +75,9 @@ export default function SignIn() {
   // Deliberately permissive: one @, something either side, a dot in the domain. Stricter regexes
   // reject addresses that are perfectly valid and the only real test is whether mail arrives.
   const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email.trim());
-  const nameOk = f.name.trim().length > 0;
 
   // A field turns red only after it has been used and left — not while someone is still typing
   // their first character, which is the most common way validation feels hostile.
-  const badName = mode === 'create' && blurred.name && !nameOk;
   // Empty counts as invalid once the field has been left, same as the name — an untouched form
   // stays neutral, a form you have been through and left incomplete shows you where.
   const badEmail = blurred.email && !emailOk;
@@ -92,7 +90,7 @@ export default function SignIn() {
     mode === 'reset' ? pw.ok
     : mode === 'forgot' ? emailOk
     : mode === 'signin' ? Boolean(emailOk && f.password)
-    : Boolean(nameOk && emailOk && (!oauth.inviteRequired || f.invite) && pw.ok);   // create: the gate
+    : Boolean( emailOk && (!oauth.inviteRequired || f.invite) && pw.ok);   // create: the gate
 
   async function submit(e) {
     e.preventDefault();
@@ -117,7 +115,7 @@ export default function SignIn() {
         nav(r.hasAgent ? '/app' : '/app/deploy');
       } else {
         const r = await api.register({
-          name: f.name, email: f.email, password: f.password, inviteCode: f.invite,
+          email: f.email, password: f.password, inviteCode: f.invite,
         });
         setSession(r.sessionToken);
         nav('/app/deploy');
@@ -174,14 +172,6 @@ export default function SignIn() {
               <div className="app-field"><label>Invite code</label>
                 <input value={f.invite} onChange={set('invite')} placeholder="univers-pilot" autoComplete="off" /></div>
             )}
-            <div className="app-field">
-              <label>Name</label>
-              <input
-                className={badName ? 'bad' : ''}
-                value={f.name} onChange={set('name')} onBlur={blur('name')} autoComplete="name"
-              />
-              {badName && <span className="app-bad">Your name is required.</span>}
-            </div>
           </>
         )}
 

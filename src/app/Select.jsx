@@ -161,8 +161,11 @@ export default function Select({
             />
           )}
 
+          {/* A filterable list keeps a FIXED height rather than growing and shrinking with the
+              results. A panel that resizes as you type moves options out from under the pointer
+              and makes the scrollbar appear and vanish, which reads as "there is no scroll". */}
           <div
-            className="app-select-list"
+            className={`app-select-list${showSearch ? ' fixed' : ''}`}
             ref={listRef}
             role="listbox"
             tabIndex={-1}
