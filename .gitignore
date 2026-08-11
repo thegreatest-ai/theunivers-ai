@@ -5,3 +5,6 @@ dist
 .vite
 .env
 data/
+
+# Agent worktrees — separate checkouts of this repo, never part of it.
+.claude/worktrees/
