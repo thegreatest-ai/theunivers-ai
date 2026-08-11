@@ -16,7 +16,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { rank, order, paginate, sideOf, WEIGHTS, PER_PAGE, MAX_PER_PAGE } from '../shared/ranking.mjs';
@@ -212,8 +212,16 @@ test('a page out of range lands on a real page, never on nothing', () => {
 test('no scroll listener fetches more, anywhere in the app', () => {
   // The position, as a test. Infinite scroll is added by accident far more often than on purpose —
   // one `onScroll` that calls the next page and the stopping cue is gone.
-  for (const f of ['src/app/Bridge.jsx', 'src/app/Discover.jsx', 'src/app/Pager.jsx']) {
-    const src = readFileSync(join(ROOT, f), 'utf8');
+  /*
+   * EVERY component, found by reading the directory rather than a hand-written list. The first
+   * version named Bridge.jsx; another agent renamed it to Home.jsx in the same integration, and the
+   * test then failed on a missing file instead of on the thing it guards. A named list also stops
+   * covering whatever is added next — it fails open, which is the worse direction.
+   */
+  const dir = join(ROOT, 'src/app');
+  for (const name of readdirSync(dir).filter((n) => n.endsWith('.jsx'))) {
+    const f = `src/app/${name}`;
+    const src = readFileSync(join(dir, name), 'utf8');
     assert.doesNotMatch(src, /addEventListener\(\s*['"]scroll/, `${f} listens to scroll`);
     assert.doesNotMatch(src, /IntersectionObserver/, `${f} uses an infinite-scroll sentinel`);
     assert.doesNotMatch(src, /onScroll/, `${f} has a scroll handler`);

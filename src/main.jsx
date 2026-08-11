@@ -22,14 +22,15 @@ const Shell = lazy(() => import('./app/Shell.jsx'))
 const SignIn = lazy(() => import('./app/SignIn.jsx'))
 const OAuthCallback = lazy(() => import('./app/OAuthCallback.jsx'))
 const Deploy = lazy(() => import('./app/Deploy.jsx'))
-const Bridge = lazy(() => import('./app/Bridge.jsx'))
+const Home = lazy(() => import('./app/Home.jsx'))
 const Thread = lazy(() => import('./app/Thread.jsx'))
 const Account = lazy(() => import('./app/Account.jsx'))
 const You = lazy(() => import('./app/You.jsx'))
 const Workspace = lazy(() => import('./app/Workspace.jsx'))
 const Mandate = lazy(() => import('./app/Mandate.jsx'))
-const Soon = lazy(() => import('./app/Soon.jsx'))
 const Discover = lazy(() => import('./app/Discover.jsx'))
+const Conversations = named(() => import('./app/Messages.jsx'), 'Conversations')
+const Conversation = named(() => import('./app/Messages.jsx'), 'Conversation')
 
 // Named exports need unwrapping for lazy(), which expects a module with a default. Two lazy calls
 // on one module still resolve to one chunk, so the pair costs one request, not two.
@@ -62,7 +63,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         </Route>
 
         <Route path="/app" element={<Shell />}>
-          <Route index element={<Bridge />} />
+          <Route index element={<Home />} />
           <Route path="space/:id" element={<Thread />} />
           <Route path="account" element={<You />} />
           <Route path="account/signin" element={<Account />} />
@@ -77,7 +78,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           {/* Named in ADR-0002 and not built. An honest placeholder rather than a dead link or a
               navigation that quietly disagrees with the decision. */}
           <Route path="discover" element={<Discover />} />
-          <Route path="messages" element={<Soon what="Messages" />} />
+          <Route path="messages" element={<Conversations />} />
+          <Route path="messages/:id" element={<Conversation />} />
         </Route>
       </Routes>
     </BrowserRouter>

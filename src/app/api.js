@@ -79,6 +79,8 @@ export const api = {
   decide: (id, approve) => req('/api/proposals/decide', { method: 'POST', body: JSON.stringify({ id, approve }) }),
   messages: () => req('/api/messages'),
   sendMessage: (body) => req('/api/messages', { method: 'POST', body: JSON.stringify(body) }),
+  conversations: () => req('/api/conversations'),
+  conversation: (id) => req(`/api/conversations/${encodeURIComponent(id)}`),
   createPost: (body) => req('/api/posts', { method: 'POST', body: JSON.stringify(body) }),
 };
 

@@ -44,9 +44,13 @@ export default function Works({ userId, own }) {
 
   const spec = KINDS.find((k) => k.id === kind);
 
+  // A failed load used to become an empty list, so "we could not read this" rendered as "you have
+  // published nothing" — the most misleading thing a profile can say about its owner.
+  const [loadError, setLoadError] = useState('');
   const load = () => api.works(userId, kind)
-    .then((d) => setWorks(d.works || [])).catch(() => setWorks([]));
-  useEffect(() => { setWorks(null); load(); }, [kind, userId]);
+    .then((d) => { setWorks(d.works || []); setLoadError(''); })
+    .catch((e) => { setWorks([]); setLoadError(e.message); });
+  useEffect(() => { setWorks(null); setLoadError(''); load(); }, [kind, userId]);
 
   async function addFiles(e) {
     const files = [...(e.target.files || [])];
@@ -135,7 +139,8 @@ export default function Works({ userId, own }) {
       )}
 
       {works === null && <p className="app-note">Loading…</p>}
-      {works?.length === 0 && <p className="app-note">Nothing here yet. {spec.empty}</p>}
+      {loadError && <p className="app-error">{spec.label} could not be loaded — {loadError}</p>}
+      {!loadError && works?.length === 0 && <p className="app-note">Nothing here yet. {spec.empty}</p>}
 
       <div className={kind === 'photo' || kind === 'video' ? 'wk-grid' : 'wk-list'}>
         {works?.map((w) => (
