@@ -64,7 +64,7 @@ export default function Shell({ bare = false }) {
       {/* Five destinations, two shapes. Both from shared/navigation.mjs — the file existed with
           the decision in it and nothing imported it, which made an ADR look implemented when it
           was not. */}
-      <Nav counts={{ Deals: pending }} onCreate={() => nav('/app/deploy')} />
+      <Nav counts={{ Deals: pending }} onCreate={() => nav(me?.agent ? '/app/workspace' : '/app/deploy')} />
 
       <header className="app-bar">
         <Link to="/" className="app-brand app-brand-mobile">theunivers<span className="grad">.ai</span></Link>

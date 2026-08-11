@@ -693,6 +693,125 @@ route('POST', '/api/account/kind', (ctx) => {
   return { user: publicUser(one('SELECT * FROM user WHERE id = ?', user.id)) };
 });
 
+/**
+ * ── Workspace ────────────────────────────────────────────────────────────────────────────
+ * Everything in progress, in one call — drafts, saved searches with their unread counts, and
+ * whatever the agent has said unprompted.
+ */
+route('GET', '/api/workspace', (ctx) => {
+  const user = ctx.user;
+  if (!user) return err(401, 'sign in required');
+  const agent = one('SELECT * FROM agent WHERE user_id = ?', user.id);
+
+  // A drafted ORDER is a draft, and it lives in the order table where the state machine can see
+  // it. Merging the two lists here rather than copying orders into `draft` keeps one definition of
+  // what a draft order is.
+  const draftOrders = agent
+    ? all(`SELECT * FROM "order" WHERE (buyer_agent_id = ? OR seller_agent_id = ?)
+             AND status = 'drafted' ORDER BY updated_at DESC`, agent.id, agent.id)
+        .map((o) => publicOrder(o, agent.id))
+    : [];
+
+  const drafts = all(
+    'SELECT id, kind, title, body, updated_at FROM draft WHERE user_id = ? ORDER BY updated_at DESC',
+    user.id).map((d) => ({ ...d, body: JSON.parse(d.body || '{}') }));
+
+  /*
+   * "3 new" is DERIVED, by counting matching posts since you last looked — not stored per user.
+   * A stored counter has to be updated by every writer and drifts the first time one forgets;
+   * a count you compute cannot be wrong.
+   */
+  /*
+   * "3 new" is DERIVED, by counting matching posts since you last looked — not stored per user.
+   * A stored counter must be updated by every writer and drifts the first time one forgets; a
+   * count you compute cannot be wrong.
+   *
+   * Written as two plain statements rather than one assembled string. The first version built the
+   * SQL with a .replace() and a conditional parameter list, which is how a query ends up not
+   * meaning what it looks like it means.
+   */
+  const watching = all('SELECT * FROM watch WHERE user_id = ? ORDER BY created_at DESC', user.id)
+    .map((w) => {
+      const row = w.commodity
+        ? one(`SELECT COUNT(*) c FROM post
+               WHERE created_at > ? AND lower(title || ' ' || body) LIKE ?`,
+              w.last_seen_at, `%${w.commodity.toLowerCase()}%`)
+        : one('SELECT COUNT(*) c FROM post WHERE created_at > ?', w.last_seen_at);
+      return {
+        id: w.id, label: w.label, commodity: w.commodity, lane: w.lane,
+        minTier: w.min_tier, fresh: row?.c ?? 0,
+      };
+    });
+
+  // Unprompted agent messages — the "your agent noticed something" lane. Limited, because a
+  // workspace is for what you are working on, not a log.
+  const notes = agent
+    ? all(`SELECT id, body, created_at FROM message
+           WHERE user_id = ? AND from_role = 'agent' ORDER BY created_at DESC LIMIT 5`, user.id)
+    : [];
+
+  return { draftOrders, drafts, watching, notes };
+});
+
+route('POST', '/api/drafts', (ctx) => {
+  const user = ctx.user;
+  if (!user) return err(401, 'sign in required');
+  const kind = String(ctx.body.kind ?? 'note');
+  if (!['post', 'request', 'note'].includes(kind)) return err(400, 'unknown draft kind');
+
+  const id = String(ctx.body.id ?? '') || `drf_${randomUUID().slice(0, 8)}`;
+  const title = String(ctx.body.title ?? '').slice(0, 200);
+  const body = JSON.stringify(ctx.body.body ?? {});
+  const existing = one('SELECT id FROM draft WHERE id = ? AND user_id = ?', id, user.id);
+
+  if (existing) {
+    run('UPDATE draft SET kind = ?, title = ?, body = ?, updated_at = ? WHERE id = ? AND user_id = ?',
+        kind, title, body, now(), id, user.id);
+  } else {
+    run(`INSERT INTO draft (id, user_id, kind, title, body, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`, id, user.id, kind, title, body, now(), now());
+  }
+  return { id, kind, title, body: JSON.parse(body) };
+});
+
+route('POST', '/api/drafts/delete', (ctx) => {
+  const user = ctx.user;
+  if (!user) return err(401, 'sign in required');
+  run('DELETE FROM draft WHERE id = ? AND user_id = ?', String(ctx.body.id ?? ''), user.id);
+  return { ok: true };
+});
+
+route('POST', '/api/watch', (ctx) => {
+  const user = ctx.user;
+  if (!user) return err(401, 'sign in required');
+  const commodity = String(ctx.body.commodity ?? '').trim();
+  if (!commodity) return err(400, 'a commodity to watch is required');
+  const id = `wch_${randomUUID().slice(0, 8)}`;
+  run(`INSERT INTO watch (id, user_id, label, commodity, lane, min_tier, last_seen_at, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      id, user.id, commodity, commodity,
+      ctx.body.lane ? String(ctx.body.lane) : null,
+      String(ctx.body.minTier ?? 'T0'), now(), now());
+  return { id };
+});
+
+/** Mark a watch as read. Separate from reading the workspace, so opening the page does not
+ *  silently clear a count you had not looked at. */
+route('POST', '/api/watch/seen', (ctx) => {
+  const user = ctx.user;
+  if (!user) return err(401, 'sign in required');
+  run('UPDATE watch SET last_seen_at = ? WHERE id = ? AND user_id = ?',
+      now(), String(ctx.body.id ?? ''), user.id);
+  return { ok: true };
+});
+
+route('POST', '/api/watch/delete', (ctx) => {
+  const user = ctx.user;
+  if (!user) return err(401, 'sign in required');
+  run('DELETE FROM watch WHERE id = ? AND user_id = ?', String(ctx.body.id ?? ''), user.id);
+  return { ok: true };
+});
+
 route('GET', '/api/orders', (ctx) => {
   const user = ctx.user;
   if (!user) return err(401, 'sign in required');

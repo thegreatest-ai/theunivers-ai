@@ -364,3 +364,19 @@
 .set-foot{text-align:center;padding-top:8px}
 .settings p{font-size:.9rem;line-height:1.6;color:var(--muted)}
 .settings .app-card h3{font-size:.95rem;color:var(--text)}
+
+/* ══ Workspace ════════════════════════════════════════════════════════════════════════════ */
+.ws{max-width:720px;margin:0 auto;padding:22px 16px;display:flex;flex-direction:column;gap:18px}
+.ws-drop{font-size:.78rem;flex:none}
+/* A count you can clear by pressing it — pressing IS the "I have seen this". */
+.ws-new{border:1px solid rgba(56,189,248,.4);background:rgba(56,189,248,.12);color:var(--cyan);
+  border-radius:99px;padding:3px 11px;font-size:.75rem;font-family:inherit;cursor:pointer;flex:none}
+.ws-new:hover{background:rgba(56,189,248,.2)}
+.ws-add{gap:8px;flex-wrap:wrap}
+.ws-add input{flex:1;min-width:140px;padding:9px 11px;border-radius:10px;font-family:inherit;
+  font-size:.88rem;color:#fff;background:rgba(255,255,255,.05);border:1px solid var(--line);outline:none}
+.ws-add .app-cta{padding:9px 16px;font-size:.85rem}
+.ws-notes{display:flex;flex-direction:column;gap:8px}
+.ws-note{border:1px solid var(--line);border-left:2px solid var(--purple);border-radius:0 12px 12px 0;
+  padding:12px 14px;background:var(--glass)}
+.ws-note p{margin:0 0 6px;font-size:.9rem;line-height:1.5}

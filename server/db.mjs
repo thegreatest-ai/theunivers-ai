@@ -214,6 +214,44 @@ ensureColumn('user', 'profession', 'profession TEXT');
  * says free and the insert says taken, which reads as a random unexplainable failure.
  */
 /**
+ * Workspace — what you and your agent have in progress.
+ *
+ * `draft` holds things that are NOT yet real: a post nobody can see, a request not yet sent. A
+ * drafted ORDER is not stored here — the order table already has a `drafted` state, and a second
+ * home for the same idea would let the two disagree about what a draft order is.
+ *
+ * `body` is JSON and deliberately loose. A draft is by definition incomplete; validating it into a
+ * schema would mean refusing to save the half-finished thing the workspace exists to hold.
+ *
+ * `watch` is a saved search. `last_seen_at` is what makes "3 new" possible without storing a feed
+ * per user — the count is derived by asking how many matching posts arrived since you last looked.
+ */
+db.exec(`
+  CREATE TABLE IF NOT EXISTS draft (
+    id         TEXT PRIMARY KEY,
+    user_id    TEXT NOT NULL REFERENCES user(id),
+    kind       TEXT NOT NULL CHECK (kind IN ('post','request','note')),
+    title      TEXT NOT NULL DEFAULT '',
+    body       TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS draft_user_idx ON draft(user_id, updated_at);
+
+  CREATE TABLE IF NOT EXISTS watch (
+    id           TEXT PRIMARY KEY,
+    user_id      TEXT NOT NULL REFERENCES user(id),
+    label        TEXT NOT NULL,
+    commodity    TEXT,
+    lane         TEXT,
+    min_tier     TEXT NOT NULL DEFAULT 'T0',
+    last_seen_at TEXT NOT NULL,
+    created_at   TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS watch_user_idx ON watch(user_id);
+`);
+
+/**
  * Orders — the spine of a deal. See docs/specs/ORDER-AND-INSPECTION.md.
  *
  * "order" is quoted everywhere it appears: ORDER is a SQL keyword and an unquoted table of that

@@ -16,6 +16,7 @@ import Thread from './app/Thread.jsx'
 import Account from './app/Account.jsx'
 import You from './app/You.jsx'
 import Settings, { Privacy } from './app/Settings.jsx'
+import Workspace from './app/Workspace.jsx'
 import Mandate from './app/Mandate.jsx'
 import { DealList, DealDetail } from './app/Deals.jsx'
 import Soon from './app/Soon.jsx'
@@ -38,6 +39,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         <Route path="space/:id" element={<Thread />} />
         <Route path="account" element={<You />} />
         <Route path="account/signin" element={<Account />} />
+        <Route path="workspace" element={<Workspace />} />
         <Route path="settings" element={<Settings />} />
         <Route path="settings/privacy" element={<Privacy />} />
         <Route path="mandate" element={<Mandate />} />

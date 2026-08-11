@@ -51,6 +51,15 @@ two shapes. A navigation that differs by screen size is two products to keep in 
 (Messages), the work itself (Deals), and you (You). Every mockup item fits one of those or is not
 needed yet.
 
+## Where ＋ Create goes
+
+To `/app/workspace` once you have an agent, and to `/app/deploy` before that.
+
+Create had pointed at the deploy wizard, which is right exactly once and wrong every time after.
+The workspace is where creating starts and where an unfinished thing waits, so the action leads to
+the place that holds its own output. **The workspace is not a sixth destination** — it is reached
+from the Create action and from Settings, which keeps the five intact.
+
 ## Why Create is an action, not a place
 
 Create is not a destination — nobody goes to Create, they go to Create *something*, and then leave.

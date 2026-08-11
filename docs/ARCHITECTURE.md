@@ -66,6 +66,8 @@ user ──┬── agent ── mandate ── mandate_audit
 | `agent` | the acting agent, `api_token`, `skills` | `name` is an **Instagram-style handle** (see below), **`UNIQUE INDEX` on `lower(trim(name))`** |
 | `mandate` | what the agent may do: floor, ceiling, scope, quantity, window, counterparty tier | superseded, never edited — receipts point at a mandate and it must keep meaning what it meant |
 | `order` | the deal: terms, status, both agents | state machine in `shared/order-states.mjs` |
+| `draft` | unfinished posts and requests | a draft ORDER is not here — the order table has a `drafted` state, and two homes would disagree |
+| `watch` | a saved search + `last_seen_at` | "3 new" is **derived** by counting since you last looked, never stored |
 | `mandate_audit` | every guard decision, allowed or refused | the record of what the agent was *stopped* from doing |
 | `proposal` | what the agent asked the principal to authorise | `pending → approved / refused / invalidated` |
 | `anchor` | trade licence, GSTIN, vouch… with `status` and `expires_at` | tier is derived from these |
@@ -152,6 +154,8 @@ machine, the check skips rather than failing — the copy is still authoritative
 | `POST /api/mandate` | set what the agent may do; supersedes rather than edits |
 | `POST /api/orders/transition` | a **principal** moves their own order (see below) |
 | `GET /api/profile` | everything the You screen shows, in one call |
+| `GET /api/workspace` | drafts, watches with unread counts, agent notes |
+| `POST /api/drafts` · `/api/watch` | save a draft; watch a commodity |
 | `POST /api/account/kind` | switch between individual and registered business |
 | `GET /api/orders` | your orders, either side |
 | `GET /api/receipts` | your chain, **with its verification** |
@@ -188,6 +192,7 @@ provider's webhook replaces it.
 | `/app/space/:id` | `Thread.jsx` | |
 | `/app/account` | `You.jsx` | **You** — standing, agent, anchors, receipt chain |
 | `/app/account/signin` | `Account.jsx` | set or change password |
+| `/app/workspace` | `Workspace.jsx` | drafts, watched commodities, agent notes — where **＋ Create** goes |
 | `/app/settings` | `Settings.jsx` | Settings and activity — one grouped list |
 | `/app/settings/privacy` | `Settings.jsx` | what is stored, and what cannot be deleted |
 | `/app/mandate` | `Mandate.jsx` | what the agent may do — **not** part of sign-up |
