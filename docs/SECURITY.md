@@ -219,6 +219,25 @@ from our own origin runs with our origin's privileges — an uploaded SVG is sto
 friendly extension. Serving adds `nosniff`, so a browser cannot decide a file is HTML whatever we
 labelled it, and only images and video are `inline`; everything else downloads.
 
+### View-in-app, and what that does and does not mean
+
+Media is served `Content-Disposition: inline` for every type including documents, documents open in
+an in-app reader rather than a new tab, images and video carry no save affordance, and signed links
+last **ten minutes** with `no-store`.
+
+**This removes the affordance. It is not a lock, and must never be described as one.** Bytes a
+browser renders are on that device: a screenshot, a screen recording, or the network tab will always
+get them. No header changes that, and Instagram does not prevent it either.
+
+What it honestly achieves: nothing offers to save, nothing lands in a Downloads folder, no file
+opens outside the app in the browser's own viewer with its own download button, and a URL copied
+out of the network tab stops working before it is useful to anyone. That is the line between casual
+copying and deliberate effort — worth drawing, and worth describing accurately.
+
+If content ever needs to be traceable when it leaks, the answer is **watermarking with the viewer's
+handle**, not stronger headers. That makes a leak attributable, which is the only thing that
+actually deters one.
+
 **A user's filename never reaches the filesystem.** Files are stored under a generated id and the
 original name is a column, which makes path traversal a class of bug that cannot occur rather than
 one to remember to prevent.

@@ -10,6 +10,18 @@ Last reviewed: 2026-08-10 · registration is OPEN · 1 real user
 
 
 
+## LOW — "view only" is an affordance, not a lock
+
+Media is inline-only, opens in an in-app reader, has no save affordance, and its signed URL lasts
+ten minutes. **A determined person can still keep a copy** — screenshot, screen recording, or the
+network tab within the link's life. This is true of every platform including Instagram, and the
+product should never claim otherwise.
+
+If attribution matters more than prevention, watermark the viewer's handle onto images at serve
+time. That makes a leak traceable, which deters where a header cannot.
+
+---
+
 ## MEDIUM — media lives on the Fly volume, which is ~900MB
 
 Fine for photographs and documents in a pilot. **Wrong for video at any real scale**: twenty-odd

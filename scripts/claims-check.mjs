@@ -103,6 +103,16 @@ const CLAIMS = [
     fix: 'billing code exists in the repo — check the claim still holds',
   },
   {
+    id: 'download-proof',
+    // Added after making media view-only: the temptation to write "cannot be downloaded" is
+    // exactly the overclaiming the rest of this list exists to stop. Bytes a browser renders are
+    // on that device.
+    pattern: /(cannot|can't|impossible to) (be )?(download|save|cop(y|ied))|download[- ]proof|screenshot[- ]proof/i,
+    holds: () => false,
+    why: 'view-only removes the affordance; it cannot prevent a screenshot or the network tab',
+    fix: 'say "viewed in the app" or "not downloadable from here" — never that copying is impossible',
+  },
+  {
     id: 'custody',
     pattern: /\bwallet\b|we hold your (?:funds|money)|held in escrow by us/i,
     holds: () => false,

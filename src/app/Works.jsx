@@ -26,6 +26,13 @@ export const KINDS = [
     empty: 'Documents others can read — and, if you allow it, build on.' },
 ];
 
+/** Plain-text and markdown read in place; a PDF is handed to the browser's embedded viewer. */
+function Text({ url }) {
+  const [body, setBody] = useState('Loading…');
+  useEffect(() => { fetch(url).then((r) => r.text()).then(setBody).catch(() => setBody('Could not open this.')); }, [url]);
+  return <pre className="doc-text">{body}</pre>;
+}
+
 export default function Works({ userId, own }) {
   const [kind, setKind] = useState('photo');
   const [works, setWorks] = useState(null);
@@ -33,6 +40,7 @@ export default function Works({ userId, own }) {
   const [error, setError] = useState('');
   const [text, setText] = useState({ title: '', body: '' });
   const fileRef = useRef(null);
+  const [viewing, setViewing] = useState(null);
 
   const spec = KINDS.find((k) => k.id === kind);
 
@@ -77,6 +85,22 @@ export default function Works({ userId, own }) {
 
   return (
     <div className="wk">
+      {/* The document reader. Documents open here rather than in a new tab, because a new tab is
+          the browser's file viewer with its own download button — outside the app and outside any
+          decision we make about it. */}
+      {viewing && (
+        <div className="sheet-back" onClick={() => setViewing(null)}>
+          <div className="doc-view" onClick={(e) => e.stopPropagation()}>
+            <header>
+              <span>{decodeURIComponent(viewing.filename || 'Document')}</span>
+              <button className="app-link" onClick={() => setViewing(null)}>Close</button>
+            </header>
+            {viewing.mime === 'application/pdf'
+              ? <iframe title="Document" src={`${viewing.url}#toolbar=0&navpanes=0`} />
+              : <Text url={viewing.url} />}
+          </div>
+        </div>
+      )}
       <nav className="you-tabs" aria-label="What you have published">
         {KINDS.map((k) => (
           <button key={k.id} className={kind === k.id ? 'on' : ''} onClick={() => setKind(k.id)}>
@@ -118,12 +142,15 @@ export default function Works({ userId, own }) {
           <article key={w.id} className="wk-item">
             {w.kind === 'photo' && w.media[0] && (
               <div className="wk-shot">
-                <img src={w.media[0].url} alt={w.title} loading="lazy" />
+                <img src={w.media[0].url} alt={w.title} loading="lazy" draggable={false}
+                     onContextMenu={(e) => e.preventDefault()} />
                 {w.media.length > 1 && <span className="wk-count">{w.media.length}</span>}
               </div>
             )}
             {w.kind === 'video' && w.media[0] && (
-              <video src={w.media[0].url} controls preload="metadata" />
+              <video src={w.media[0].url} controls preload="metadata"
+                     controlsList="nodownload" disablePictureInPicture
+                     onContextMenu={(e) => e.preventDefault()} />
             )}
             {w.kind === 'thread' && (
               <div className="wk-thread">
@@ -131,11 +158,13 @@ export default function Works({ userId, own }) {
                 <p>{w.body}</p>
               </div>
             )}
+            {/* Opened in place rather than linked. A link is a download waiting to happen — the
+                browser offers to save it, and the file leaves the platform. */}
             {w.kind === 'doc' && w.media.map((m) => (
-              <a key={m.id} className="wk-file" href={m.url}>
+              <button key={m.id} className="wk-file" onClick={() => setViewing(m)}>
                 {decodeURIComponent(m.filename || 'file')}
                 <span className="app-meta">{Math.round(m.bytes / 1024)} KB</span>
-              </a>
+              </button>
             ))}
 
             <div className="wk-foot">

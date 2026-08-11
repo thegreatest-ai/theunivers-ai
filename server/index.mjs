@@ -985,7 +985,13 @@ route('GET', '/api/agent/projects', (ctx) => {
  * grants exactly one file for a bounded time and cannot be edited into a link for another. It
  * confers no other authority — it is not a session, and losing one loses nothing else.
  */
-const MEDIA_TTL_MS = 24 * 3600 * 1000;
+/*
+ * Short, because a signed URL is the one thing that leaves the app. Twenty-four hours was a
+ * caching decision; ten minutes is a viewing decision. A URL copied out of the network tab stops
+ * working before it is useful to anyone, which is the difference between casual copying and
+ * deliberate effort.
+ */
+const MEDIA_TTL_MS = 10 * 60 * 1000;
 
 function signMedia(id, exp) {
   return createHmac('sha256', process.env.OAUTH_STATE_SECRET ?? 'dev-only-secret')
@@ -1092,11 +1098,18 @@ route('GET', '/api/media/:id', (ctx) => {
       'content-type': m.mime,
       'content-length': String(bytes.length),
       'x-content-type-options': 'nosniff',
-      'content-disposition':
-        (m.kind === 'image' || m.kind === 'video')
-          ? 'inline'
-          : `attachment; filename="${(m.filename || 'file').replace(/[^\w.\-]/g, '_')}"`,
-      'cache-control': 'private, max-age=86400',
+      /*
+       * ALWAYS inline, never attachment — including documents. `attachment` tells the browser to
+       * save the file, which is precisely the behaviour being removed: content is viewed in the
+       * platform, not collected from it.
+       *
+       * This is a product decision, not a security control. Bytes a browser renders are on that
+       * device, and no header changes that. What it removes is the AFFORDANCE — nothing offers to
+       * save it, nothing lands in Downloads, and a copied URL expires in ten minutes.
+       */
+      'content-disposition': 'inline',
+      // no-store, so a viewed file is not left sitting in the browser cache after the link dies.
+      'cache-control': 'private, no-store',
     },
   };
 });
