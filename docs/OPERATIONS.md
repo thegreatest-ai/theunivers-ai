@@ -38,9 +38,21 @@ the Pay-As-You-Go plan. This account does not qualify, so everything is metered.
 | Egress from `bom` | $0.12/GB | ~$0 | ~$2.50 |
 | | | **≈ $3.60/mo** | **≈ $9/mo** |
 
-The egress estimate is built from the real bundle: ~335KB gzipped JS plus ~2MB of images
-(`nebula.jpg` 932K, `neural.jpg` 884K), so ~2.4MB per first-time visitor, plus roughly 9GB/month
-of the 4-second polling described in KNOWN-ISSUES.
+The egress estimate is built from the real bundle, measured by `npm run perf` rather than read off
+the build output — see `docs/design/PERFORMANCE.md` for the method.
+
+| First visit | Bytes on the wire |
+|---|---|
+| `/` marketing — HTML, JS, CSS, favicon | 295KB |
+| `/` including `nebula.jpg` + `neural.jpg` | 2.06MB |
+| `/app` — HTML, JS, CSS, favicon | 64KB |
+| a return visit to either, unchanged | ~1KB of 304s |
+
+Two earlier versions of this paragraph were wrong in ways worth remembering. It quoted "~335KB
+gzipped JS", which was the figure `vite build` prints for a server that compresses; ours did not,
+and shipped 1228KB. And it added "roughly 9GB/month of 4-second polling", which the SSE work in
+KNOWN-ISSUES had already removed. A cost model assembled from build logs and stale notes reported
+a third of the real first-visit bytes and invented a line item that no longer existed.
 
 **Two levers, both worth pulling before launch:**
 

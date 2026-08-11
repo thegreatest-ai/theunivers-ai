@@ -56,8 +56,22 @@ export function flush() {
 
 const timer = setInterval(flush, FLUSH_MS);
 timer.unref?.();                                  // never hold the process open for a counter
-for (const sig of ['SIGINT', 'SIGTERM', 'beforeExit']) {
-  process.once(sig, () => { try { flush(); } catch { /* shutting down anyway */ } });
+/*
+ * `beforeExit` only has to flush. A SIGNAL has to flush AND THEN EXIT: registering a listener for
+ * SIGINT or SIGTERM REPLACES node's default terminate behaviour, so a handler that returns without
+ * exiting leaves the process running and the signal silently ignored.
+ *
+ * That is what this did. Verified by spawning the server and signalling it: with the old handler
+ * it answered /api/health, took SIGTERM, and was still serving three seconds later. `fly deploy`
+ * and `fly apps restart` send exactly SIGTERM, wait out the grace period and then SIGKILL — so
+ * every restart was a forced kill, and the flush this handler exists for never ran.
+ */
+process.once('beforeExit', () => { try { flush(); } catch { /* shutting down anyway */ } });
+for (const sig of ['SIGINT', 'SIGTERM']) {
+  process.once(sig, () => {
+    try { flush(); } catch { /* shutting down anyway */ }
+    process.exit(0);
+  });
 }
 
 /**

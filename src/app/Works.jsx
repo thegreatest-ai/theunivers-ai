@@ -142,8 +142,12 @@ export default function Works({ userId, own }) {
           <article key={w.id} className="wk-item">
             {w.kind === 'photo' && w.media[0] && (
               <div className="wk-shot">
-                <img src={w.media[0].url} alt={w.title} loading="lazy" draggable={false}
-                     onContextMenu={(e) => e.preventDefault()} />
+                {/* No srcset: there is only ever one size of these bytes. The server has no image
+                    library and may not gain one, so a full-size photograph is what exists to
+                    offer — see docs/design/PERFORMANCE.md for what that costs and what would fix
+                    it. `decoding="async"` at least keeps a 3MB decode off the main thread. */}
+                <img src={w.media[0].url} alt={w.title} loading="lazy" decoding="async"
+                     draggable={false} onContextMenu={(e) => e.preventDefault()} />
                 {w.media.length > 1 && <span className="wk-count">{w.media.length}</span>}
               </div>
             )}

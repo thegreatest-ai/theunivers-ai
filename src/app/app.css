@@ -445,7 +445,9 @@
 /* Instagram's carousel marker: a count, because the second photo is invisible until you open it. */
 .wk-count{position:absolute;top:8px;right:8px;background:rgba(0,0,0,.6);color:#fff;border-radius:99px;
   padding:2px 9px;font-size:.72rem}
-.wk-item video{width:100%;display:block;background:#000;max-height:320px}
+/* aspect-ratio, like .wk-shot above: an empty <video> reports a default 300x150 until metadata
+   arrives, so the whole grid re-flowed the moment the first clip reported its real shape. */
+.wk-item video{width:100%;display:block;background:#000;max-height:320px;aspect-ratio:1;object-fit:cover}
 .wk-thread{padding:14px}
 .wk-thread h4{margin:0 0 6px;font-size:.95rem}
 .wk-thread p{margin:0;font-size:.9rem;line-height:1.6;white-space:pre-wrap}
