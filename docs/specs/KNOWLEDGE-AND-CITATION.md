@@ -1,6 +1,6 @@
 # Knowledge and citation — specification
 
-**Status:** draft · nothing built · **one decision blocks everything** (§3)
+**Status:** draft · §3 resolved · build order in §9
 **Covers:** people publishing to their own profile, agents reading it to build something, and the
 standing a creator earns from being used.
 
@@ -45,60 +45,70 @@ applied to knowledge instead of goods.
 
 ---
 
-## 3. THE DECISION THAT BLOCKS EVERYTHING
+## 3. RESOLVED — sharing is the consent event
 
-**Does an agent ingest content, or reference it?**
+The earlier draft of this section asked whether agents should *ingest* content or merely
+*reference* it, and called it a blocking decision. **The question dissolves once the flow is
+user-initiated**, which is how it should have been read the first time:
 
-This is the knowledge-side equivalent of the payment boundary. It looks like an implementation
-detail and it is the legal perimeter.
+> *"When I find something useful on Instagram I download it and share it to Telegram. Why can I not
+> find something useful in the app and share it to my agent?"*
 
-### Option A — consented corpus (recommended)
+That is not a platform harvesting a corpus. It is one person choosing one item, the way they
+already save a post — and choosing is what makes it lawful, consensual and meaningful all at once:
 
-Agents read **only content published on this platform**, by people who agreed at publication that
-their work may be read, analysed and cited. External links are *referenced by URL*, never fetched,
-never transcribed, never summarised.
+- **Lawful.** No crawling, no bulk fetch, no terms-of-service problem. A person exercising their
+  own access to something already shown to them.
+- **Consensual.** Publishing to a profile on this platform carries permission to be *shared into
+  someone's project*, in the same way a post carries permission to be saved.
+- **Meaningful as a signal.** Nobody files rubbish into their own research. A share is a far
+  stronger statement than a like, precisely because it costs attention rather than a tap.
 
-- Copyright position is clean: the creator granted the licence, and the grant is on the record.
-- The corpus becomes an asset that only exists here, which is exactly the reason to publish here.
-- Creators can withdraw consent, and the withdrawal is meaningful because we hold the content.
+**Neither option A nor B. The corpus is what people deliberately share, one item at a time.**
 
-### Option B — open scraping
-
-Agents fetch and transcribe from Instagram, YouTube, X and elsewhere.
-
-- Breaches those platforms' terms of service, essentially all of them.
-- Transcribing a video and republishing the substance is a derivative-work question with no
-  comfortable answer, in the UAE, India or the US.
-- The creator never agreed and cannot withdraw.
-- It also destroys the strategic point: if agents can read everything everywhere, there is no
-  reason for anyone to publish here.
-
-**Recommendation: A, without hedging.** Option B is a lawsuit that also removes the reason the
-product exists. If a user wants external material considered, they may paste it themselves — a
-person quoting a source to their own agent is a different act from a platform harvesting at scale.
-
-**Nothing below should be built until this is settled**, because A and B produce different tables:
-A stores content and a consent record; B stores fetch logs and a takedown queue.
-
----
+External links are still referenced by URL rather than fetched — a person may paste something they
+have themselves, but the platform does not go and get it.
 
 ## 4. The objects
 
-Assuming Option A.
-
 | Object | Holds |
 |---|---|
-| `work` | something published to a profile: kind (video, image, carousel, text), body or media reference, `licence` (how it may be used), `created_at` |
-| `brief` | what a person asked their agent to build — the request in their own words |
-| `doc` | what the agent produced: sections, and a citation for every claim that came from somewhere |
-| `citation` | `doc` → `work`, with the passage or timestamp used, and **what it was used for** |
+| `project` | a subject you are working on. Created as "Project 1", renamed to whatever it turns out to be — "Jarvis", "building an app". Renameable because you rarely know what a line of research is until you are some way into it. |
+| `note` | a file inside a project — *"how to build Jarvis"*. Holds the analysis. **Movable between projects**, because today's Jarvis search and tomorrow's app search sort themselves out only in hindsight. |
+| `source` | what was shared: the post, its author, and the passage used. One row per share, so a note's provenance is a list rather than a paragraph. |
+| `citation` | what an AGENT actually used while producing a note. **Not the same as a share.** |
+| `view` | distinct viewers, split into `person` and `agent`. |
+
+### Read, shared, cited — three different claims
+
+They are a ladder of increasing commitment and must never be collapsed into one number, because
+only the top of it means anything:
+
+| | What it says | Who does it |
+|---|---|---|
+| **viewed** | somebody looked | a person, or an agent scanning |
+| **shared** | somebody filed it into their own project | a person, deliberately |
+| **cited** | somebody's agent **built on it** | the agent, while producing |
+
+A share is you collecting; a citation is your agent using. Plenty is shared and never used — and
+counting a share as a citation would make the number mean "bookmarked" while claiming it means
+"built on". That is the overclaiming this codebase refuses everywhere else.
+
+Views are split because an agent may machine-read a hundred posts to use one; merged, a post
+scanned by one agent would look as popular as one read by fifty people. A view is also a DISTINCT
+VIEWER, not a page load — a counter that rises when you scroll past twice is a vanity metric, and
+the argument of this whole product is against numbers that can be manufactured.
+
+The hierarchy is deliberately shallow: **project → note → sources**. Anything deeper is filing
+rather than thinking, and a research tool that demands filing gets abandoned.
 
 **A citation records what was taken, not merely that something was.** "Used `work_3f` at 04:12 for
 the entry-signal rule" is checkable by the creator. "Cited `work_3f`" is not, and an uncheckable
 citation is a number, not evidence.
 
-`licence` on a work is explicit and per-item, because a person may be glad to have a tutorial cited
-and unwilling to have a family photograph analysed at all.
+A person may still mark a work as not-for-sharing — glad to have a tutorial used, unwilling to have
+a family photograph filed into a stranger's research. That is a per-item setting on the work, not a
+global policy.
 
 ---
 

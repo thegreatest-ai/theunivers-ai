@@ -214,6 +214,113 @@ ensureColumn('user', 'profession', 'profession TEXT');
  * says free and the insert says taken, which reads as a random unexplainable failure.
  */
 /**
+ * Projects — where shared things land and turn into something.
+ *
+ * project → note → source. Shallow on purpose: anything deeper is filing rather than thinking, and
+ * a research tool that demands filing gets abandoned.
+ *
+ * A note is MOVABLE between projects (`project_id` is a plain column, updated by a move). Today's
+ * search about one subject and tomorrow's about another only sort themselves out in hindsight, so
+ * the structure has to tolerate being reorganised after the fact rather than demanding to be right
+ * up front.
+ *
+ * `source` is one row per shared item, not a paragraph of prose, so provenance is a LIST that can
+ * be counted, followed and challenged. It records WHAT WAS TAKEN — the passage used — because
+ * "cited this post" is unverifiable and "used this passage for the entry-signal rule" can be
+ * checked by the person who wrote it.
+ */
+db.exec(`
+  CREATE TABLE IF NOT EXISTS project (
+    id         TEXT PRIMARY KEY,
+    user_id    TEXT NOT NULL REFERENCES user(id),
+    name       TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS project_user_idx ON project(user_id, updated_at);
+
+  CREATE TABLE IF NOT EXISTS note (
+    id         TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES project(id),
+    user_id    TEXT NOT NULL REFERENCES user(id),
+    title      TEXT NOT NULL,
+    body       TEXT NOT NULL DEFAULT '',
+    status     TEXT NOT NULL DEFAULT 'captured'
+               CHECK (status IN ('captured','analysed','failed')),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS note_project_idx ON note(project_id, updated_at);
+
+  CREATE TABLE IF NOT EXISTS source (
+    id          TEXT PRIMARY KEY,
+    note_id     TEXT NOT NULL REFERENCES note(id),
+    user_id     TEXT NOT NULL REFERENCES user(id),
+    post_id     TEXT,
+    author_id   TEXT,
+    title       TEXT NOT NULL DEFAULT '',
+    excerpt     TEXT NOT NULL DEFAULT '',
+    used_for    TEXT NOT NULL DEFAULT '',
+    url         TEXT,
+    created_at  TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS source_note_idx   ON source(note_id);
+  CREATE INDEX IF NOT EXISTS source_author_idx ON source(author_id);
+
+  /*
+   * A CITATION IS NOT A SHARE, and the two must not be one table.
+   *
+   *   share     a PERSON files something into a project. An act of collecting. Input.
+   *   citation  an AGENT used that thing while producing something. An act of building. Output.
+   *
+   * Plenty of material gets shared and never used, and counting a share as a citation would make
+   * the number mean "somebody bookmarked this" while claiming it means "somebody built on this".
+   * That is the same overclaiming this codebase refuses in receipts: record what happened, not what
+   * it suggests.
+   *
+   * used_for is the passage or purpose the agent actually took, which is what makes a citation
+   * checkable by the creator — and therefore challengeable. "Cited this post" cannot be disputed;
+   * "used your entry-signal rule at 04:12" can.
+   */
+  CREATE TABLE IF NOT EXISTS citation (
+    id         TEXT PRIMARY KEY,
+    note_id    TEXT NOT NULL REFERENCES note(id),
+    source_id  TEXT NOT NULL REFERENCES source(id),
+    user_id    TEXT NOT NULL REFERENCES user(id),   -- whose agent cited it
+    post_id    TEXT,
+    author_id  TEXT,                                -- who earns the count
+    used_for   TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS citation_post_idx   ON citation(post_id);
+  CREATE INDEX IF NOT EXISTS citation_author_idx ON citation(author_id);
+
+  /*
+   * Views, counted separately for a PERSON and for an AGENT, because they are not the same claim.
+   *
+   *   a person viewed it   somebody looked. Weak, but it is attention.
+   *   an agent viewed it   something machine-read it while working. Weaker still — an agent may
+   *                        read a hundred posts to use one, and reading is not endorsement.
+   *
+   * Kept apart so neither can be passed off as the other. Merged into one number, a post read by
+   * one agent scanning the feed would look as popular as one read by fifty people.
+   *
+   * UNIQUE on (post_id, viewer_id, kind) makes a view a DISTINCT VIEWER, not a page load. A
+   * refresh-inflated counter is a vanity metric, and this product's whole argument is against
+   * numbers that can be manufactured.
+   */
+  CREATE TABLE IF NOT EXISTS view (
+    id         TEXT PRIMARY KEY,
+    post_id    TEXT NOT NULL,
+    viewer_id  TEXT NOT NULL,
+    kind       TEXT NOT NULL CHECK (kind IN ('person','agent')),
+    created_at TEXT NOT NULL,
+    UNIQUE (post_id, viewer_id, kind)
+  );
+  CREATE INDEX IF NOT EXISTS view_post_idx ON view(post_id, kind);
+`);
+
+/**
  * Workspace — what you and your agent have in progress.
  *
  * `draft` holds things that are NOT yet real: a post nobody can see, a request not yet sent. A

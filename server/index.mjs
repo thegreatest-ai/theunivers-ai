@@ -698,6 +698,249 @@ route('POST', '/api/account/kind', (ctx) => {
  * Everything in progress, in one call — drafts, saved searches with their unread counts, and
  * whatever the agent has said unprompted.
  */
+/**
+ * ── Projects ─────────────────────────────────────────────────────────────────────────────
+ * You find something useful, share it to your agent, and it lands in a project as a note with its
+ * sources attached. See docs/specs/KNOWLEDGE-AND-CITATION.md.
+ */
+
+/**
+ * How many DISTINCT people's agents have CITED this post — not how many shared it.
+ *
+ * Distinct, so filing the same thing ten times is one voice. Reading `citation` and not `source`
+ * on purpose: a share is somebody collecting, a citation is somebody's agent having built on it,
+ * and only the second is evidence the work was useful. Until an agent analyses a note, this is
+ * legitimately zero — which is the honest number, not a missing feature.
+ */
+const citedCount = (postId) =>
+  // `author_id IS NOT NULL` is what excludes self-citation. A self-cite is still WRITTEN, so a
+  // note's provenance stays complete, but its author is nulled — and without this clause the row
+  // was counted anyway, because it still carries a post_id. Caught by a test that cited its own
+  // post and watched the number go from 1 to 2.
+  one(`SELECT COUNT(DISTINCT user_id) c FROM citation
+       WHERE post_id = ? AND author_id IS NOT NULL`, postId)?.c ?? 0;
+
+/**
+ * Distinct viewers, split by what did the viewing. Never summed into one number: an agent
+ * machine-reading a feed is not the same event as a person stopping to read.
+ */
+const viewCounts = (postId) => ({
+  people: one("SELECT COUNT(*) c FROM view WHERE post_id = ? AND kind = 'person'", postId)?.c ?? 0,
+  agents: one("SELECT COUNT(*) c FROM view WHERE post_id = ? AND kind = 'agent'", postId)?.c ?? 0,
+});
+
+/** Everything a creator has been cited for, for their profile. */
+const citedTotal = (authorId) =>
+  one('SELECT COUNT(DISTINCT user_id) c FROM citation WHERE author_id = ?', authorId)?.c ?? 0;
+
+/**
+ * Share something into a project.
+ *
+ * Creates the project if none was named — "Project 1", "Project 2" — because being asked to name a
+ * thing before you know what it is stops the share. Renaming is one tap later, when you do know.
+ *
+ * THE ANALYSIS IS NOT DONE HERE. The note is stored as `captured` with the source attached, and a
+ * model turns it into something later. Saying "analysed" now would be the overclaiming this
+ * codebase refuses everywhere else: the status says exactly what has happened, which is that the
+ * material was kept.
+ */
+/**
+ * Record that something was seen.
+ *
+ * INSERT OR IGNORE against a UNIQUE (post, viewer, kind), so a refresh cannot inflate it and the
+ * client may call it freely. A counter that goes up when you scroll past twice is a vanity metric,
+ * and this product argues against numbers that can be manufactured.
+ *
+ * The kind is derived from the credential presented, never from the request body — otherwise a
+ * caller could claim fifty people read something by saying so.
+ */
+route('POST', '/api/views', (ctx) => {
+  const viewer = ctx.user?.id ?? ctx.agent?.id;
+  if (!viewer) return err(401, 'auth required');
+  const kind = ctx.user ? 'person' : 'agent';
+  const ids = (Array.isArray(ctx.body.posts) ? ctx.body.posts : [ctx.body.post])
+    .filter(Boolean).map(String).slice(0, 50);
+
+  for (const postId of ids) {
+    try {
+      run(`INSERT OR IGNORE INTO view (id, post_id, viewer_id, kind, created_at)
+           VALUES (?, ?, ?, ?, ?)`,
+          `viw_${randomUUID().slice(0, 8)}`, postId, viewer, kind, now());
+    } catch { /* a view is never worth failing a request over */ }
+  }
+  return { ok: true, counted: ids.length };
+});
+
+route('POST', '/api/projects/share', (ctx) => {
+  const user = ctx.user;
+  if (!user) return err(401, 'sign in required');
+
+  const postId = String(ctx.body.postId ?? '').trim();
+  const post = postId ? one('SELECT * FROM post WHERE id = ?', postId) : null;
+  const url = String(ctx.body.url ?? '').trim();
+  if (!post && !url) return err(400, 'nothing to share');
+
+  // Project: named, chosen, or created.
+  let projectId = String(ctx.body.projectId ?? '').trim();
+  let project = projectId ? one('SELECT * FROM project WHERE id = ? AND user_id = ?', projectId, user.id) : null;
+  if (!project) {
+    const n = (one('SELECT COUNT(*) c FROM project WHERE user_id = ?', user.id)?.c ?? 0) + 1;
+    projectId = `prj_${randomUUID().slice(0, 8)}`;
+    run('INSERT INTO project (id, user_id, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+        projectId, user.id, String(ctx.body.projectName ?? `Project ${n}`), now(), now());
+    project = one('SELECT * FROM project WHERE id = ?', projectId);
+  }
+
+  // Note: append to the one named, or start a new file.
+  let noteId = String(ctx.body.noteId ?? '').trim();
+  let note = noteId ? one('SELECT * FROM note WHERE id = ? AND user_id = ?', noteId, user.id) : null;
+  if (!note) {
+    noteId = `not_${randomUUID().slice(0, 8)}`;
+    run(`INSERT INTO note (id, project_id, user_id, title, body, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, '', 'captured', ?, ?)`,
+        noteId, projectId, user.id,
+        String(ctx.body.noteTitle ?? post?.title ?? 'Untitled note').slice(0, 160), now(), now());
+    note = one('SELECT * FROM note WHERE id = ?', noteId);
+  }
+
+  run(`INSERT INTO source (id, note_id, user_id, post_id, author_id, title, excerpt, used_for, url, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `src_${randomUUID().slice(0, 8)}`, noteId, user.id,
+      post?.id ?? null, post?.user_id ?? null,
+      String(post?.title ?? ctx.body.title ?? '').slice(0, 200),
+      String(post?.body ?? '').slice(0, 2000),
+      String(ctx.body.usedFor ?? '').slice(0, 200),
+      url || null, now());
+
+  run('UPDATE note SET updated_at = ? WHERE id = ?', now(), noteId);
+  run('UPDATE project SET updated_at = ? WHERE id = ?', now(), projectId);
+  publish(user.id, 'project', { project: projectId, note: noteId });
+
+  return { project: { id: projectId, name: project.name }, note: { id: noteId, title: note.title } };
+});
+
+/**
+ * An agent records what it used while producing a note.
+ *
+ * This is the act that earns a creator their count. Deliberately separate from sharing, and
+ * deliberately the agent's call rather than the person's: a citation asserts "I built on this",
+ * which only whatever did the building can honestly say.
+ */
+route('POST', '/api/agent/cite', (ctx) => {
+  const agent = ctx.agent;
+  if (!agent) return err(401, 'agent token required');
+
+  const noteId = String(ctx.body.note ?? '');
+  const note = one('SELECT * FROM note WHERE id = ? AND user_id = ?', noteId, agent.user_id);
+  if (!note) return err(404, 'no such note');
+
+  const used = Array.isArray(ctx.body.used) ? ctx.body.used : [];
+  const written = [];
+  for (const u of used) {
+    const src = one('SELECT * FROM source WHERE id = ? AND note_id = ?', String(u.source ?? ''), noteId);
+    if (!src) continue;
+    // Self-citation earns nothing. Recorded, so the note's provenance is complete, but the author
+    // is left null so it cannot raise their own count.
+    const selfCite = src.author_id === agent.user_id;
+    const id = `cit_${randomUUID().slice(0, 8)}`;
+    run(`INSERT INTO citation (id, note_id, source_id, user_id, post_id, author_id, used_for, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        id, noteId, src.id, agent.user_id, src.post_id,
+        selfCite ? null : src.author_id,
+        String(u.usedFor ?? '').slice(0, 200), now());
+    written.push(id);
+  }
+
+  if (ctx.body.body != null) {
+    run("UPDATE note SET body = ?, status = 'analysed', updated_at = ? WHERE id = ?",
+        String(ctx.body.body), now(), noteId);
+  }
+  publish(agent.user_id, 'project', { note: noteId });
+  return { citations: written.length, note: noteId };
+});
+
+route('GET', '/api/projects', (ctx) => {
+  const user = ctx.user;
+  if (!user) return err(401, 'sign in required');
+  const projects = all(
+    'SELECT * FROM project WHERE user_id = ? ORDER BY updated_at DESC', user.id);
+  return {
+    projects: projects.map((p) => ({
+      id: p.id, name: p.name, updatedAt: p.updated_at,
+      notes: all('SELECT id, title, status, updated_at FROM note WHERE project_id = ? ORDER BY updated_at DESC', p.id)
+        .map((n) => ({
+          ...n,
+          sources: one('SELECT COUNT(*) c FROM source WHERE note_id = ?', n.id)?.c ?? 0,
+        })),
+    })),
+  };
+});
+
+route('GET', '/api/projects/:id', (ctx) => {
+  const user = ctx.user;
+  if (!user) return err(401, 'sign in required');
+  const p = one('SELECT * FROM project WHERE id = ? AND user_id = ?', ctx.params.id, user.id);
+  if (!p) return err(404, 'no such project');
+  const notes = all('SELECT * FROM note WHERE project_id = ? ORDER BY updated_at DESC', p.id)
+    .map((n) => ({
+      id: n.id, title: n.title, body: n.body, status: n.status, updatedAt: n.updated_at,
+      sources: all('SELECT * FROM source WHERE note_id = ? ORDER BY created_at', n.id),
+    }));
+  return { project: { id: p.id, name: p.name }, notes };
+});
+
+route('POST', '/api/projects/rename', (ctx) => {
+  const user = ctx.user;
+  if (!user) return err(401, 'sign in required');
+  const name = String(ctx.body.name ?? '').trim().slice(0, 80);
+  if (!name) return err(400, 'a name is required');
+  run('UPDATE project SET name = ?, updated_at = ? WHERE id = ? AND user_id = ?',
+      name, now(), String(ctx.body.id ?? ''), user.id);
+  return { ok: true, name };
+});
+
+/**
+ * Move a note to another project.
+ *
+ * The reason the whole structure is shallow: a line of research reveals what it was only after you
+ * have been at it a while, so re-filing has to be one action rather than a migration.
+ */
+route('POST', '/api/notes/move', (ctx) => {
+  const user = ctx.user;
+  if (!user) return err(401, 'sign in required');
+  const noteId = String(ctx.body.note ?? '');
+  const to = String(ctx.body.project ?? '');
+  if (!one('SELECT id FROM project WHERE id = ? AND user_id = ?', to, user.id)) {
+    return err(404, 'no such project');
+  }
+  run('UPDATE note SET project_id = ?, updated_at = ? WHERE id = ? AND user_id = ?',
+      to, now(), noteId, user.id);
+  run('UPDATE project SET updated_at = ? WHERE id = ?', now(), to);
+  return { ok: true };
+});
+
+/**
+ * What the DESKTOP agent reads.
+ *
+ * The point of filing something is being able to work on it elsewhere. An agent token already
+ * identifies a principal, so Claude Code or any other client can read the projects it was told to
+ * work on — and nothing else.
+ */
+route('GET', '/api/agent/projects', (ctx) => {
+  const agent = ctx.agent;
+  if (!agent) return err(401, 'agent token required');
+  const projects = all('SELECT * FROM project WHERE user_id = ? ORDER BY updated_at DESC', agent.user_id);
+  return {
+    projects: projects.map((p) => ({
+      id: p.id, name: p.name,
+      notes: all('SELECT id, title, body, status FROM note WHERE project_id = ?', p.id).map((n) => ({
+        ...n,
+        sources: all('SELECT title, excerpt, used_for, url FROM source WHERE note_id = ?', n.id),
+      })),
+    })),
+  };
+});
+
 route('GET', '/api/workspace', (ctx) => {
   const user = ctx.user;
   if (!user) return err(401, 'sign in required');
@@ -1086,6 +1329,10 @@ route('GET', '/api/feed', (ctx) => {
       principal: p.principal_name,
       agent: p.agent_name,
       at: p.created_at,
+      // Three different claims, kept apart. Read → shared → cited is a ladder of increasing
+      // commitment, and collapsing it into one number would throw away the only interesting part.
+      cited: citedCount(p.id),
+      views: viewCounts(p.id),
     })),
   };
 });
