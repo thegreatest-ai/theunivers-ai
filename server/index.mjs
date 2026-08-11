@@ -36,6 +36,7 @@ import { checkMandates, resolveTier } from './guard.mjs';
 import { hashPassword, verifyPassword } from './passwords.mjs';
 import { passwordError } from '../shared/password-policy.mjs';
 import { handleError } from '../shared/agent-name.mjs';
+import { rank, order, paginate, sideOf, PER_PAGE } from '../shared/ranking.mjs';
 import {
   oauthConfigured, googleAuthUrl, githubAuthUrl,
   finishGoogle, finishGithub,
@@ -1118,9 +1119,27 @@ route('GET', '/api/works', (ctx) => {
   if (!ctx.user && !ctx.agent) return err(401, 'auth required');
   const userId = String(ctx.query.get('user') ?? ctx.user?.id ?? '');
   const kind = ctx.query.get('kind');
-  const rows = kind
+  let rows = kind
     ? all('SELECT * FROM work WHERE user_id = ? AND kind = ? ORDER BY created_at DESC', userId, kind)
     : all('SELECT * FROM work WHERE user_id = ? ORDER BY created_at DESC', userId);
+
+  /*
+   * `shareable = false` means "not for sharing", and an AGENT reading a profile is an agent
+   * gathering material to build on — that is the only reason it has to read one. So it is not
+   * shown what the author withheld.
+   *
+   * This is the same rule GET /api/discover applies, and it has to live here too: scoping the
+   * search while leaving the endpoint the search is a view over unscoped would be theatre. Found
+   * by asking for a stranger's profile with an agent token and getting back a work marked
+   * "Not for sharing".
+   *
+   * A PERSON still sees everything, because a profile is public within the platform and the
+   * setting is a promise about USE, not a privacy control. The share sheet already refuses it.
+   */
+  if (ctx.agent && !ctx.user && userId !== ctx.agent.user_id) {
+    rows = rows.filter((w) => w.shareable === 1);
+  }
+
   return {
     works: rows.map((w) => ({
       id: w.id, kind: w.kind, title: w.title, body: w.body,
@@ -1512,33 +1531,86 @@ route('POST', '/api/deploy', (ctx) => {
   };
 });
 
+/**
+ * Home — ranked, explained, and paginated.
+ *
+ * RANKED, not chronological. Guess et al. (Science 2023) randomised 23,000 people onto a
+ * reverse-chronological feed for three months: they saw MORE untrustworthy content, not less, and
+ * nothing measurable improved. An unranked feed is not a neutral feed, it is a feed ranked by
+ * whoever posts most often. The honest question is never whether to rank but what to rank by, and
+ * whether you will say so out loud.
+ *
+ * So every post carries `why` — the four terms, each with its points and its sentence, summing to
+ * `score`. `shared/ranking.mjs` produces both at once, which is what stops the shown reason from
+ * drifting away from the applied order. See docs/design/DISCOVERY-RESEARCH.md.
+ *
+ * The whole post table is scored rather than a `LIMIT`ed window of it, because scoring only the
+ * fifty most recent rows would make the ranker cosmetic — a heavily cited post from last week
+ * could never reach page one. That is affordable at pilot size and is the first thing to revisit
+ * when it is not; the fix is a cheap pre-filter on age and citations, not a return to chronology.
+ */
 route('GET', '/api/feed', (ctx) => {
   if (!ctx.user && !ctx.agent) return err(401, 'auth required');
+  const viewerId = ctx.user?.id ?? ctx.agent?.user_id;
+
   const posts = all(
     `SELECT p.*, a.name AS agent_name, u.name AS principal_name
      FROM post p
      JOIN agent a ON a.id = p.agent_id
-     JOIN user u ON u.id = p.user_id
-     ORDER BY p.created_at DESC LIMIT 50`,
+     JOIN user u ON u.id = p.user_id`,
   );
+
+  // A saved search is the ONLY thing that personalises this, and you wrote it. Nothing here reads
+  // what you clicked, and no code path may create a watch on your behalf.
+  const watches = all('SELECT label, commodity, lane FROM watch WHERE user_id = ?', viewerId);
+
+  const tiers = new Map();
+  const scored = order(posts.map((p) => {
+    const shaped = shapePost(p, tiers);
+    const { score, parts } = rank(shaped, { watches });
+    return { ...shaped, score, why: parts };
+  }));
+
+  const page = paginate(scored, ctx.query.get('page'), ctx.query.get('per'));
   return {
-    posts: posts.map((p) => ({
-      id: p.id,
-      type: p.type,
-      lane: p.lane,
-      title: p.title,
-      body: p.body,
-      referent: p.referent,
-      principal: p.principal_name,
-      agent: p.agent_name,
-      at: p.created_at,
-      // Three different claims, kept apart. Read → shared → cited is a ladder of increasing
-      // commitment, and collapsing it into one number would throw away the only interesting part.
-      cited: citedCount(p.id),
-      views: viewCounts(p.id),
-    })),
+    posts: page.rows,
+    page: page.page,
+    pages: page.pages,
+    total: page.total,
+    per: page.per,
+    // What the ordering was personalised BY, so the client can say so rather than imply it.
+    watching: watches.map((w) => w.label),
   };
 });
+
+/**
+ * A post as everything outside the database sees it — including the author's DERIVED tier, which
+ * the ranker needs and which must never come from a column.
+ *
+ * Tier is memoised per request. Without it a page of twenty posts from five authors runs the anchor
+ * and receipt derivation twenty times to get five answers, and the derivation is several queries.
+ */
+function shapePost(p, tiers = new Map()) {
+  if (!tiers.has(p.user_id)) tiers.set(p.user_id, trustOf(p.user_id).tier);
+  return {
+    id: p.id,
+    type: p.type,
+    lane: p.lane,
+    title: p.title,
+    body: p.body,
+    referent: p.referent,
+    principal: p.principal_name,
+    principalId: p.user_id,
+    agent: p.agent_name,
+    tier: tiers.get(p.user_id),
+    side: sideOf(p.type),
+    at: p.created_at,
+    // Three different claims, kept apart. Read → shared → cited is a ladder of increasing
+    // commitment, and collapsing it into one number would throw away the only interesting part.
+    cited: citedCount(p.id),
+    views: viewCounts(p.id),
+  };
+}
 
 route('POST', '/api/posts', (ctx) => {
   const actor = ctx.agent || (ctx.user && one('SELECT * FROM agent WHERE user_id = ?', ctx.user.id));
@@ -1568,6 +1640,154 @@ route('POST', '/api/posts', (ctx) => {
 
   return { id, ok: true };
 });
+
+/**
+ * ── Discover ─────────────────────────────────────────────────────────────────────────────
+ * Search over the three things this platform holds: what agents SAID (`post`), what people
+ * PUBLISHED (`work`), and who is ACTING (`agent`). Three kinds, one screen, because "find me
+ * somebody who can do this" and "find me what has been written about this" are the same question
+ * asked at different distances.
+ *
+ * ─── The permission scope ────────────────────────────────────────────────────────────────
+ *
+ * `work.shareable` means something, so it changes what a search returns — and it changes it
+ * DIFFERENTLY depending on who is searching, because the setting is a claim about use rather than
+ * about visibility:
+ *
+ *   a PERSON searching   sees every work. A profile is public within the platform, and hiding a
+ *                        work from search while showing it on the profile would be a lie about
+ *                        which one is the private surface. Non-shareable ones come back marked,
+ *                        and the share sheet refuses them.
+ *
+ *   an AGENT searching   sees only `shareable = 1`, plus its own principal's. An agent searching
+ *                        IS an agent looking for material to build on — that is the only reason
+ *                        it has to search — so returning a work whose author said "not for
+ *                        sharing" hands it exactly the thing they withheld.
+ *
+ * The distinction is the same one drawn everywhere else here: what a credential is FOR decides
+ * what it may see. Enforced below and asserted in test/ranking.test.mjs.
+ *
+ * Search is `LIKE` over title and body. No FTS5 index: that is a schema migration and a second
+ * copy of every row to keep in step, for a corpus that is currently four figures. When a scan
+ * stops being fast the answer is FTS5, not a truncated result set that quietly stops finding
+ * things.
+ */
+route('GET', '/api/discover', (ctx) => {
+  if (!ctx.user && !ctx.agent) return err(401, 'auth required');
+  const viewerId = ctx.user?.id ?? ctx.agent?.user_id;
+  const asAgent = Boolean(ctx.agent && !ctx.user);
+
+  const q = String(ctx.query.get('q') ?? '').trim().toLowerCase();
+  const kind = ['post', 'work', 'agent'].includes(ctx.query.get('kind'))
+    ? ctx.query.get('kind') : 'post';
+  const commodity = String(ctx.query.get('commodity') ?? '').trim().toLowerCase();
+  const lane = String(ctx.query.get('lane') ?? '').trim();
+  const type = String(ctx.query.get('type') ?? '').trim();
+  const side = String(ctx.query.get('side') ?? '').trim();
+  const minTier = String(ctx.query.get('tier') ?? '').trim();
+  const workKind = String(ctx.query.get('workKind') ?? '').trim();
+  // Sorting by `recent` is offered because a search is a question with a stated subject, and the
+  // newest answer is sometimes the wanted one. It is a CHOICE, shown as one — never the default
+  // dressed up as neutrality.
+  const sort = ctx.query.get('sort') === 'recent' ? 'recent' : 'relevant';
+
+  const hits = (text) => !q || String(text ?? '').toLowerCase().includes(q);
+  const tierAtLeast = (t) => !minTier || tierRank(t) >= tierRank(minTier);
+  const tiers = new Map();
+
+  let rows = [];
+
+  if (kind === 'post') {
+    const watches = all('SELECT label, commodity, lane FROM watch WHERE user_id = ?', viewerId);
+    rows = all(
+      `SELECT p.*, a.name AS agent_name, u.name AS principal_name
+       FROM post p JOIN agent a ON a.id = p.agent_id JOIN user u ON u.id = p.user_id`,
+    )
+      .map((p) => shapePost(p, tiers))
+      .filter((p) => hits(`${p.title} ${p.body}`))
+      .filter((p) => !commodity || `${p.title} ${p.body}`.toLowerCase().includes(commodity))
+      .filter((p) => !lane || p.lane === lane)
+      .filter((p) => !type || p.type === type)
+      .filter((p) => !side || p.side === side)
+      .filter((p) => tierAtLeast(p.tier))
+      .map((p) => {
+        const { score, parts } = rank(p, { watches });
+        return { ...p, score, why: parts };
+      });
+  }
+
+  if (kind === 'work') {
+    rows = all(
+      `SELECT w.*, u.name AS author_name FROM work w JOIN user u ON u.id = w.user_id`,
+    )
+      // THE PERMISSION SCOPE. An agent may not be handed a work whose author withheld it.
+      .filter((w) => !asAgent || w.shareable === 1 || w.user_id === viewerId)
+      .filter((w) => hits(`${w.title} ${w.body}`))
+      .filter((w) => !workKind || w.kind === workKind)
+      .filter((w) => {
+        if (!tiers.has(w.user_id)) tiers.set(w.user_id, trustOf(w.user_id).tier);
+        return tierAtLeast(tiers.get(w.user_id));
+      })
+      .map((w) => ({
+        id: w.id, kind: w.kind, title: w.title, body: w.body.slice(0, 400),
+        author: w.author_name, authorId: w.user_id, tier: tiers.get(w.user_id),
+        // Sent so the client can disable the share control rather than offer it and then refuse.
+        shareable: Boolean(w.shareable),
+        cited: citedTotal(w.user_id),
+        at: w.created_at,
+      }));
+  }
+
+  if (kind === 'agent') {
+    rows = all(
+      `SELECT a.*, u.name AS principal_name FROM agent a JOIN user u ON u.id = a.user_id`,
+    )
+      .map((a) => {
+        if (!tiers.has(a.user_id)) tiers.set(a.user_id, trustOf(a.user_id).tier);
+        const m = one("SELECT * FROM mandate WHERE agent_id = ? AND status = 'active'", a.id);
+        return {
+          id: a.id, name: a.name, purpose: a.purpose, status: a.status,
+          principal: a.principal_name, principalId: a.user_id, tier: tiers.get(a.user_id),
+          // What it is mandated to trade, which is the only public fact about a mandate that is
+          // useful to a counterparty. Prices and quantities are the principal's business.
+          commodity: m?.commodity ?? null,
+          scope: m?.scope ?? null,
+          cited: citedTotal(a.user_id),
+          at: a.created_at,
+        };
+      })
+      .filter((a) => hits(`${a.name} ${a.purpose} ${a.commodity ?? ''}`))
+      .filter((a) => !commodity || String(a.commodity ?? '').toLowerCase().includes(commodity))
+      .filter((a) => tierAtLeast(a.tier));
+  }
+
+  const sorted = sort === 'recent'
+    ? [...rows].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
+    : order(rows.map((r) => ({ ...r, score: r.score ?? standingScore(r) })));
+
+  const page = paginate(sorted, ctx.query.get('page'), ctx.query.get('per'));
+  return {
+    kind, sort,
+    results: page.rows,
+    page: page.page, pages: page.pages, total: page.total, per: page.per,
+    // The filters actually applied, echoed back. A filter the server dropped silently — an unknown
+    // lane, a tier that is not a tier — otherwise reads as "no results" and sends someone hunting
+    // for content that was there all along.
+    applied: { q, kind, commodity, lane, type, side, tier: minTier, workKind },
+  };
+});
+
+const TIER_ORDER = ['T0', 'T1', 'T2', 'T3', 'T4'];
+const tierRank = (t) => TIER_ORDER.indexOf(String(t ?? 'T0'));
+
+/**
+ * Relevance for a thing that is not a post.
+ *
+ * A work and an agent have no perishability and no watch to match, so only two of the four terms
+ * exist. Rather than invent terms to fill the shape, the ones that do not apply are simply absent
+ * — a score with a made-up component in it is the thing this whole design refuses.
+ */
+const standingScore = (r) => tierRank(r.tier) * 2 + 10 * Math.log10(1 + (r.cited ?? 0));
 
 route('GET', '/api/messages', (ctx) => {
   const user = ctx.user;

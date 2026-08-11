@@ -466,6 +466,76 @@
 .doc-view iframe{flex:1;border:none;background:#fff}
 .doc-text{flex:1;margin:0;padding:18px;overflow:auto;font-family:'Space Grotesk',monospace;
   font-size:.84rem;line-height:1.7;white-space:pre-wrap;color:var(--text)}
+/* ══ Pages ════════════════════════════════════════════════════════════════════════════════
+   The stopping cue, drawn. A page has a number, a total and a last one — there is no scroll
+   listener anywhere in this app that fetches more, and there must not be. */
+.pgr{display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:center;padding:18px 0 4px}
+.pgr-n,.pgr-step{min-width:34px;height:34px;padding:0 9px;border-radius:10px;cursor:pointer;
+  font-family:inherit;font-size:.86rem;color:var(--muted);
+  background:var(--glass);border:1px solid var(--line)}
+.pgr-n:hover:not(.on),.pgr-step:hover:not(:disabled){color:var(--text);border-color:rgba(56,189,248,.4)}
+/* Stated twice — colour and weight — so the current page does not rely on hue alone. */
+.pgr-n.on{color:var(--text);font-weight:700;border-color:rgba(56,189,248,.55);background:rgba(56,189,248,.12)}
+.pgr-step:disabled{opacity:.3;cursor:not-allowed}
+.pgr-gap{color:var(--muted);padding:0 2px}
+.pgr-of{width:100%;text-align:center;margin-top:4px}
+
+/* ══ Why this is here ═════════════════════════════════════════════════════════════════════
+   Collapsed by default and one tap away — the explanation must be present on every item, and an
+   always-open block of arithmetic under every post would make the feed unreadable, which is its
+   own way of hiding it. */
+.why{margin-top:8px}
+.why-toggle{display:flex;align-items:center;gap:8px;background:none;border:none;cursor:pointer;
+  font-family:inherit;font-size:.72rem;color:var(--muted);padding:2px 0}
+.why-toggle:hover{color:var(--cyan)}
+.why-score{font-family:'Space Grotesk',monospace;font-variant-numeric:tabular-nums;
+  border:1px solid var(--line);border-radius:99px;padding:1px 9px}
+.why-body{margin-top:8px;border-left:2px solid rgba(56,189,248,.4);padding:10px 12px;
+  background:rgba(56,189,248,.05);border-radius:0 10px 10px 0}
+.why-parts{margin:0;display:grid;gap:5px}
+.why-parts>div{display:flex;justify-content:space-between;gap:14px;font-size:.78rem;line-height:1.45}
+.why-parts dt{color:var(--muted);margin:0}
+.why-parts dd{margin:0;font-variant-numeric:tabular-nums;font-family:'Space Grotesk',monospace;flex:none}
+.why-parts .up dd{color:var(--cyan)}
+.why-parts .down dd{color:#fbbf24}
+.why-total{border-top:1px solid var(--line);padding-top:5px;margin-top:2px;font-weight:600}
+.why-total dt{color:var(--text) !important}
+.why-note{margin:10px 0 0;font-size:.74rem}
+
+/* ══ Discover ═════════════════════════════════════════════════════════════════════════════ */
+.dsc{max-width:960px;margin:0 auto;padding:22px 16px;display:flex;flex-direction:column;gap:14px}
+.dsc-search{width:100%;padding:14px 16px;border-radius:14px;font-family:inherit;font-size:1rem;
+  color:#fff;background:rgba(255,255,255,.05);border:1px solid var(--line);outline:none}
+.dsc-search:focus{border-color:rgba(56,189,248,.5)}
+.dsc-filters{display:flex;gap:8px;flex-wrap:wrap}
+.dsc-mini{padding:8px 12px;border-radius:99px;font-family:inherit;font-size:.82rem;color:var(--text);
+  background:rgba(255,255,255,.05);border:1px solid var(--line);outline:none;min-width:0}
+.dsc-mini:focus{border-color:rgba(56,189,248,.5)}
+.dsc-mini option{background:#0b0d1b}
+
+/* A filter you can see is a filter you can remove — one at a time, without losing what you typed. */
+.dsc-chips{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.dsc-chip{padding:5px 12px;border-radius:99px;cursor:pointer;font-family:inherit;font-size:.78rem;
+  color:var(--cyan);background:rgba(56,189,248,.1);border:1px solid rgba(56,189,248,.4)}
+.dsc-chip:hover{background:rgba(56,189,248,.2)}
+
+.dsc-list{display:flex;flex-direction:column;gap:10px}
+.dsc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
+.dsc-hit{cursor:default;display:flex;flex-direction:column;gap:8px}
+.dsc-hit:hover{transform:none}
+.dsc-hit-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.dsc-hit-title{font-size:.98rem;font-weight:600;line-height:1.35;color:var(--text);text-decoration:none}
+a.dsc-hit-title:hover{color:var(--cyan)}
+.dsc-hit-body{margin:0;color:var(--muted);font-size:.85rem;line-height:1.5}
+.dsc-handle{color:var(--cyan);font-size:.95rem}
+.dsc-cited{color:var(--cyan);font-size:.76rem}
+/* Tier never appears without the word derived. It is computed from anchors and receipts, and a
+   bare "T3" is indistinguishable from a badge somebody was awarded. */
+.dsc-tier{margin-left:auto;display:inline-flex;align-items:baseline;gap:5px;flex:none;
+  font-family:'Space Grotesk',monospace;font-size:.74rem;color:var(--cyan);
+  border:1px solid rgba(56,189,248,.35);border-radius:99px;padding:2px 10px}
+.dsc-tier span{font-size:.6rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+
 /* Not a security control — a browser can always show what it renders. It removes the offer. */
 .wk-shot img,.wk-item video{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 button.wk-file{width:100%;background:none;border:none;border-bottom:1px solid var(--line);

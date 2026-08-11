@@ -20,6 +20,7 @@ import Workspace from './app/Workspace.jsx'
 import { ProjectList, ProjectDetail } from './app/Projects.jsx'
 import Mandate from './app/Mandate.jsx'
 import { DealList, DealDetail } from './app/Deals.jsx'
+import Discover from './app/Discover.jsx'
 import Soon from './app/Soon.jsx'
 import './styles.css'
 
@@ -48,9 +49,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         <Route path="mandate" element={<Mandate />} />
         <Route path="deals" element={<DealList />} />
         <Route path="deals/:id" element={<DealDetail />} />
+        <Route path="discover" element={<Discover />} />
         {/* Named in ADR-0002 and not built. An honest placeholder rather than a dead link or a
             navigation that quietly disagrees with the decision. */}
-        <Route path="discover" element={<Soon what="Discover" />} />
         <Route path="messages" element={<Soon what="Messages" />} />
       </Route>
     </Routes>
