@@ -83,6 +83,24 @@ const SECRETS = {
     hint: 'console.cloud.google.com → Credentials → your Web application client',
     secret: false,
   },
+  ANTHROPIC_API_KEY: {
+    what: 'Anthropic API key — lets your agent read what you file into projects',
+    looksLike: /^sk-ant-[A-Za-z0-9_-]{20,}$/,
+    hint: 'console.anthropic.com → API keys',
+    async verify(key) {
+      // GET /v1/models rather than a messages call: it proves the key works and costs no tokens.
+      // Verifying a key by spending money on it is a poor trade for a check.
+      const r = await fetch('https://api.anthropic.com/v1/models?limit=1', {
+        headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+        signal: AbortSignal.timeout(15000),
+      });
+      if (r.status === 401 || r.status === 403) return { ok: false, why: 'Anthropic rejected this key' };
+      if (!r.ok) return { ok: false, why: `Anthropic returned ${r.status}` };
+      const d = await r.json().catch(() => ({}));
+      const first = d?.data?.[0]?.id;
+      return { ok: true, note: first ? `authenticated · sees ${first}` : 'authenticated' };
+    },
+  },
   GITHUB_CLIENT_ID: { what: 'GitHub OAuth client id', looksLike: /^.{8,}$/, hint: 'github.com → Settings → Developer settings → OAuth Apps' },
   GITHUB_CLIENT_SECRET: { what: 'GitHub OAuth client secret', looksLike: /^.{20,}$/, hint: 'shown once when created' },
   GOOGLE_CLIENT_SECRET: { what: 'Google OAuth client secret (rotate: it was exposed in a transcript)', looksLike: /^GOCSPX-.{10,}$/, hint: 'console.cloud.google.com → Credentials' },
