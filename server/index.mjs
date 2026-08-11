@@ -886,7 +886,21 @@ route('GET', '/api/projects/:id', (ctx) => {
   const notes = all('SELECT * FROM note WHERE project_id = ? ORDER BY updated_at DESC', p.id)
     .map((n) => ({
       id: n.id, title: n.title, body: n.body, status: n.status, updatedAt: n.updated_at,
-      sources: all('SELECT * FROM source WHERE note_id = ? ORDER BY created_at', n.id),
+      /*
+       * A source's own `used_for` is set at SHARE time and is almost always empty — a person
+       * files something without yet knowing what they will take from it. The interesting value is
+       * on the CITATION, written by whatever actually read it: "used your entry-signal rule".
+       *
+       * That sentence is the whole point of a citation — it is what makes the claim checkable by
+       * the creator, and therefore challengeable. Reading the wrong column made the model's most
+       * useful output invisible.
+       */
+      sources: all('SELECT * FROM source WHERE note_id = ? ORDER BY created_at', n.id)
+        .map((src) => ({
+          ...src,
+          used_for: one('SELECT used_for FROM citation WHERE source_id = ?', src.id)?.used_for
+                    || src.used_for,
+        })),
     }));
   return { project: { id: p.id, name: p.name }, notes };
 });
