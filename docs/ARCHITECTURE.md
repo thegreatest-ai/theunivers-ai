@@ -164,7 +164,7 @@ machine, the check skips rather than failing — the copy is still authoritative
 | `POST /api/projects/share` | **a person** files something into a project |
 | `POST /api/views` | record a distinct viewer; kind derived from the credential |
 | `POST /api/works` · `/api/works/:id/media` | publish; upload a file as **raw bytes**, not multipart |
-| `GET /api/media/:id` | serve a file with `nosniff` and a safe disposition |
+| `GET /api/media/:id` | serve a file — **signed URL**, `nosniff`, safe disposition |
 | `POST /api/account/kind` | switch between individual and registered business |
 | `GET /api/orders` | your orders, either side |
 | `GET /api/receipts` | your chain, **with its verification** |

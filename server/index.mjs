@@ -6,7 +6,7 @@ import { createServer } from 'node:http';
 import { readFileSync, existsSync } from 'node:fs';
 import { join, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { randomUUID, timingSafeEqual } from 'node:crypto';
+import { randomUUID, timingSafeEqual, createHmac } from 'node:crypto';
 import { measure, daily, totals } from './metrics.mjs';
 import { createOrder, transition, ordersFor, orderRow, publicOrder, roleOf } from './orders.mjs';
 import { chainFor, verifyChain } from './receipts.mjs';
@@ -973,10 +973,34 @@ route('GET', '/api/agent/projects', (ctx) => {
  * Four kinds, which are the four tabs: photo (single or carousel), video, thread, doc.
  */
 
+/**
+ * A signed, expiring URL for one file.
+ *
+ * Media cannot be fetched with an Authorization header: an <img src>, a <video src> and a download
+ * link are ordinary browser requests, and the browser attaches no bearer token to any of them. The
+ * first version required a session and every image on the profile silently 404'd while a PDF
+ * helpfully rendered {"error":"auth required"} as its own contents.
+ *
+ * So the URL carries its own proof. The signature covers THE MEDIA ID AND THE EXPIRY, so a link
+ * grants exactly one file for a bounded time and cannot be edited into a link for another. It
+ * confers no other authority — it is not a session, and losing one loses nothing else.
+ */
+const MEDIA_TTL_MS = 24 * 3600 * 1000;
+
+function signMedia(id, exp) {
+  return createHmac('sha256', process.env.OAUTH_STATE_SECRET ?? 'dev-only-secret')
+    .update(`${id}.${exp}`).digest('hex').slice(0, 32);
+}
+
+function mediaUrl(id) {
+  const exp = Date.now() + MEDIA_TTL_MS;
+  return `/api/media/${id}?e=${exp}&s=${signMedia(id, exp)}`;
+}
+
 /** Media rows shaped for a client, with a URL rather than a disk path. */
 const mediaFor = (workId) =>
   all('SELECT id, mime, kind, bytes, filename, ordinal FROM media WHERE work_id = ? ORDER BY ordinal', workId)
-    .map((m) => ({ ...m, url: `/api/media/${m.id}` }));
+    .map((m) => ({ ...m, url: mediaUrl(m.id) }));
 
 route('POST', '/api/works', (ctx) => {
   const user = ctx.user;
@@ -1033,7 +1057,7 @@ route('POST', '/api/works/:id/media', async (ctx) => {
       put.id, work.id, user.id, mime, put.kind, put.bytes, put.path,
       String(ctx.headers['x-filename'] ?? '').slice(0, 160), ordinal, now());
 
-  return { media: { id: put.id, url: `/api/media/${put.id}`, bytes: put.bytes, kind: put.kind } };
+  return { media: { id: put.id, url: mediaUrl(put.id), bytes: put.bytes, kind: put.kind } };
 });
 
 /** Somebody's profile content, by kind. Public within the platform — it is a profile. */
@@ -1048,7 +1072,14 @@ route('POST', '/api/works/:id/media', async (ctx) => {
  * how a viewer gets talked into rendering something it should not.
  */
 route('GET', '/api/media/:id', (ctx) => {
-  if (!ctx.user && !ctx.agent) return err(401, 'auth required');
+  // Signature or session — either is proof. The signature exists because a browser cannot send a
+  // header for an <img>; the session path is kept so an API client with a token still works.
+  const exp = Number(ctx.query.get('e') ?? 0);
+  const sig = String(ctx.query.get('s') ?? '');
+  const signed = exp > Date.now() && sig.length === 32
+    && timingSafeEqual(Buffer.from(sig), Buffer.from(signMedia(ctx.params.id, exp)));
+  if (!signed && !ctx.user && !ctx.agent) return err(401, 'auth required');
+
   const m = one('SELECT * FROM media WHERE id = ?', ctx.params.id);
   if (!m) return err(404, 'not found');
   const bytes = store.get(m.path);

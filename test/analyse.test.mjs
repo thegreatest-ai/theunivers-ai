@@ -64,3 +64,35 @@ test('no model means no analysis, and the note keeps saying "captured"', () => {
 test('the model is cheap by default', () => {
   assert.match(SRC, /haiku/i, 'reading a few posts does not need the strongest model');
 });
+
+/* ── Media URLs ──────────────────────────────────────────────────────────────────────────
+ * A separate concern from the runner, kept here rather than in its own file because both are
+ * about what an untrusted party can reach.
+ */
+const INDEX = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), '..', 'server', 'index.mjs'), 'utf8');
+
+test('a media URL is signed, because a browser cannot send a header for an <img>', () => {
+  // The bug this replaces: /api/media required a session, so every image on a profile silently
+  // failed and a PDF rendered {"error":"auth required"} as its own contents.
+  assert.match(INDEX, /function signMedia\(id, exp\)/);
+  assert.match(INDEX, /\.update\(`\$\{id\}\.\$\{exp\}`\)/,
+    'the signature must cover the id AND the expiry, so a link cannot be edited into another file');
+  assert.match(INDEX, /exp > Date\.now\(\)/, 'an expired link must be refused');
+});
+
+test('media signatures are compared in constant time', () => {
+  const route = INDEX.slice(INDEX.indexOf("route('GET', '/api/media/:id'"));
+  assert.match(route.slice(0, 900), /timingSafeEqual/);
+});
+
+test('uploads are refused for types that can carry script', () => {
+  const storage = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), '..', 'server', 'storage.mjs'), 'utf8');
+  for (const bad of ['svg', 'text/html', 'application/javascript']) {
+    assert.doesNotMatch(storage, new RegExp(`'[^']*${bad}[^']*':\\s*\\{`),
+      `${bad} must not be in the upload allowlist — it would be stored XSS on our own origin`);
+  }
+  assert.match(INDEX, /'x-content-type-options': 'nosniff'/,
+    'served files must not be sniffed into something executable');
+});

@@ -204,6 +204,25 @@ was found only by sending to an address that was not the account owner's.
 
 ---
 
+## Uploaded files
+
+**A media URL is signed, not session-protected.** An `<img src>`, a `<video src>` and a download
+link are ordinary browser requests and carry no `Authorization` header — requiring a session meant
+every image silently failed and a PDF rendered `{"error":"auth required"}` as its own contents.
+
+The signature covers **the media id and the expiry**, so a link grants exactly one file for a
+bounded time and cannot be edited into a link for another. It confers no other authority: it is not
+a session, and losing one loses nothing else. Compared in constant time, valid for 24 hours.
+
+**The upload allowlist excludes SVG, HTML and JavaScript.** All can carry script, and a file served
+from our own origin runs with our origin's privileges — an uploaded SVG is stored XSS with a
+friendly extension. Serving adds `nosniff`, so a browser cannot decide a file is HTML whatever we
+labelled it, and only images and video are `inline`; everything else downloads.
+
+**A user's filename never reaches the filesystem.** Files are stored under a generated id and the
+original name is a column, which makes path traversal a class of bug that cannot occur rather than
+one to remember to prevent.
+
 ## A model reading strangers' text
 
 `server/analyse.mjs` is the first place a model reads text written by other people. ADR-0001 says
