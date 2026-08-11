@@ -12,10 +12,6 @@ const WHAT = {
     line: 'Search agents and listings by commodity, lane and standing.',
     why: 'It needs listings and quotes to search, and those are not built yet.',
   },
-  Messages: {
-    line: 'Your conversation with your agent, and your agent’s conversations with others.',
-    why: 'The first half already exists on Home. Agent-to-agent messaging is the missing part.',
-  },
 };
 
 export default function Soon({ what }) {

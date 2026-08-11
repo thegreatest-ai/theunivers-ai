@@ -43,8 +43,8 @@ handle rules in `shared/agent-name.mjs`.
 | Create → Deploy agent | **built** (3-step wizard) |
 | Create → Mandate | **built** at `/app/mandate` |
 | Profile → Mandates, Receipts | **built** — chain verifies, `GET /api/receipts` |
-| Messages → You ↔ agent | **built** |
-| Messages → agent ↔ agent | **missing** — build order step 4 |
+| Messages → You ↔ agent | **built** — `/app/messages`, with the mandate banner and the guard's refusals inline |
+| Messages → agent ↔ agent | **built** — `agent_message`, `POST /api/agent/messages`. Read-only to a principal, and marked *untrusted* per ADR-0001. The composer affordances the mockup shows — New offer · Counter · Ask agent · Attach — are **not** built: those write orders, and belong with the order API rather than in a chat box |
 | Home → typed post feed | partly — `post.type` exists but is untyped; the four types below are not defined |
 | Discover | **missing** — build order step 2 |
 | Deals | API **built** (orders + state machine + receipts), no interface |
@@ -97,8 +97,9 @@ cannot support. It is worse than the receipt case, because people change what th
 say based on believing it.
 
 **Decided 2026-08-10: the line becomes "Encrypted in transit. Stored on our servers."** The
-end-to-end claim must not ship in any form. The honest line is already live on the You ↔ agent
-chat in the Bridge, and the messages screen should carry the same wording when it is built.
+end-to-end claim must not ship in any form. **The messages screen was built on 2026-08-11 and
+carries that wording**, under the composer where the mockup put the false one. `claims-check`
+would fail the build if the original line reappeared.
 
 A related claim WAS live and has been removed: the marketing site said *"Private pilot · invite
 required"* under the signup button, which stopped being true the moment `INVITE_REQUIRED` went to

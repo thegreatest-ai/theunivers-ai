@@ -1646,6 +1646,236 @@ route('POST', '/api/messages', (ctx) => {
   return { id, ok: true };
 });
 
+/**
+ * ── Conversations ────────────────────────────────────────────────────────────────────────
+ *
+ * Two kinds, and the difference between them is the whole point:
+ *
+ *   you ↔ your agent      the `message` table. Someone acting on your instructions.
+ *   agent ↔ agent         the `agent_message` table. Someone acting on SOMEBODY ELSE'S.
+ *
+ * A counterparty's agent speaks as DATA, never as instruction — ADR-0001. That is why the two
+ * live in different tables, why the second is read-only to a principal, and why every item this
+ * endpoint returns carries an explicit `voice`. A reader that has to infer who spoke will
+ * eventually infer wrong, and in this product that is the failure, not a glitch.
+ */
+
+/** One conversation per pair of agents, derived rather than stored, so a duplicate cannot exist. */
+function threadId(a, b) {
+  return `a2a_${[a, b].sort().join('_')}`;
+}
+
+/** The principal's own agent, or null. Every conversation is anchored to it. */
+function myAgent(userId) {
+  return one('SELECT * FROM agent WHERE user_id = ?', userId);
+}
+
+function conversationItem(m) {
+  return {
+    id: m.id,
+    voice: m.from_role,                      // user | agent | system — a column, never inferred
+    body: m.body,
+    meta: m.meta ? JSON.parse(m.meta) : null,
+    at: m.created_at,
+  };
+}
+
+/**
+ * Refusals, as items in the conversation.
+ *
+ * They come from `mandate_audit` — the platform's own record of what the guard decided — and not
+ * from anything an agent chose to say. That distinction is the product: an agent CLAIMING it was
+ * refused is a sentence, and a refusal the guard actually wrote is evidence. Only the second one
+ * belongs in a thread that is supposed to tell you what your agent was stopped from doing.
+ */
+function refusalItems(agentId) {
+  return all(
+    `SELECT * FROM mandate_audit WHERE agent_id = ? AND allowed = 0
+     ORDER BY created_at DESC LIMIT 50`, agentId,
+  ).map((r) => {
+    let intent = {};
+    try { intent = JSON.parse(r.intent); } catch { /* an unreadable intent still refused */ }
+    return {
+      id: r.id, voice: 'guard', code: r.code, reason: r.reason, intent, at: r.created_at,
+    };
+  });
+}
+
+route('GET', '/api/conversations', (ctx) => {
+  if (!ctx.user) return err(401, 'auth required');
+  const agent = myAgent(ctx.user.id);
+  if (!agent) return { conversations: [] };
+
+  const last = one(
+    'SELECT * FROM message WHERE user_id = ? AND agent_id = ? ORDER BY created_at DESC LIMIT 1',
+    ctx.user.id, agent.id,
+  );
+  const conversations = [{
+    id: 'you',
+    kind: 'principal',
+    title: 'You ↔ your agent',
+    handle: agent.name,
+    preview: last?.body ?? 'Nothing said yet.',
+    at: last?.created_at ?? agent.created_at,
+  }];
+
+  /*
+   * The other side of each thread, resolved per row. `lower(trim(name))` is how handles are
+   * compared everywhere else; here the join is on id, so the only care needed is that the pair is
+   * read in the order the thread was derived from — hence threadId() rather than string surgery.
+   */
+  const threads = all(
+    `SELECT thread_id,
+            MAX(created_at) AS at,
+            COUNT(*)        AS n
+     FROM agent_message
+     WHERE from_agent_id = ? OR to_agent_id = ?
+     GROUP BY thread_id
+     ORDER BY at DESC LIMIT 50`,
+    agent.id, agent.id,
+  );
+
+  for (const t of threads) {
+    const tail = one(
+      'SELECT * FROM agent_message WHERE thread_id = ? ORDER BY created_at DESC LIMIT 1', t.thread_id);
+    const otherId = tail.from_agent_id === agent.id ? tail.to_agent_id : tail.from_agent_id;
+    const other = one('SELECT * FROM agent WHERE id = ?', otherId);
+    if (!other) continue;                                  // agent removed; nothing to show
+    conversations.push({
+      id: t.thread_id,
+      kind: 'agent',
+      title: other.name,
+      handle: other.name,
+      // Standing is DERIVED here as everywhere — read from the counterparty's anchors, never
+      // from anything they or their agent sent us.
+      tier: resolveTier(other.user_id),
+      preview: tail.body,
+      at: t.at,
+      count: t.n,
+    });
+  }
+
+  return { conversations };
+});
+
+route('GET', '/api/conversations/:id', (ctx) => {
+  if (!ctx.user) return err(401, 'auth required');
+  const agent = myAgent(ctx.user.id);
+  if (!agent) return err(409, 'deploy an agent first');
+
+  const mandateRow = one("SELECT * FROM mandate WHERE agent_id = ? AND status = 'active'", agent.id);
+  const mandate = mandateRow ? publicMandate(mandateRow) : null;
+  const id = String(ctx.params.id);
+
+  if (id === 'you') {
+    /*
+     * Messages and refusals are two record types on one timeline. Merged here rather than in the
+     * browser so the ORDER is decided once, by the server that holds both — two clients sorting
+     * independently is two answers to "what happened first".
+     */
+    const items = [
+      ...all(
+        'SELECT * FROM message WHERE user_id = ? AND agent_id = ? ORDER BY created_at ASC LIMIT 200',
+        ctx.user.id, agent.id,
+      ).map(conversationItem),
+      ...refusalItems(agent.id),
+    ].sort((a, b) => String(a.at).localeCompare(String(b.at)));
+
+    return {
+      conversation: {
+        id: 'you', kind: 'principal', title: 'You ↔ your agent',
+        handle: agent.name, status: agent.status,
+      },
+      mandate,
+      canWrite: true,
+      items,
+    };
+  }
+
+  const rows = all(
+    'SELECT * FROM agent_message WHERE thread_id = ? ORDER BY created_at ASC LIMIT 200', id);
+  // A principal may read only the threads their OWN agent is in. Deriving membership from the rows
+  // rather than from the id means a guessed thread_id returns nothing instead of somebody else's
+  // negotiation.
+  const mine = rows.filter((r) => r.from_agent_id === agent.id || r.to_agent_id === agent.id);
+  if (rows.length === 0 || mine.length !== rows.length) return err(404, 'no such conversation');
+
+  const otherId = rows[0].from_agent_id === agent.id ? rows[0].to_agent_id : rows[0].from_agent_id;
+  const other = one('SELECT * FROM agent WHERE id = ?', otherId);
+
+  return {
+    conversation: {
+      id, kind: 'agent',
+      title: other?.name ?? 'Unknown agent',
+      handle: other?.name ?? null,
+      tier: other ? resolveTier(other.user_id) : null,
+      status: other?.status ?? null,
+    },
+    mandate,
+    /*
+     * A principal cannot type into this thread, and that is a decision rather than a gap. The
+     * conversation is between two AGENTS, each bound by a mandate; a sentence typed by a person
+     * into the middle of it would be authority arriving through a channel that records none. If
+     * the principal wants something to happen here they change the mandate, or they tell their own
+     * agent — both of which leave a trace.
+     */
+    canWrite: false,
+    items: rows.map((r) => ({
+      id: r.id,
+      // `mine` and not `us`/`them`: the reader is the principal, and the only thing that matters
+      // is whether this was said by the agent acting for THEM.
+      mine: r.from_agent_id === agent.id,
+      voice: r.from_agent_id === agent.id ? 'agent' : 'counterparty',
+      kind: r.kind,
+      body: r.body,
+      terms: r.terms ? JSON.parse(r.terms) : null,
+      ref: r.ref,
+      at: r.created_at,
+    })),
+  };
+});
+
+/**
+ * An agent writes to another agent, addressed by HANDLE.
+ *
+ * The sender is taken from the token and never from the body — the same rule as everywhere else
+ * here, and the reason a counterparty cannot put words in your agent's mouth.
+ *
+ * Nothing said here changes what either agent may do. It is stored, shown to both principals, and
+ * that is all: a message is an event, and authority only ever moves through /api/mandate.
+ */
+route('POST', '/api/agent/messages', (ctx) => {
+  const agent = ctx.agent;
+  if (!agent) return err(401, 'agent token required');
+
+  const handle = String(ctx.body.to ?? '').trim();
+  const other = one('SELECT * FROM agent WHERE lower(trim(name)) = ?', handle.toLowerCase());
+  if (!other) return err(404, 'no agent with that name');
+  if (other.id === agent.id) return err(400, 'an agent cannot message itself');
+
+  const body = String(ctx.body.body ?? '').trim();
+  if (!body) return err(400, 'body required');
+  const KINDS = ['note', 'quote', 'offer', 'counter', 'accept', 'refuse'];
+  const kind = String(ctx.body.kind ?? 'note');
+  if (!KINDS.includes(kind)) return err(400, `kind must be one of ${KINDS.join(', ')}`);
+
+  const id = `amsg_${randomUUID().slice(0, 8)}`;
+  run(
+    `INSERT INTO agent_message
+       (id, thread_id, from_agent_id, to_agent_id, kind, body, terms, ref, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    id, threadId(agent.id, other.id), agent.id, other.id, kind, body,
+    ctx.body.terms ? JSON.stringify(ctx.body.terms) : null,
+    ctx.body.ref ? String(ctx.body.ref).slice(0, 64) : null,
+    now(),
+  );
+  // Both principals, because a conversation only one side is told about is a conversation one side
+  // finds out about late.
+  publishAll([agent.user_id, other.user_id], 'message', {});
+
+  return { id, thread: threadId(agent.id, other.id), ok: true };
+});
+
 /** Agent-facing: mandate check — Corridor shared rules (one enforcement site). */
 route('POST', '/api/agent/intents/check', (ctx) => {
   const agent = ctx.agent;

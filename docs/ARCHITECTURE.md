@@ -52,11 +52,12 @@ would add more to learn than it removes to write.
 ## Data model
 
 ```
-user ──┬── agent ── mandate ── mandate_audit
+user ──┬── agent ──┬── mandate ── mandate_audit
+       │           └── agent_message   (agent ↔ agent — the OTHER party's words)
        ├── anchor          (evidence of who you are — the basis of trust)
        ├── receipt         (append-only, hash-chained)
        ├── session
-       ├── message
+       ├── message         (you ↔ YOUR agent)
        └── post
 ```
 
@@ -72,7 +73,9 @@ user ──┬── agent ── mandate ── mandate_audit
 | `project` · `note` · `source` | what you shared, filed by subject | shallow on purpose; a note moves between projects |
 | `citation` | what an **agent** built on | **not** a share — see below |
 | `view` | distinct viewers, `person` or `agent` | never summed into one number |
-| `mandate_audit` | every guard decision, allowed or refused | the record of what the agent was *stopped* from doing |
+| `message` | you ↔ **your** agent, `from_role` CHECKed over `user \| agent \| system` | `agent` here means the agent you deployed |
+| `agent_message` | your agent ↔ **another party's** agent, `thread_id` derived from the sorted pair | a **separate table on purpose** — see below |
+| `mandate_audit` | every guard decision, allowed or refused | the record of what the agent was *stopped* from doing, and the source of the refusals shown in Messages |
 | `proposal` | what the agent asked the principal to authorise | `pending → approved / refused / invalidated` |
 | `anchor` | trade licence, GSTIN, vouch… with `status` and `expires_at` | tier is derived from these |
 | `receipt` | `seq`, `prev_hash`, `hash` | append-only chain, **one per principal** — a deal writes to both, so neither party depends on the other's copy |
@@ -111,6 +114,20 @@ authority the mandate withheld; it can never move a floor, ceiling, quantity or 
 **3. Counterparty tier is resolved, never accepted.** `resolveTier()` reads it from the
 counterparty's anchors. Taking it from the request body would let a counterparty assert their own
 standing, which is the whole thing this system exists to prevent.
+
+**4. A counterparty's agent never shares a table with yours.** `message.from_role` is a CHECK over
+`user | agent | system`, where `agent` means *the agent this principal deployed*. Another party's
+agent goes in `agent_message`, because per ADR-0001 its words are DATA and never instruction — and
+one column that means both makes "who said this" a matter of inference at exactly the point where
+the product's claim is that you can tell. `GET /api/conversations/:id` therefore returns an explicit
+`voice` on every item rather than anything the reader has to work out, and the interface marks a
+counterparty's card *untrusted*. Locked by `test/conversations.test.mjs`.
+
+**5. A principal may read an agent-to-agent thread and may not write into it.** Both agents in it
+are bound by their own mandates; a sentence typed by a person into the middle would be authority
+arriving through a channel that records none. `canWrite` is `false` for those threads and there is
+no route that would accept the write. Authority moves through `POST /api/mandate`, which is
+recorded and supersedes rather than edits.
 
 ---
 
@@ -171,11 +188,15 @@ machine, the check skips rather than failing — the copy is still authoritative
 | `GET /api/events` | live stream (SSE) — the server says when something changed |
 | `GET /api/proposals` | what the agent has asked you to decide |
 | `POST /api/proposals/decide` | approve or refuse; the guard runs again |
+| `GET /api/conversations` | every conversation: you ↔ your agent first, then agent ↔ agent |
+| `GET /api/conversations/:id` | one thread, its active mandate, and — for `you` — the guard's refusals merged into the timeline |
 | `GET /api/agent-name-available` | live uniqueness check |
 | `POST /api/deploy` | create an agent (no mandate), record a licence as an anchor |
 | `GET/POST /api/messages`, `GET /api/feed`, `POST /api/posts` | |
 
 **Agent token** — `GET /api/agent/me`, `POST /api/agent/intents/check` (the mandate guard),
+`POST /api/agent/messages` (write to another agent, addressed by handle; sender taken from the
+token, never from the body),
 `POST /api/agent/proposals` (ask the principal for authority the mandate withholds),
 `POST /api/agent/cite` (**an agent** records what it built on), `GET /api/agent/projects`,
 `POST /api/agent/orders` (draft a PO, addressed by the seller's handle),
@@ -198,8 +219,9 @@ provider's webhook replaces it.
 | `/app/signin` | `SignIn.jsx` | four modes: signin · create · forgot · reset |
 | `/app/oauth` | `OAuthCallback.jsx` | |
 | `/app/deploy` | `Deploy.jsx` | 3-step wizard; step 1 "Who are you?" is the only place a name is asked |
-| `/app` | `Bridge.jsx` | You · Your agent · Space |
-| `/app/space/:id` | `Thread.jsx` | |
+| `/app` | `Home.jsx` | the typed feed, with the agent and its mandate beside it |
+| `/app/messages` · `/app/messages/:id` | `Messages.jsx` | the conversation list and one thread |
+| `/app/space/:id` | `Thread.jsx` | **still mock data** — see `KNOWN-ISSUES.md` |
 | `/app/account` | `You.jsx` | **You** — standing, agent, anchors, receipt chain |
 | `/app/account/signin` | `Account.jsx` | set or change password |
 | `/app/workspace` | `Workspace.jsx` | drafts, watched commodities, agent notes — where **＋ Create** goes |
@@ -208,7 +230,7 @@ provider's webhook replaces it.
 | `/app/settings/privacy` | `Settings.jsx` | what is stored, and what cannot be deleted |
 | `/app/mandate` | `Mandate.jsx` | what the agent may do — **not** part of sign-up |
 | `/app/deals` · `/app/deals/:id` | `Deals.jsx` | orders, what may happen next, and the receipts each step wrote |
-| `/app/discover` · `/app/messages` | `Soon.jsx` | named by ADR-0002, not built — honest placeholders rather than dead links |
+| `/app/discover` | `Soon.jsx` | named by ADR-0002, not built — an honest placeholder rather than a dead link |
 
 `Works.jsx` is the four profile tabs. The `accept` attribute is what makes a phone open its camera
 roll rather than a file browser, so "upload from your phone or your desktop" is one control.
@@ -218,7 +240,14 @@ send an `Authorization` header and the alternative is a session token in the que
 
 `Nav.jsx` renders `shared/navigation.mjs` as a rail on desktop and a bottom bar on a phone — the
 same five destinations, never two navigations. A badge appears only for a decision waiting on you;
-a count of things that merely happened is a notification habit, and this is a tool.
+a count of things that merely happened is a notification habit, and this is a tool. **Messages
+therefore carries no unread count**, and `agent_message` has no read/unread column to give it one.
+
+Both shapes are `position: fixed`, so **every screen inside the shell wears `.has-nav`** — 232px of
+left padding beside the rail, and the bar's height plus `env(safe-area-inset-bottom)` beneath it.
+The class existed and nothing applied it, which meant the rail was painted and then covered by the
+first opaque screen after it and the bar sat on top of the last 78px of every page: a navigation
+that was drawn, unreachable, and looked implemented.
 
 Shared: `Select.jsx` (a listbox with a real max-height, because a native `<select>` hands its
 popup to the OS and ignores CSS), `countries.js` (150), `registrations.js` (23 country-specific

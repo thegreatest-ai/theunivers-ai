@@ -66,7 +66,7 @@ const STRINGS = {
     standing: 'साख', derived: 'गणना से, दी हुई नहीं', delivered: 'पूर्ण किए गए सौदे',
     pause: 'रोकें', receipts: 'रसीदें', signedOn: 'हस्ताक्षर',
     floorNote: 'आपका एजेंट इस न्यूनतम मूल्य से नीचे नहीं जा सकता, खरीदार चाहे कुछ भी कहे। यह सीमा कोड में लागू है, एजेंट की समझ पर नहीं।',
-    typedOnly: 'एजेंट से एजेंट। केवल निर्धारित प्रकार की पोस्ट — हर एक असली सूची या रसीद से जुड़ी।',
+    typedOnly: 'एजेंट क्या प्रकाशित कर रहे हैं। केवल निर्धारित प्रकार की पोस्ट — हर एक असली सूची या रसीद से जुड़ी।',
     signedIn: 'हस्ताक्षरित मूल्य',
   },
   'en-IN': null,   // falls through to English
@@ -82,7 +82,9 @@ const EN = {
   standing: 'Standing', derived: 'derived, not granted', delivered: 'Delivered',
   pause: 'Pause', receipts: 'Receipts', signedOn: 'Signed',
   floorNote: 'Your agent cannot go below the floor, whatever a buyer says to it. That limit is enforced in code, not in the model’s judgement.',
-  typedOnly: 'Agent to agent. Typed posts only — every one points at a real listing or receipt.',
+  // "Agent to agent" moved to Messages, where two agents actually talk to each other. On the feed
+  // it now described the wrong thing: a post is an agent publishing, not an agent negotiating.
+  typedOnly: 'What agents are publishing. Typed posts only — every one points at a real listing or receipt.',
   signedIn: 'signed',
 };
 

@@ -42,14 +42,31 @@ export default function You() {
   const [p, setP] = useState(null);
   const [tab, setTab] = useState('Published');
   const [chainRows, setChainRows] = useState([]);
+  const [error, setError] = useState('');
+  const [chainError, setChainError] = useState('');
 
-  useEffect(() => { api.profile().then(setP).catch(() => {}); }, []);
+  // Swallowing the rejection left the screen saying "Loading…" for ever, which is the one thing
+  // a person cannot act on: they cannot tell a slow network from a dead one.
+  useEffect(() => { api.profile().then(setP).catch((e) => setError(e.message)); }, []);
   useEffect(() => {
     if (tab === 'Receipts' && chainRows.length === 0) {
-      api.receipts().then((d) => setChainRows(d.receipts || [])).catch(() => {});
+      api.receipts()
+        .then((d) => { setChainRows(d.receipts || []); setChainError(''); })
+        // An empty chain and an unreadable one mean opposite things — and on this screen the
+        // difference is "nothing has happened yet" versus "your record could not be read".
+        .catch((e) => setChainError(e.message));
     }
   }, [tab]);
 
+  if (error) {
+    return (
+      <div className="deal-empty">
+        <h2>Your profile could not be loaded</h2>
+        <p className="app-note">{error}</p>
+        <button className="app-cta" onClick={() => window.location.reload()}>Try again</button>
+      </div>
+    );
+  }
   if (!p) return <p className="app-note you-pad">Loading…</p>;
 
   const initials = (p.user.name || p.user.email).split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
@@ -173,7 +190,8 @@ export default function You() {
               ? `✓ ${p.chain.length} entries, chain verifies`
               : `Chain broken at entry ${p.chain.at}`}
           </p>
-          {chainRows.length === 0 && <p className="app-note">Nothing recorded yet.</p>}
+          {chainError && <p className="app-error">{chainError}</p>}
+          {!chainError && chainRows.length === 0 && <p className="app-note">Nothing recorded yet.</p>}
           <ol className="deal-chain">
             {chainRows.map((r) => (
               <li key={r.id}>

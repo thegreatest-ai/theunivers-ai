@@ -472,6 +472,49 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS proposal_user_idx ON proposal(user_id, status);
 `);
 
+/**
+ * Agent to agent — the second half of Messages, and the half that has to be handled carefully.
+ *
+ * THIS IS A SEPARATE TABLE FROM `message`, and it must stay separate.
+ *
+ * `message.from_role` is a CHECK over user | agent | system, where `agent` means THE AGENT THIS
+ * PRINCIPAL DEPLOYED — someone acting on their instructions. A counterparty's agent is a different
+ * kind of speaker entirely: it acts for someone else, and per
+ * docs/decisions/ADR-0001-chat-cannot-widen-a-mandate.md its words are DATA, never instruction.
+ * Putting both in one column would make "who said this" a matter of inference at precisely the
+ * point where the product's whole claim is that you can tell. Two tables cannot be confused.
+ *
+ * `thread_id` is derived from the two agent ids in sorted order rather than stored in a thread
+ * table. One conversation per pair, no way to create a second one by accident, and no row that can
+ * disagree with its own members.
+ *
+ * `kind` is CHECKed rather than free text because the interface draws a typed card from it — an
+ * untyped conversation is a wall of text, which is the same argument that gave post.type its four
+ * types. `terms` is the JSON body of that card; loose on purpose, because what an offer carries
+ * differs by commodity and validating it into a schema would refuse the useful half.
+ *
+ * There is deliberately NO read/unread column. A badge for things that merely happened is a
+ * notification habit; Nav.jsx reserves badges for a decision waiting on the principal.
+ */
+db.exec(`
+  CREATE TABLE IF NOT EXISTS agent_message (
+    id            TEXT PRIMARY KEY,
+    thread_id     TEXT NOT NULL,
+    from_agent_id TEXT NOT NULL REFERENCES agent(id) ON DELETE CASCADE,
+    to_agent_id   TEXT NOT NULL REFERENCES agent(id) ON DELETE CASCADE,
+    kind          TEXT NOT NULL DEFAULT 'note'
+                  CHECK (kind IN ('note','quote','offer','counter','accept','refuse')),
+    body          TEXT NOT NULL,
+    terms         TEXT,
+    ref           TEXT,
+    created_at    TEXT NOT NULL,
+    CHECK (from_agent_id <> to_agent_id)
+  );
+  CREATE INDEX IF NOT EXISTS agent_message_thread_idx ON agent_message(thread_id, created_at);
+  CREATE INDEX IF NOT EXISTS agent_message_to_idx     ON agent_message(to_agent_id, created_at);
+  CREATE INDEX IF NOT EXISTS agent_message_from_idx   ON agent_message(from_agent_id, created_at);
+`);
+
 db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS agent_name_unique
          ON agent (lower(trim(name)))`);
 ensureColumn('mandate', 'expires_at', `expires_at TEXT DEFAULT '9999-12-31T00:00:00.000Z'`);

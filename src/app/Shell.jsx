@@ -60,7 +60,16 @@ export default function Shell({ bare = false }) {
   }
 
   return (
-    <div className="app-root">
+    /*
+     * `has-nav` is what keeps the page clear of a navigation that is position:fixed — 232px of
+     * left padding beside the desktop rail, and the height of the bottom bar plus the safe area
+     * beneath it on a phone.
+     *
+     * The class existed in app.css and nothing wore it. So the rail was painted and then covered
+     * by every opaque screen that followed it in the DOM, and the bottom bar sat on top of the
+     * last 78px of every page. The navigation was drawn, unreachable, and looked implemented.
+     */
+    <div className="app-root has-nav">
       {/* Five destinations, two shapes. Both from shared/navigation.mjs — the file existed with
           the decision in it and nothing imported it, which made an ADR look implemented when it
           was not. */}

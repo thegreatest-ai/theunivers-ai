@@ -11,7 +11,7 @@ import Shell from './app/Shell.jsx'
 import SignIn from './app/SignIn.jsx'
 import OAuthCallback from './app/OAuthCallback.jsx'
 import Deploy from './app/Deploy.jsx'
-import Bridge from './app/Bridge.jsx'
+import Home from './app/Home.jsx'
 import Thread from './app/Thread.jsx'
 import Account from './app/Account.jsx'
 import You from './app/You.jsx'
@@ -20,6 +20,7 @@ import Workspace from './app/Workspace.jsx'
 import { ProjectList, ProjectDetail } from './app/Projects.jsx'
 import Mandate from './app/Mandate.jsx'
 import { DealList, DealDetail } from './app/Deals.jsx'
+import { Conversations, Conversation } from './app/Messages.jsx'
 import Soon from './app/Soon.jsx'
 import './styles.css'
 
@@ -36,7 +37,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       </Route>
 
       <Route path="/app" element={<Shell />}>
-        <Route index element={<Bridge />} />
+        <Route index element={<Home />} />
         <Route path="space/:id" element={<Thread />} />
         <Route path="account" element={<You />} />
         <Route path="account/signin" element={<Account />} />
@@ -48,10 +49,13 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         <Route path="mandate" element={<Mandate />} />
         <Route path="deals" element={<DealList />} />
         <Route path="deals/:id" element={<DealDetail />} />
+        {/* The list and the thread are two URLs, not one component with a mode. Back works, a
+            thread can be linked, and a reload returns you to the one you were reading. */}
+        <Route path="messages" element={<Conversations />} />
+        <Route path="messages/:id" element={<Conversation />} />
         {/* Named in ADR-0002 and not built. An honest placeholder rather than a dead link or a
             navigation that quietly disagrees with the decision. */}
         <Route path="discover" element={<Soon what="Discover" />} />
-        <Route path="messages" element={<Soon what="Messages" />} />
       </Route>
     </Routes>
   </BrowserRouter>

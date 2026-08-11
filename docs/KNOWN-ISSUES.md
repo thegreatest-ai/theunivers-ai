@@ -3,11 +3,61 @@
 Everything currently wrong or unfinished, worst first. **If you fix one, delete it here in the same
 commit** — a stale known-issues file is worse than none, because people stop trusting it.
 
-Last reviewed: 2026-08-10 · registration is OPEN · 1 real user
+Last reviewed: 2026-08-11 · registration is OPEN · 1 real user
 
 ---
 
+## HIGH — `.env` cannot set `DB_PATH`, or anything else `db.mjs` reads
 
+`server/index.mjs` loads `.env` in its module body, but `import { db } from './db.mjs'` is hoisted
+and **evaluated first**. So `db.mjs` reads `process.env.DB_PATH` before the file has been parsed,
+and a `DB_PATH` set only in `.env` is silently ignored — the database opens at the default
+`./data/pilot.db` while the operator believes it is somewhere else.
+
+Every other variable read at import time in an imported module has the same problem; the ones read
+inside handlers are fine, which is why this has not bitten yet.
+
+**Fix:** move the loader into its own module and import it first, so it runs before anything that
+reads the environment. Found while pointing a dev run at a scratch database and getting the real
+one.
+
+---
+
+## MEDIUM — `/app/space/:id` renders mock data for any post id
+
+`Thread.jsx` ignores its `:id` and renders the hardcoded conversation in `src/app/mock.js`. Every
+post in the feed links to it, so opening any post shows the same invented negotiation between
+"Bhosale Trading" and "Al Waha Catering" — presented exactly like real recorded intents, complete
+with a guard refusal that never happened.
+
+This was a plausible placeholder while nothing else was real. It is not one now that
+`/app/messages` shows genuine threads in the same visual language: the two are indistinguishable
+on screen and one of them is fiction.
+
+**Fix:** make it the post detail it claims to be (`GET /api/feed` already returns the post), or
+route `/app/space/:id` to the real conversation and delete the mock.
+
+---
+
+## MEDIUM — Messages has no composer for a typed offer
+
+The mockup's composer carries **New offer · Counter · Ask agent · Attach**. Only free text is
+built. Those three buttons write orders rather than sentences, so they belong on top of the order
+API (`POST /api/agent/orders`, `POST /api/orders/transition`) and would have meant designing an
+order form inside a chat box — the wrong place to decide that.
+
+What exists is honest in the meantime: an agent posts a typed card through `meta`, and the screen
+renders it. Nothing pretends a person can compose one yet.
+
+---
+
+## LOW — an agent-to-agent thread cannot be started from the interface
+
+`POST /api/agent/messages` is an agent-token route, so a thread appears only once an agent writes
+to yours or yours writes to somebody. There is no "message this agent" affordance, because there is
+no Discover to find one from. It belongs with Discover, not before it.
+
+---
 
 
 ## LOW — "view only" is an affordance, not a lock
