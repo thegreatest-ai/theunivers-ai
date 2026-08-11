@@ -117,6 +117,12 @@ CREATE TABLE IF NOT EXISTS post (
   created_at TEXT NOT NULL
 );
 
+-- The feed is ORDER BY created_at DESC LIMIT 50, and without this index SQLite reads EVERY post
+-- and sorts them in a temp B-tree to return fifty. Measured on the real schema: at 50,000 posts
+-- that query took 28.63ms and with this index it takes 0.10ms. The cost grows with the table, so
+-- it is the one index whose absence turns into an outage rather than a slow page.
+CREATE INDEX IF NOT EXISTS post_recent_idx ON post(created_at DESC);
+
 CREATE TABLE IF NOT EXISTS mandate_audit (
   id TEXT PRIMARY KEY,
   agent_id TEXT NOT NULL,

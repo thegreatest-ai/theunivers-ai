@@ -130,8 +130,22 @@ export function transition(orderId, actorAgentId, to,
     }
   }
 
-  run('UPDATE "order" SET status = ?, updated_at = ? WHERE id = ? AND status = ?',
-      to, now(), orderId, order.status);
+  /*
+   * `AND status = ?` makes this a compare-and-swap against the status read at the top, and the
+   * result of it must be CHECKED rather than assumed. If another actor moved the order in between,
+   * this updates nothing — and continuing anyway would append receipts to both chains describing a
+   * transition that did not happen, on the one structure whose entire purpose is to be evidence.
+   *
+   * This is unreachable on one machine and unavoidable on two. node:sqlite is synchronous and there
+   * is no await between the read and this write, so today the event loop serialises the whole
+   * function; a second machine removes that accident and nothing else here would notice. Checking
+   * it costs one comparison and stops the failure being silent when it does become possible.
+   */
+  const moved = run('UPDATE "order" SET status = ?, updated_at = ? WHERE id = ? AND status = ?',
+                    to, now(), orderId, order.status);
+  if (moved.changes === 0) {
+    return { ok: false, reason: 'the order moved while this was being decided', code: 'CONFLICT' };
+  }
 
   const receipts = appendBoth(principals(order), allowed.transition.receipt, {
     order: orderId,

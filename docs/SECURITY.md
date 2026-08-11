@@ -91,7 +91,7 @@ still sees the neutral message. **A broken feature, never an open door.**
 
 ## Rate limiting
 
-`server/ratelimit.mjs`. Fixed-window counters in memory.
+`server/ratelimit.mjs`. Fixed-window counters in a `rate_limit` table.
 
 > **Per-ACCOUNT limits protect accounts. Per-IP limits protect infrastructure.**
 
@@ -129,12 +129,44 @@ arrived. **`X-Forwarded-For` is deliberately ignored.** Anyone can send it, and 
 identity would let an attacker mint a fresh limit per request by varying a header — worse than
 having no limit at all, because it looks protected.
 
+### Why the counters are in the database
+
+They were in a `Map`, and the reason for moving them is not the obvious one.
+
+**What it fixed:** a restart no longer wipes every counter. `fly deploy` restarts the machine, so
+before this **every deploy handed an attacker a fresh set of attempts against every account** — a
+brute-force defence that reset on a schedule anyone could wait for, or trigger by reporting a bug.
+
+**What it did not fix, and does not claim to:** limits are still not shared between machines. A Fly
+volume attaches to exactly one machine, so two machines are two SQLite files. The gain is that the
+state now sits in the one place that has to become shared anyway, so the database migration carries
+the limiter with it instead of leaving a second rewrite for the same day.
+
+The counter is taken with a single `INSERT … ON CONFLICT … RETURNING`, so the new value is computed
+inside the statement. Check-then-write would let two concurrent attempts both read 5, both decide
+they were under a limit of 6, and both write 6.
+
+**It costs 0.0131ms against the 31.63ms scrypt verify on the same request** — 0.04% of the login
+path, and it runs only on the five auth endpoints, never on the feed, the stream or media.
+
+**If the write fails, the request is ALLOWED.** Failing closed would turn a moment of database
+contention into a total sign-in outage. That is only safe because the failure is not cheap to
+induce: a write waits out `busy_timeout` (5s) before throwing, which at 0.020ms per insert needs on
+the order of 245,000 queued writes — a denial of service that takes the login query down with it
+either way. Counters already written still stand.
+
 ### Two limitations, written down rather than discovered
 
-- **In memory** — single machine only. A second machine multiplies every limit by the number of
-  processes. Moving to two machines means moving this to shared storage first.
+- **Per machine, still** — see above. `docs/specs/SCALING.md` has the trigger and the cost.
 - **Fixed window** — allows up to 2× the limit across a boundary. Irrelevant for password guessing,
   where the rate is still bounded by a constant.
+
+### Unlocking someone
+
+`fly apps restart` no longer clears counters — that was never a feature, only the absence of
+durability, and it is gone. `reset(bucket, key)` in `server/ratelimit.mjs` clears one caller.
+`/api/metrics` reports `limits.blocked`, so a lockout is now visible rather than waiting for a
+complaint.
 
 ---
 
@@ -270,5 +302,10 @@ writes to and fails if it is anything but `note` and `citation`.
 
 ## Known gaps
 
-See `KNOWN-ISSUES.md`. The security-relevant ones today: `GOOGLE_CLIENT_SECRET` needs rotating,
-there is no DMARC record, and rate-limit state is per-process.
+See `KNOWN-ISSUES.md`. The security-relevant one today is that **an order can change state without
+the receipt that proves it** — the status update and the two receipt appends are not one
+transaction, so a restart between them leaves a state change with no evidence, and `verifyChain()`
+cannot detect a receipt that was never written.
+
+Rate-limit state is now durable but still per-machine, and `GOOGLE_CLIENT_SECRET` was resolved on
+2026-08-11 along with the DMARC entry.

@@ -3,7 +3,7 @@
  * Web UI uses session Bearer tokens; AI agents use agent API tokens.
  */
 import { createServer } from 'node:http';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID, timingSafeEqual, createHmac } from 'node:crypto';
@@ -14,7 +14,7 @@ import { trustOf } from './trust.mjs';
 import { analyseNote, analysisAvailable } from './analyse.mjs';
 import * as store from './storage.mjs';
 import { subscribe, publish, publishAll, streamStats } from './events.mjs';
-import { take, refund, clientIp, LIMITS } from './ratelimit.mjs';
+import { take, refund, clientIp, limitStats, LIMITS } from './ratelimit.mjs';
 import { sendMail, resetEmail, mailConfigured } from './mail.mjs';
 
 // Tiny .env loader — no dependency
@@ -1369,9 +1369,54 @@ route('GET', '/api/metrics', (ctx) => {
     // the stream is to send far less than polling did, an undercount of a small number is
     // acceptable — but it is a known gap, not an oversight.
     streams: streamStats(),
+    // Every trigger in docs/specs/SCALING.md is one of these numbers crossing a threshold. They are
+    // reported because a plan whose triggers cannot be observed is a plan nobody can act on — and
+    // three of the four things that break on a second machine break SILENTLY.
+    scale: scaleStats(),
+    limits: limitStats(),
     daily: daily(60),
   };
 });
+
+/**
+ * The numbers the scaling triggers are written against.
+ *
+ * Volume pressure is the one worth explaining. The database and the uploaded media share a single
+ * ~900MB Fly volume, so neither can be judged on its own — a database that has grown and a video
+ * that has been uploaded compete for the same disk, and the first warning either way is the same
+ * full volume. They are reported together and against one capacity for that reason.
+ *
+ * The WAL is counted with the database because it is real disk: under WAL, pages live in the -wal
+ * file until a checkpoint folds them back, and a busy period can leave it larger than the database.
+ */
+function scaleStats() {
+  const bytesOf = (p) => { try { return statSync(p).size; } catch { return 0; } };
+  const dbPath = process.env.DB_PATH ?? './data/pilot.db';
+  const dbBytes = bytesOf(dbPath) + bytesOf(`${dbPath}-wal`);
+  const mediaBytes = one('SELECT COALESCE(SUM(bytes),0) b FROM media')?.b ?? 0;
+
+  return {
+    rows: Object.fromEntries(
+      // The tables that grow with use. A count of `invite` or `metric_daily` tells nobody anything.
+      ['user', 'agent', 'post', 'message', 'work', 'media', 'view', 'citation', 'receipt', 'order']
+        .map((t) => [t, one(`SELECT COUNT(*) c FROM "${t}"`)?.c ?? 0]),
+    ),
+    volume: {
+      dbBytes,
+      mediaBytes,
+      usedBytes: dbBytes + mediaBytes,
+      // Not read from the filesystem: the container sees the whole device, not the volume's own
+      // limit, so df would report a number that is not the one that runs out. This is the size the
+      // volume was created at, and it is a constant here rather than a measurement for that reason.
+      capacityBytes: 900_000_000,
+      quotaPerUser: store.QUOTA_BYTES,
+    },
+    // The largest single uploader, because a per-person quota only bounds the volume if the number
+    // of people is also bounded — 8 people at the full 120MB allowance fill it on their own.
+    largestUploaderBytes:
+      one('SELECT COALESCE(MAX(b),0) m FROM (SELECT SUM(bytes) b FROM media GROUP BY user_id)')?.m ?? 0,
+  };
+}
 
 /**
  * Create a mandate for an agent. Shared by /api/deploy (when terms are supplied) and

@@ -10,18 +10,75 @@
  * this in place turns login into a front door with no limit on how many keys you may try.
  * ────────────────────────────────────────────────────────────────────────────────────────
  *
- * Fixed-window counters held in memory. In memory is honest for a single machine, which is what
- * this is; the moment there are two, this must move to the database or a shared store, because
- * per-process limits multiply by the number of processes. That is written here rather than
- * discovered later.
+ * Fixed-window counters held IN THE DATABASE, keyed by (bucket, key).
+ *
+ * They used to be held in a Map in this module, and moving them is worth its own paragraph because
+ * the reason is not the obvious one.
+ *
+ *   What it fixes today: a process restart no longer wipes every counter. That mattered more than
+ *   it sounds. `fly deploy` restarts the machine, so every deploy handed an attacker a fresh set of
+ *   attempts against every account — and a pilot deploys often. A brute-force defence that resets
+ *   whenever we ship is a defence with a published schedule.
+ *
+ *   What it does NOT fix, and must not be claimed to: this does not make limits shared between
+ *   machines. A Fly volume attaches to exactly one machine, so two machines are two volumes and
+ *   two SQLite files, and per-machine limits would still multiply. The gain is that the state now
+ *   lives in the one place that has to become shared anyway. When the database moves — to Postgres,
+ *   or to LiteFS — the limiter comes along for free instead of being a second thing to rewrite at
+ *   the moment there is least appetite for it.
  *
  * A fixed window allows a burst across a boundary — up to 2x the limit spanning two windows. For
  * password guessing that is irrelevant: the attacker's rate is still bounded by a constant, and
  * the simplicity is worth more than the precision of a sliding log.
  */
+import { db } from './db.mjs';
 
-/** bucket -> Map<key, {count, resetAt}> */
-const buckets = new Map();
+/*
+ * reset_at is epoch milliseconds rather than an ISO string, unlike every domain table here. Those
+ * are read by people; this one is only ever compared against Date.now(), and an integer comparison
+ * is what the CASE below needs to stay a single statement.
+ */
+db.exec(`
+  CREATE TABLE IF NOT EXISTS rate_limit (
+    bucket   TEXT NOT NULL,
+    key      TEXT NOT NULL,
+    count    INTEGER NOT NULL,
+    max      INTEGER NOT NULL,
+    reset_at INTEGER NOT NULL,
+    PRIMARY KEY (bucket, key)
+  )`);
+
+/*
+ * ONE statement, because check-then-write is not atomic and this is the one place that matters.
+ * Two concurrent login attempts could both read count = 5, both decide they were under the limit
+ * of 6, and both write 6 — turning the last attempt of a window into two. An upsert that computes
+ * the new value inside the statement cannot interleave that way.
+ *
+ * The CASE arms are the window roll: if the stored window has already expired this is the first
+ * hit of a new one, so the count restarts at 1 and the window moves. Otherwise both are carried.
+ *
+ * `max` is written on every take rather than kept only in LIMITS, so limitStats() below can say
+ * which callers are actually over their limit without holding a second copy of the mapping from
+ * bucket name to limit. Route names and LIMITS keys already differ ('login-acct' against
+ * loginPerAccount); a lookup table joining them would be a third place to forget to update.
+ *
+ * Prepared once at load rather than per call. These run on the authentication path, which is the
+ * one place a wasted compile is paid for by somebody waiting to sign in.
+ */
+const TAKE = db.prepare(`
+  INSERT INTO rate_limit (bucket, key, count, max, reset_at) VALUES (?, ?, 1, ?, ?)
+  ON CONFLICT(bucket, key) DO UPDATE SET
+    count    = CASE WHEN rate_limit.reset_at <= ? THEN 1 ELSE rate_limit.count + 1 END,
+    max      = excluded.max,
+    reset_at = CASE WHEN rate_limit.reset_at <= ? THEN ? ELSE rate_limit.reset_at END
+  RETURNING count, reset_at`);
+
+const REFUND = db.prepare(
+  'UPDATE rate_limit SET count = count - 1 WHERE bucket = ? AND key = ? AND count > 0');
+
+const RESET = db.prepare('DELETE FROM rate_limit WHERE bucket = ? AND key = ?');
+
+const SWEEP = db.prepare('DELETE FROM rate_limit WHERE reset_at <= ?');
 
 /**
  * Consume one unit. Returns {ok} or {ok:false, retryAfter} in whole seconds.
@@ -30,25 +87,63 @@ const buckets = new Map();
  */
 export function take(bucket, key, max, windowMs) {
   const now = Date.now();
-  let b = buckets.get(bucket);
-  if (!b) { b = new Map(); buckets.set(bucket, b); }
-
-  const hit = b.get(key);
-  if (!hit || hit.resetAt <= now) {
-    b.set(key, { count: 1, resetAt: now + windowMs });
+  const until = now + windowMs;
+  let row;
+  try {
+    row = TAKE.get(bucket, String(key), max, until, now, now, until);
+  } catch (e) {
+    /*
+     * Fail OPEN, and deliberately.
+     *
+     * The alternative turns a moment of database contention into a total sign-in outage. This is
+     * only safe because the failure is not cheap to induce: under WAL a write waits out
+     * busy_timeout (5s) before throwing, and at a measured 0.020ms per insert an attacker would
+     * need on the order of 245,000 queued writes to hold the lock that long — which is a denial of
+     * service in its own right, and one that takes the login query down with it either way.
+     * Counters already written still stand, so a targeted attack does not get a clean slate.
+     */
+    console.warn(`[ratelimit] ${bucket} not counted: ${e.message}`);
     return { ok: true };
   }
-  hit.count += 1;
-  if (hit.count > max) {
-    return { ok: false, retryAfter: Math.max(1, Math.ceil((hit.resetAt - now) / 1000)) };
+  if (row.count > max) {
+    return { ok: false, retryAfter: Math.max(1, Math.ceil((row.reset_at - now) / 1000)) };
   }
   return { ok: true };
 }
 
 /** Undo one unit. Used after a SUCCESSFUL login so honest users are not punished for typos. */
 export function refund(bucket, key) {
-  const hit = buckets.get(bucket)?.get(key);
-  if (hit && hit.count > 0) hit.count -= 1;
+  // `count > 0` keeps the counter from going negative and handing out free attempts, which a
+  // refund on an already-swept row would otherwise do.
+  REFUND.run(bucket, String(key));
+}
+
+/**
+ * Drop one caller's counters. This is the operator's unlock, and it exists because moving the
+ * counters into the database took the old remedy away: `fly apps restart` used to clear them by
+ * losing them, which was never a deliberate feature so much as the absence of one.
+ */
+export function reset(bucket, key) {
+  return RESET.run(bucket, String(key)).changes;
+}
+
+/**
+ * For /api/metrics: what the limiter is currently holding.
+ *
+ * `blocked` is normally zero and is not zero during an attack or a lockout, which is what makes it
+ * worth looking at rather than merely worth having. Before this, the only way to know whether a
+ * limit had fired was that somebody complained.
+ */
+export function limitStats() {
+  const now = Date.now();
+  const rows = db.prepare(
+    `SELECT bucket, COUNT(*) tracked, SUM(count > max) blocked
+     FROM rate_limit WHERE reset_at > ? GROUP BY bucket`).all(now);
+  return {
+    tracked: rows.reduce((n, r) => n + r.tracked, 0),
+    blocked: rows.reduce((n, r) => n + (r.blocked ?? 0), 0),
+    byBucket: Object.fromEntries(rows.map((r) => [r.bucket, { tracked: r.tracked, blocked: r.blocked ?? 0 }])),
+  };
 }
 
 /**
@@ -65,15 +160,21 @@ export function clientIp(req) {
     ?? 'unknown';
 }
 
-/** Sweep expired entries so a long-running process does not accumulate keys forever. */
+/**
+ * Sweep expired windows so the table does not grow forever.
+ *
+ * An expired row is already harmless — every read compares reset_at against now — so this is
+ * housekeeping rather than correctness, and it is why the sweep may be a plain DELETE on a timer
+ * instead of anything transactional.
+ */
 const sweep = setInterval(() => {
-  const now = Date.now();
-  for (const [name, b] of buckets) {
-    for (const [k, v] of b) if (v.resetAt <= now) b.delete(k);
-    if (b.size === 0) buckets.delete(name);
+  try {
+    SWEEP.run(Date.now());
+  } catch (e) {
+    console.warn(`[ratelimit] sweep failed: ${e.message}`);
   }
 }, 60_000);
-sweep.unref?.();
+sweep.unref?.();                                  // never hold the process open for housekeeping
 
 /**
  * Limits, in one place so they read as a policy rather than being hunted through routes.
