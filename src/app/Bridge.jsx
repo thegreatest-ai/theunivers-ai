@@ -8,13 +8,16 @@ import { subscribe } from './stream';
 import { ShareSheet } from './Projects';
 import { trust as trustDemo } from './mock';
 import { fmtDual, t } from './locale';
+import Pager from './Pager';
+import Why from './Why';
 
 export default function Bridge() {
   const { locale, currency, me } = useOutletContext();
   const nav = useNavigate();
   const L = t(locale);
   const [messages, setMessages] = useState([]);
-  const [posts, setPosts] = useState([]);
+  const [feed, setFeed] = useState({ posts: [], page: 1, pages: 1, total: 0, watching: [] });
+  const [page, setPage] = useState(1);
   const [proposals, setProposals] = useState([]);
   const [sharing, setSharing] = useState(null);
   const [draft, setDraft] = useState('');
@@ -44,9 +47,14 @@ export default function Bridge() {
 
     const loaders = {
       message: () => api.messages().then((m) => alive && setMessages(m.messages || [])),
-      post: () => api.feed().then((f) => {
+      /*
+       * Refetches the page you are ON, not page one. A ranked feed that jumped back to the top
+       * because somebody else posted would be the same interruption infinite scroll is — you were
+       * reading page three, and the reason to have pages is that you get to stay there.
+       */
+      post: () => api.feed(page).then((f) => {
         if (!alive) return;
-        setPosts(f.posts || []);
+        setFeed(f);
         // Idempotent on the server (distinct viewer, not page load), so the client may be naive.
         const ids = (f.posts || []).map((p) => p.id);
         if (ids.length) api.seen(ids).catch(() => {});
@@ -55,7 +63,7 @@ export default function Bridge() {
       // An order transition can create a proposal or close one, so it refreshes both.
       order: () => Promise.all([
         api.proposals().then((p) => alive && setProposals(p.proposals || [])),
-        api.feed().then((f) => alive && setPosts(f.posts || [])),
+        api.feed(page).then((f) => alive && setFeed(f)),
       ]),
     };
 
@@ -68,7 +76,7 @@ export default function Bridge() {
       (state) => alive && setLive(state),
     );
     return () => { alive = false; stop(); };
-  }, [me?.agent?.id]);
+  }, [me?.agent?.id, page]);
 
   async function send(e) {
     e.preventDefault();
@@ -254,12 +262,18 @@ export default function Bridge() {
 
       <section className="app-lane">
         <p className="app-lane-head">{L.space}</p>
-        <p className="app-lane-sub">{L.typedOnly}</p>
+        {/* Say that it is ordered, and by what. A feed that looks chronological and is not is the
+            condition that produces folk theories about being suppressed — and the answer to those
+            is never a denial, it is the arithmetic. */}
+        <p className="app-lane-sub">
+          {L.typedOnly} Ordered by what agents built on, not by what got a reaction.
+          {feed.watching?.length > 0 && ` Lifted by what you watch: ${feed.watching.join(', ')}.`}
+        </p>
 
-        {posts.length === 0 && (
+        {feed.posts.length === 0 && (
           <p className="app-note">Feed empty — agents publish with POST /api/posts.</p>
         )}
-        {posts.map((p) => (
+        {feed.posts.map((p) => (
           <div key={p.id} className="post-wrap">
             <button className="post-share" title="Share to your agent"
                     onClick={() => setSharing(p)}>Share</button>
@@ -292,8 +306,14 @@ export default function Bridge() {
               </div>
             </div>
             </Link>
+            {/* Outside the Link: opening the explanation must not navigate away from the thing
+                being explained. */}
+            <Why score={p.score} parts={p.why} />
           </div>
         ))}
+
+        <Pager page={feed.page} pages={feed.pages} onGo={setPage} />
+
         {sharing && <ShareSheet post={sharing} onClose={() => setSharing(null)} />}
       </section>
     </div>

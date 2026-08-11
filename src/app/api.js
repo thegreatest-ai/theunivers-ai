@@ -30,7 +30,12 @@ export const api = {
   setPassword: (body) => req('/api/auth/set-password', { method: 'POST', body: JSON.stringify(body) }),
   agentNameAvailable: (name) => req(`/api/agent-name-available?name=${encodeURIComponent(name)}`),
   deploy: (body) => req('/api/deploy', { method: 'POST', body: JSON.stringify(body) }),
-  feed: () => req('/api/feed'),
+  feed: (page = 1) => req(`/api/feed?page=${page}`),
+  /* Empty values are stripped so the URL carries only the filters actually applied — a `lane=`
+     in the bar reads as a filter that is on, and the back button would restore it. */
+  discover: (params) => req(`/api/discover?${new URLSearchParams(
+    Object.entries(params).filter(([, v]) => v !== '' && v != null),
+  )}`),
   setMandate: (body) => req('/api/mandate', { method: 'POST', body: JSON.stringify(body) }),
   profile: () => req('/api/profile'),
   works: (user, kind) => req(`/api/works?${new URLSearchParams({ ...(user && { user }), ...(kind && { kind }) })}`),
