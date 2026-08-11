@@ -31,7 +31,10 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
  * including options that were rejected and never existed.
  */
 const DOCS = ['README.md', 'DEPLOY.md', 'docs/ARCHITECTURE.md', 'docs/SECURITY.md',
-              'docs/OPERATIONS.md', 'docs/KNOWN-ISSUES.md', 'docs/COPY-CLAIMS.md'];
+              'docs/OPERATIONS.md', 'docs/KNOWN-ISSUES.md', 'docs/COPY-CLAIMS.md',
+              // A performance document is mostly file and script references, which is exactly the
+              // kind of claim that rots silently after a rename.
+              'docs/design/PERFORMANCE.md'];
 
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
 const problems = [];

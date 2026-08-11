@@ -6,7 +6,9 @@ import { createServer } from 'node:http';
 import { readFileSync, existsSync } from 'node:fs';
 import { join, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { randomUUID, timingSafeEqual, createHmac } from 'node:crypto';
+import { randomUUID, timingSafeEqual, createHmac, createHash } from 'node:crypto';
+// Builtin, so static assets can be compressed without the server gaining a dependency.
+import { gzipSync, brotliCompressSync, constants } from 'node:zlib';
 import { measure, daily, totals } from './metrics.mjs';
 import { createOrder, transition, ordersFor, orderRow, publicOrder, roleOf } from './orders.mjs';
 import { chainFor, verifyChain } from './receipts.mjs';
@@ -1756,12 +1758,104 @@ const MIME = {
   '.woff2': 'font/woff2',
 };
 
+/*
+ * ─── Static serving: compress once, cache forever, revalidate cheaply ─────────────────────
+ *
+ * This used to read the file from disk and write it out raw on every single request. Measured
+ * against the real build: a first visit cost 1228KB of JavaScript because nothing was compressed,
+ * and every REPEAT visit cost the same again because nothing carried a cache header. `npm run
+ * perf` reproduces both numbers.
+ *
+ * Three things fix that, and none of them adds a dependency — `node:zlib` is a builtin, which is
+ * the only reason compression is allowed to live here at all:
+ *
+ *   1. Compress text. Brotli when the browser takes it, gzip otherwise.
+ *   2. Cache the compressed bytes. `dist/` cannot change while the process lives, so a file is
+ *      read, hashed and compressed exactly once and every later request is a memory write.
+ *   3. Say how long it may be kept. Vite content-hashes its own output, so those files are
+ *      immutable by construction and may be kept for a year. Files copied verbatim out of
+ *      `public/` are NOT hashed — `nebula.jpg` keeps its name across a rebuild — so they get a
+ *      short life plus an ETag, and a returning visitor pays ~200 bytes for a 304 instead of
+ *      931KB for a file they already have.
+ *
+ * `index.html` is deliberately `no-cache`. It names the hashed assets, so a stale copy points a
+ * browser at files a deploy has already deleted — the one cache bug that takes a site down rather
+ * than merely making it slow.
+ *
+ * `Vary: Accept-Encoding` is not optional. OPERATIONS.md recommends putting Cloudflare in front,
+ * and a shared cache without it will hand a brotli body to a client that never asked for one.
+ */
+
+const COMPRESSIBLE = new Set(['.html', '.js', '.css', '.json', '.md', '.svg']);
+
+/*
+ * Quality 9, not 11. Measured on this bundle: q11 gives 287KB but blocks the event loop for
+ * 1706ms; q9 gives 316KB in 41ms. The result is cached either way, so the only thing the extra
+ * 28KB buys is a 1.7s stall for whoever happens to arrive first after a deploy.
+ */
+const BROTLI = { params: { [constants.BROTLI_PARAM_QUALITY]: 9 } };
+
+/** A Vite build hash — `index-CUF7F3R3.js`. Its content cannot change without its name changing. */
+const HASHED = /-[A-Za-z0-9_-]{8}\.[a-z0-9]+$/;
+
+const staticCache = new Map();
+
+function asset(file) {
+  let hit = staticCache.get(file);
+  if (hit) return hit;
+  const raw = readFileSync(file);
+  const ext = extname(file);
+  hit = {
+    raw,
+    etag: `"${createHash('sha256').update(raw).digest('base64url').slice(0, 20)}"`,
+    type: MIME[ext] ?? 'application/octet-stream',
+    // Images, video and woff2 are already compressed; running them through brotli spends CPU to
+    // add bytes.
+    gzip: COMPRESSIBLE.has(ext) ? gzipSync(raw, { level: 6 }) : null,
+    brotli: COMPRESSIBLE.has(ext) ? brotliCompressSync(raw, BROTLI) : null,
+  };
+  staticCache.set(file, hit);
+  return hit;
+}
+
+function send(req, res, file, cacheControl) {
+  const a = asset(file);
+
+  res.setHeader('vary', 'accept-encoding');
+  res.setHeader('etag', a.etag);
+  res.setHeader('cache-control', cacheControl);
+  res.setHeader('content-type', a.type);
+
+  // A returning visitor already holds these bytes. 304 is the cheapest possible answer and, on
+  // 931KB of marketing imagery from Fly's most expensive egress region, by far the most valuable.
+  if (req.headers['if-none-match'] === a.etag) {
+    res.writeHead(304);
+    res.end();
+    return;
+  }
+
+  const accepts = String(req.headers['accept-encoding'] ?? '');
+  let body = a.raw;
+  if (a.brotli && accepts.includes('br')) {
+    res.setHeader('content-encoding', 'br');
+    body = a.brotli;
+  } else if (a.gzip && accepts.includes('gzip')) {
+    res.setHeader('content-encoding', 'gzip');
+    body = a.gzip;
+  }
+
+  // Set explicitly: without it node falls back to chunked encoding, which costs framing bytes and
+  // denies the browser a progress figure.
+  res.setHeader('content-length', body.length);
+  res.writeHead(200);
+  if (req.method === 'HEAD') res.end(); else res.end(body);
+}
+
 function serveStatic(req, res, urlPath) {
   if (urlPath === '/agent/skill.md') {
     const skill = join(ROOT, 'agent', 'skill.md');
     if (existsSync(skill)) {
-      res.writeHead(200, { 'content-type': 'text/markdown; charset=utf-8' });
-      res.end(readFileSync(skill));
+      send(req, res, skill, 'public, max-age=300');
       return true;
     }
   }
@@ -1769,14 +1863,20 @@ function serveStatic(req, res, urlPath) {
   if (!existsSync(DIST)) return false;
   let rel = urlPath === '/' ? '/index.html' : urlPath;
   let file = join(DIST, rel);
+  // Containment: the cache is keyed by resolved path, so a traversal would poison it as well as
+  // read out of tree. Both stop here.
+  if (!file.startsWith(DIST)) return false;
   if (!existsSync(file) || !rel.includes('.')) {
     // SPA fallback for /app/*
     file = join(DIST, 'index.html');
   }
   if (!existsSync(file)) return false;
-  const ext = extname(file);
-  res.writeHead(200, { 'content-type': MIME[ext] ?? 'application/octet-stream' });
-  res.end(readFileSync(file));
+
+  const isIndex = file === join(DIST, 'index.html');
+  send(req, res, file,
+    isIndex ? 'no-cache'
+      : HASHED.test(file) ? 'public, max-age=31536000, immutable'
+        : 'public, max-age=86400');
   return true;
 }
 
