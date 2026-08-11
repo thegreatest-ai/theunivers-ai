@@ -138,6 +138,39 @@ const pageErrors = (log) => log.split('\n')
   // three.js is not tagged this way and still fails the test.
   .filter((l) => !/\[\.WebGL-0x[0-9a-f]+\]/i.test(l));
 
+/**
+ * An address that matches no route must still say something.
+ *
+ * react-router renders NOTHING when nothing matches, which produces the identical empty <div
+ * id="root"> that a crash produces — so a typo is indistinguishable from the site being down. This
+ * was found by opening a URL that had never existed while verifying the crash fix.
+ */
+test('an unknown address shows a page rather than nothing', async (t) => {
+  const bin = chrome();
+  if (!bin) {
+    if (process.env.ALLOW_NO_BROWSER) return t.skip('no Chrome, ALLOW_NO_BROWSER set');
+    assert.fail('no Chrome found — this test cannot verify the page is not blank without one');
+  }
+
+  const server = await serveDist();
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const { dom, log } = await render(bin, base + '/no-such-page-exists-here');
+    const mounted = /<div id="root">([\s\S]*)<\/div>/.exec(dom)?.[1]?.trim() ?? '';
+
+    assert.equal(pageErrors(log).length, 0, `the page logged errors:\n${pageErrors(log).join('\n')}`);
+    assert.ok(mounted.length > 50, 'an unmatched route rendered nothing — add a path="*" route');
+    // Not just "some markup": it has to actually tell the visitor what happened.
+    assert.match(
+      mounted.replace(/<[^>]+>/g, ' '),
+      /nothing at this address/i,
+      'the catch-all rendered, but does not say the address is unknown',
+    );
+  } finally {
+    server.close();
+  }
+});
+
 test('the built page renders something and logs no errors', async (t) => {
   if (!existsSync(join(DIST, 'index.html'))) {
     assert.fail('dist/ is missing — run `npm run build` before the tests that check the build');

@@ -23,8 +23,29 @@ import { tmpdir } from 'node:os';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DIST = join(ROOT, 'dist');
-const PORT = 8700 + Math.floor(Math.random() * 200);
 
+/**
+ * Ask the OS for a port nobody is using, rather than guessing one.
+ *
+ * This was `8700 + random(200)`, which collides: `node --test test/*.test.mjs` runs the files in
+ * PARALLEL, so a 1-in-200 guess is drawn repeatedly, and the loser's server dies on EADDRINUSE.
+ * Binding port 0 and reading back what we were given makes the collision impossible rather than
+ * unlikely. There is a gap between closing this socket and the server claiming the port, but it is
+ * microseconds against the seconds-wide window a random guess leaves open.
+ */
+async function freePort() {
+  const { createServer } = await import('node:net');
+  return new Promise((resolve, reject) => {
+    const s = createServer();
+    s.once('error', reject);
+    s.listen(0, '127.0.0.1', () => {
+      const { port } = s.address();
+      s.close(() => resolve(port));
+    });
+  });
+}
+
+let PORT;
 let child;
 const built = existsSync(join(DIST, 'index.html'));
 
@@ -54,18 +75,48 @@ function hit(path, { headers = {}, method = 'GET', body = null } = {}) {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 before(async () => {
+  PORT = await freePort();
   const data = mkdtempSync(join(tmpdir(), 'serving-'));
   child = spawn(process.execPath, [join(ROOT, 'server', 'index.mjs')], {
     cwd: ROOT,
     env: { ...process.env, PORT: String(PORT), DB_PATH: join(data, 'test.db'),
            INVITE_CODE: 'serving-test', OAUTH_STATE_SECRET: 'test-secret' },
-    stdio: 'ignore',
+    // KEEP stderr. This was `stdio: 'ignore'`, which threw away the one thing that explains a
+    // failure: a server that crashed on startup and a server that is merely slow both presented
+    // as "server did not start" after a silent ten-second wait.
+    stdio: ['ignore', 'ignore', 'pipe'],
   });
-  for (let i = 0; i < 100; i++) {
-    await sleep(100);
+
+  let stderr = '';
+  child.stderr.on('data', (d) => { stderr += d; });
+
+  // Notice a dead child IMMEDIATELY instead of waiting out the whole budget for a process that is
+  // never coming back.
+  let exited = null;
+  child.on('exit', (code, signal) => { exited = { code, signal }; });
+
+  /*
+   * The budget is generous because this suite runs in PARALLEL with a headless-Chrome test that
+   * saturates the CPU; a boot that takes 300ms alone can take several seconds under that load.
+   * The old 10s budget failed roughly one run in three once the browser test joined the suite —
+   * and a flaky check that gates deployment is worse than no check, because it teaches you to
+   * re-run until green.
+   */
+  const deadline = Date.now() + 60_000;
+  while (Date.now() < deadline) {
+    if (exited) {
+      throw new Error(
+        `the server exited during startup (code ${exited.code}, signal ${exited.signal})` +
+        (stderr.trim() ? `:\n${stderr.trim()}` : ' with nothing on stderr'),
+      );
+    }
     try { if ((await hit('/api/health')).status === 200) return; } catch { /* not up yet */ }
+    await sleep(100);
   }
-  throw new Error('server did not start');
+  throw new Error(
+    `server did not answer /api/health on port ${PORT} within 60s` +
+    (stderr.trim() ? `. stderr:\n${stderr.trim()}` : '. stderr was empty'),
+  );
 });
 
 after(() => child?.kill());

@@ -46,6 +46,7 @@ const Mandate = lazy(() => import('./app/Mandate.jsx'))
 const Discover = lazy(() => import('./app/Discover.jsx'))
 const Conversations = named(() => import('./app/Messages.jsx'), 'Conversations')
 const Conversation = named(() => import('./app/Messages.jsx'), 'Conversation')
+const NotFound = lazy(() => import('./app/NotFound.jsx'))
 const Settings = lazy(() => import('./app/Settings.jsx'))
 const Privacy = named(() => import('./app/Settings.jsx'), 'Privacy')
 const ProjectList = named(() => import('./app/Projects.jsx'), 'ProjectList')
@@ -86,12 +87,14 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="mandate" element={<Mandate />} />
           <Route path="deals" element={<DealList />} />
           <Route path="deals/:id" element={<DealDetail />} />
-          {/* Named in ADR-0002 and not built. An honest placeholder rather than a dead link or a
-              navigation that quietly disagrees with the decision. */}
           <Route path="discover" element={<Discover />} />
           <Route path="messages" element={<Conversations />} />
           <Route path="messages/:id" element={<Conversation />} />
         </Route>
+
+        {/* Matches everything left over. Without it react-router renders NOTHING for an unknown
+            path — indistinguishable on screen from the application crashing. See NotFound.jsx. */}
+        <Route path="*" element={<NotFound />} />
       </Routes>
     </BrowserRouter>
   </Suspense>
