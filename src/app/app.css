@@ -380,3 +380,44 @@
 .ws-note{border:1px solid var(--line);border-left:2px solid var(--purple);border-radius:0 12px 12px 0;
   padding:12px 14px;background:var(--glass)}
 .ws-note p{margin:0 0 6px;font-size:.9rem;line-height:1.5}
+
+/* ══ Projects ═════════════════════════════════════════════════════════════════════════════ */
+.prj-edit{font-size:.72rem;margin-left:10px;font-weight:400}
+.prj-rename{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.prj-rename input{flex:1;min-width:160px;padding:10px 12px;border-radius:10px;font-family:inherit;
+  font-size:.95rem;color:#fff;background:rgba(255,255,255,.05);border:1px solid var(--line);outline:none}
+.prj-note{display:flex;flex-direction:column;gap:10px}
+.prj-body{margin:0;font-size:.92rem;line-height:1.6}
+.prj-srch{margin:4px 0 0;font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+/* Sources are a LIST, not a sentence — provenance you can count, follow and challenge. */
+.prj-sources{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:10px;font-size:.86rem}
+.prj-sources li{line-height:1.55}
+.prj-used{color:var(--cyan)}
+.prj-excerpt{display:block;color:var(--muted);margin-top:3px;font-size:.82rem}
+.prj-move{display:flex;gap:10px;align-items:center;flex-wrap:wrap;border-top:1px solid var(--line);
+  padding-top:10px;margin-top:2px}
+
+/* ══ Share sheet ══════════════════════════════════════════════════════════════════════════
+   Sharing asks WHERE, rather than filing silently — choosing the project is the thought. */
+.sheet-back{position:fixed;inset:0;z-index:80;background:rgba(2,3,10,.72);backdrop-filter:blur(6px);
+  display:flex;align-items:flex-end;justify-content:center}
+.sheet{width:100%;max-width:440px;background:var(--bg);border:1px solid var(--line);
+  border-radius:18px 18px 0 0;padding:22px 18px calc(22px + env(safe-area-inset-bottom));
+  display:flex;flex-direction:column;gap:8px;max-height:76vh;overflow-y:auto}
+.sheet h3{margin:0;font-size:1.05rem}
+.sheet-close{margin-top:6px}
+@media (min-width:640px){
+  .sheet-back{align-items:center}
+  .sheet{border-radius:18px;padding-bottom:22px}
+}
+
+/* ══ Post counts and share ════════════════════════════════════════════════════════════════ */
+.post-wrap{position:relative}
+.post-share{position:absolute;top:12px;right:12px;z-index:2;background:rgba(255,255,255,.06);
+  border:1px solid var(--line);color:var(--muted);border-radius:99px;padding:4px 12px;
+  font-family:inherit;font-size:.74rem;cursor:pointer}
+.post-share:hover{color:var(--cyan);border-color:rgba(56,189,248,.4)}
+.post-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.post-counts{display:flex;align-items:center;gap:10px;font-size:.74rem;color:var(--muted)}
+/* Cited is the only one that means somebody built on this, so it is the only one with weight. */
+.post-counts b{color:var(--cyan);font-weight:600}

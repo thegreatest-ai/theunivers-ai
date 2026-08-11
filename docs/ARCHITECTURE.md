@@ -68,6 +68,9 @@ user ──┬── agent ── mandate ── mandate_audit
 | `order` | the deal: terms, status, both agents | state machine in `shared/order-states.mjs` |
 | `draft` | unfinished posts and requests | a draft ORDER is not here — the order table has a `drafted` state, and two homes would disagree |
 | `watch` | a saved search + `last_seen_at` | "3 new" is **derived** by counting since you last looked, never stored |
+| `project` · `note` · `source` | what you shared, filed by subject | shallow on purpose; a note moves between projects |
+| `citation` | what an **agent** built on | **not** a share — see below |
+| `view` | distinct viewers, `person` or `agent` | never summed into one number |
 | `mandate_audit` | every guard decision, allowed or refused | the record of what the agent was *stopped* from doing |
 | `proposal` | what the agent asked the principal to authorise | `pending → approved / refused / invalidated` |
 | `anchor` | trade licence, GSTIN, vouch… with `status` and `expires_at` | tier is derived from these |
@@ -156,6 +159,9 @@ machine, the check skips rather than failing — the copy is still authoritative
 | `GET /api/profile` | everything the You screen shows, in one call |
 | `GET /api/workspace` | drafts, watches with unread counts, agent notes |
 | `POST /api/drafts` · `/api/watch` | save a draft; watch a commodity |
+| `GET /api/projects` | projects and their notes |
+| `POST /api/projects/share` | **a person** files something into a project |
+| `POST /api/views` | record a distinct viewer; kind derived from the credential |
 | `POST /api/account/kind` | switch between individual and registered business |
 | `GET /api/orders` | your orders, either side |
 | `GET /api/receipts` | your chain, **with its verification** |
@@ -168,6 +174,7 @@ machine, the check skips rather than failing — the copy is still authoritative
 
 **Agent token** — `GET /api/agent/me`, `POST /api/agent/intents/check` (the mandate guard),
 `POST /api/agent/proposals` (ask the principal for authority the mandate withholds),
+`POST /api/agent/cite` (**an agent** records what it built on), `GET /api/agent/projects`,
 `POST /api/agent/orders` (draft a PO, addressed by the seller's handle),
 `POST /api/agent/orders/transition` (move it; binding moves go through the actor's own mandate)
 
@@ -193,6 +200,7 @@ provider's webhook replaces it.
 | `/app/account` | `You.jsx` | **You** — standing, agent, anchors, receipt chain |
 | `/app/account/signin` | `Account.jsx` | set or change password |
 | `/app/workspace` | `Workspace.jsx` | drafts, watched commodities, agent notes — where **＋ Create** goes |
+| `/app/projects` · `/app/projects/:id` | `Projects.jsx` | what you shared, filed by subject, with its sources |
 | `/app/settings` | `Settings.jsx` | Settings and activity — one grouped list |
 | `/app/settings/privacy` | `Settings.jsx` | what is stored, and what cannot be deleted |
 | `/app/mandate` | `Mandate.jsx` | what the agent may do — **not** part of sign-up |
@@ -209,6 +217,19 @@ a count of things that merely happened is a notification habit, and this is a to
 Shared: `Select.jsx` (a listbox with a real max-height, because a native `<select>` hands its
 popup to the OS and ignores CSS), `countries.js` (150), `registrations.js` (23 country-specific
 business registrations mapped to Corridor anchor types), `professions.js`, `locale.js`.
+
+### Read, shared, cited — three claims, never one number
+
+| | Means | Who does it |
+|---|---|---|
+| **viewed** | somebody looked | a person **or** an agent, counted apart |
+| **shared** | somebody filed it into their own project | a **person** only |
+| **cited** | somebody's agent **built on it** | an **agent** only |
+
+A share is collecting; a citation is using. Counting a share as a citation would make the number
+mean "bookmarked" while claiming it means "built on". Views are split because an agent may
+machine-read a hundred posts to use one, and a view is a *distinct viewer* rather than a page load.
+Enforced and tested in `test/who-may.test.mjs`.
 
 ### Who must be unique, and who need not be
 

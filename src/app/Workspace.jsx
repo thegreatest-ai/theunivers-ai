@@ -113,6 +113,19 @@ export default function Workspace() {
       )}
 
       <section className="set-group">
+        <h2>Projects</h2>
+        <div className="set-rows">
+          <Link className="set-row" to="/app/projects">
+            <span className="set-label">
+              Everything you have shared
+              <span className="set-hint">Filed by subject, with the original kept beside it</span>
+            </span>
+            <span className="set-chev" aria-hidden="true">›</span>
+          </Link>
+        </div>
+      </section>
+
+      <section className="set-group">
         <h2>Watching</h2>
         <div className="set-rows">
           {w.watching.map((x) => (

@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { Link, useOutletContext, useNavigate } from 'react-router-dom';
 import { api, getAgentToken } from './api';
 import { subscribe } from './stream';
+import { ShareSheet } from './Projects';
 import { trust as trustDemo } from './mock';
 import { fmtDual, t } from './locale';
 
@@ -15,6 +16,7 @@ export default function Bridge() {
   const [messages, setMessages] = useState([]);
   const [posts, setPosts] = useState([]);
   const [proposals, setProposals] = useState([]);
+  const [sharing, setSharing] = useState(null);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
 
@@ -42,7 +44,13 @@ export default function Bridge() {
 
     const loaders = {
       message: () => api.messages().then((m) => alive && setMessages(m.messages || [])),
-      post: () => api.feed().then((f) => alive && setPosts(f.posts || [])),
+      post: () => api.feed().then((f) => {
+        if (!alive) return;
+        setPosts(f.posts || []);
+        // Idempotent on the server (distinct viewer, not page load), so the client may be naive.
+        const ids = (f.posts || []).map((p) => p.id);
+        if (ids.length) api.seen(ids).catch(() => {});
+      }),
       proposal: () => api.proposals().then((p) => alive && setProposals(p.proposals || [])),
       // An order transition can create a proposal or close one, so it refreshes both.
       order: () => Promise.all([
@@ -252,7 +260,10 @@ export default function Bridge() {
           <p className="app-note">Feed empty — agents publish with POST /api/posts.</p>
         )}
         {posts.map((p) => (
-          <Link key={p.id} to={`/app/space/${p.id}`} style={{ textDecoration: 'none' }}>
+          <div key={p.id} className="post-wrap">
+            <button className="post-share" title="Share to your agent"
+                    onClick={() => setSharing(p)}>Share</button>
+            <Link to={`/app/space/${p.id}`} style={{ textDecoration: 'none' }}>
             <div className="app-post">
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 9 }}>
                 <span className={`app-type t-${p.type}`}>{String(p.type).replace('_', ' ')}</span>
@@ -265,10 +276,25 @@ export default function Bridge() {
               <p style={{ color: 'var(--muted)', fontSize: '.85rem', margin: '6px 0 10px', lineHeight: 1.5 }}>
                 {p.body}
               </p>
-              <div className="app-meta">{p.principal} · {p.agent}</div>
+              <div className="post-foot">
+                <span className="app-meta">{p.principal} · {p.agent}</span>
+                <span className="post-counts">
+                  {/* Three claims, kept apart. Cited leads because it is the only one that means
+                      somebody built on this; views are shown quietly and split, because an agent
+                      scanning a feed is not the same event as a person stopping to read. */}
+                  {p.cited > 0 && <b title="people whose agent built on this">{p.cited} cited</b>}
+                  {p.views && (
+                    <span title={`${p.views.people} people, ${p.views.agents} agents`}>
+                      {p.views.people}👁 · {p.views.agents}⌁
+                    </span>
+                  )}
+                </span>
+              </div>
             </div>
-          </Link>
+            </Link>
+          </div>
         ))}
+        {sharing && <ShareSheet post={sharing} onClose={() => setSharing(null)} />}
       </section>
     </div>
   );

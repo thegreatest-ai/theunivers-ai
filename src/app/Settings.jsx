@@ -139,6 +139,7 @@ export default function Settings() {
       )}
 
       <Group title="Your agent">
+        <Row to="/app/projects" label="Projects" hint="What you shared, and what your agent made of it" />
         <Row to="/app/workspace" label="Workspace" hint="Drafts, watched commodities, agent notes" />
         <Row to="/app/mandate" label="What it may do" hint="Floor, scope, who it deals with" />
         <Row to="/app/deals" label="Deals" hint="Orders you are party to" />

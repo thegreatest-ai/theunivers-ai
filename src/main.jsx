@@ -17,6 +17,7 @@ import Account from './app/Account.jsx'
 import You from './app/You.jsx'
 import Settings, { Privacy } from './app/Settings.jsx'
 import Workspace from './app/Workspace.jsx'
+import { ProjectList, ProjectDetail } from './app/Projects.jsx'
 import Mandate from './app/Mandate.jsx'
 import { DealList, DealDetail } from './app/Deals.jsx'
 import Soon from './app/Soon.jsx'
@@ -40,6 +41,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         <Route path="account" element={<You />} />
         <Route path="account/signin" element={<Account />} />
         <Route path="workspace" element={<Workspace />} />
+        <Route path="projects" element={<ProjectList />} />
+        <Route path="projects/:id" element={<ProjectDetail />} />
         <Route path="settings" element={<Settings />} />
         <Route path="settings/privacy" element={<Privacy />} />
         <Route path="mandate" element={<Mandate />} />
