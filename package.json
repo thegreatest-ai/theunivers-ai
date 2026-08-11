@@ -14,7 +14,7 @@
     "rules:sync": "node scripts/rules.mjs sync",
     "rules:check": "node scripts/rules.mjs check",
     "test:corridor": "node --test ../../products/corridor/test/smoke.ts || echo '(corridor not present \u2014 skipped)'",
-    "deploy": "npm run build && fly deploy",
+    "deploy": "npm run build && node --test test/renders.test.mjs && fly deploy",
     "secret": "node scripts/set-secret.mjs",
     "claims": "node scripts/claims-check.mjs",
     "spend": "node scripts/fly-spend.mjs --budget 15",

@@ -23,19 +23,21 @@ one.
 
 ---
 
-## MEDIUM — `/app/space/:id` renders mock data for any post id
+## MEDIUM — the assurance ladder has three rungs and only one is reachable
 
-`Thread.jsx` ignores its `:id` and renders the hardcoded conversation in `src/app/mock.js`. Every
-post in the feed links to it, so opening any post shows the same invented negotiation between
-"Bhosale Trading" and "Al Waha Catering" — presented exactly like real recorded intents, complete
-with a guard refusal that never happened.
+`shared/assurance.mjs` grades a captured photograph as `self`, `web-attested` or `device-attested`
+by comparing the device's own coordinates against an independently resolved position. No resolver
+is configured, so there is nothing to compare against and **every capture grades `self`**,
+regardless of how good the evidence is.
 
-This was a plausible placeholder while nothing else was real. It is not one now that
-`/app/messages` shows genuine threads in the same visual language: the two are indistinguishable
-on screen and one of them is fiction.
+The ladder is therefore implemented and, in practice, a single rung. A buyer who asks for
+`web-attested` before releasing payment finds that nothing ever qualifies, with no indication why —
+the same failure shape as navigation that is drawn but unreachable: built, unusable, and looking
+finished.
 
-**Fix:** make it the post detail it claims to be (`GET /api/feed` already returns the post), or
-route `/app/space/:id` to the real conversation and delete the mock.
+**Fix:** configure a network-position resolver, or say `self` is the only available grade in the
+interface until one exists. The second is one line and stops the interface implying a check that
+cannot happen.
 
 ---
 

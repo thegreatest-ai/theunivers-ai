@@ -17,6 +17,21 @@ import ReactDOM from 'react-dom/client'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import './styles.css'
 
+/*
+ * Named exports need unwrapping for lazy(), which expects a module with a default. Two lazy calls
+ * on one module still resolve to one chunk, so the pair costs one request, not two.
+ *
+ * DECLARED BEFORE ITS FIRST USE, and that is not a style preference. `const` is not hoisted the way
+ * `function` is: it sits in the temporal dead zone until the line that declares it runs. Every
+ * named() call below executes AT MODULE LOAD, so one placed above this line throws
+ * "Cannot access 'named' before initialization" — before React mounts, before any error boundary
+ * exists, before a single route is read. The page renders as an empty <div id="root">, with the
+ * whole application intact and unreachable. That shipped once.
+ *
+ * If you add routes here, add them BELOW this line.
+ */
+const named = (load, key) => lazy(() => load().then((m) => ({ default: m[key] })))
+
 const App = lazy(() => import('./App.jsx'))
 const Shell = lazy(() => import('./app/Shell.jsx'))
 const SignIn = lazy(() => import('./app/SignIn.jsx'))
@@ -31,10 +46,6 @@ const Mandate = lazy(() => import('./app/Mandate.jsx'))
 const Discover = lazy(() => import('./app/Discover.jsx'))
 const Conversations = named(() => import('./app/Messages.jsx'), 'Conversations')
 const Conversation = named(() => import('./app/Messages.jsx'), 'Conversation')
-
-// Named exports need unwrapping for lazy(), which expects a module with a default. Two lazy calls
-// on one module still resolve to one chunk, so the pair costs one request, not two.
-const named = (load, key) => lazy(() => load().then((m) => ({ default: m[key] })))
 const Settings = lazy(() => import('./app/Settings.jsx'))
 const Privacy = named(() => import('./app/Settings.jsx'), 'Privacy')
 const ProjectList = named(() => import('./app/Projects.jsx'), 'ProjectList')
