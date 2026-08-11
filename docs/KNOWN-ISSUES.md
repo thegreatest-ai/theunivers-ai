@@ -29,7 +29,12 @@ clips fill the disk, and serving them from `bom` costs $0.12/GB — Fly's most e
 The same bytes on Cloudflare R2 cost nothing to serve.
 
 Guarded rather than ignored: a 120MB per-person quota, per-type size caps, and `/api/metrics`
-reports usage — so the day this must move arrives as a warning rather than a full disk.
+reports usage under `scale.volume` — so the day this must move arrives as a warning rather than a
+full disk. That reporting was claimed here before it existed; `storageStats()` was exported and
+never called. It is real now.
+
+**Eight people at the full quota fill the volume, and so do ~22 videos.** The database shares the
+same 900MB. Triggers and the exact shape of an R2 provider are in `docs/specs/SCALING.md`.
 
 **Fix when video is used in earnest:** add an R2 or Tigris provider to `server/storage.mjs`. It is
 written as a provider with one implementation precisely so that is a `put`/`get`/`remove` and
@@ -51,13 +56,38 @@ rather than pretending. `/api/metrics` reports `analysisConfigured`.
 
 ---
 
-## LOW — rate-limit state is per-process
+## HIGH — an order can change state without the receipt that proves it
 
-`server/ratelimit.mjs` holds counters in memory. Correct for one machine, wrong the moment there
-are two: per-process limits multiply by the number of processes. **Move this to shared storage
-before scaling to a second machine**, not after.
+`transition()` in `server/orders.mjs` updates the order's status, then calls `appendBoth()`, which
+opens **two separate transactions** — one per party. Nothing wraps the three writes together. If the
+process dies between the update and the appends, the order has moved and nothing records that it
+did; if it dies between the two appends, one party holds a receipt the other does not.
 
-Recovery if a legitimate user is locked out: `fly apps restart theunivers-ai` clears all counters.
+Not theoretical on Fly: `auto_stop_machines = "suspend"` stops the machine when it idles, and a
+deploy restarts it. Both land in exactly this window.
+
+**`verifyChain()` will never detect it.** A receipt that was never written breaks no hash, so the
+chain stays perfectly valid while being incomplete. On a product whose claim is that the chain is
+evidence, this is the worst failure available — silent, permanent, and invisible to the check built
+to find tampering.
+
+**Fix:** give `appendReceipt` a mode that joins an existing transaction rather than opening its own
+`BEGIN IMMEDIATE`, wrap the status change and both appends in one, and move `publishAll` after the
+commit. Deliberately not done as part of the scaling work — it restructures the append-only spine
+and wants its own change and its own tests. See `docs/specs/SCALING.md`.
+
+---
+
+## LOW — SSE subscribers are per-process
+
+`server/events.mjs` holds open responses in memory, so a publish on machine A never reaches a
+subscriber on machine B. Left in memory **deliberately**: a socket cannot live in a database, and
+the shared-delivery alternative costs a write and a poll per event, which is worse at one machine
+and reintroduces the polling `GET /api/events` exists to remove.
+
+**Fix when a second machine is decided on, in the same change:** an outbox table plus Postgres
+`LISTEN`/`NOTIFY`. `publish()` and `publishAll()` keep their signatures. Reasoning and cost in
+`docs/specs/SCALING.md`.
 
 ---
 

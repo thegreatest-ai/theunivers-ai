@@ -39,7 +39,7 @@ someone works has to be quiet and fast.
 | Layer | Choice | Why |
 |---|---|---|
 | Server | Node 22+, **zero dependencies** | `node:sqlite`, `node:http`, `fetch` and `node:crypto` cover everything needed. No supply chain to audit, no lockfile drift. |
-| Storage | SQLite on a Fly volume, WAL | One machine, one file. Postgres is the upgrade path, not the starting point. |
+| Storage | SQLite on a Fly volume, WAL | One machine, one file. Postgres is the upgrade path, not the starting point — and the trigger for taking it is a **second machine**, not a row count. A Fly volume attaches to exactly one machine, and measured write throughput is ~69,000/sec. See `docs/specs/SCALING.md`. |
 | Frontend | Vite + React 18 + react-router-dom | |
 | Mail | Resend over HTTPS | SMTP would need a client library and a long-lived connection; this is one `fetch`. |
 | Auth | scrypt + opaque session tokens | `node:crypto` has scrypt. No JWT: revocation matters more here than statelessness. |
@@ -78,6 +78,7 @@ user ──┬── agent ── mandate ── mandate_audit
 | `receipt` | `seq`, `prev_hash`, `hash` | append-only chain, **one per principal** — a deal writes to both, so neither party depends on the other's copy |
 | `invite` | code, `uses`, `max_uses` | inert while `INVITE_REQUIRED=false` |
 | `metric_daily` | `bytes_out`, `requests` per UTC day | feeds the spend tracker |
+| `rate_limit` | `(bucket, key)`, count, max, `reset_at` | fixed-window counters; in the database so a deploy cannot reset a brute-force limit |
 
 ### Three rules that must not be broken
 
@@ -186,7 +187,10 @@ nothing**; this records that a confirmation reached us, and the receipt says the
 `operator-manual` rather than pretending a system observed it. It exists only until a licensed
 provider's webhook replaces it.
 
-**Operator** — `GET /api/metrics`, gated by `METRICS_TOKEN`, 404 when unset
+**Operator** — `GET /api/metrics`, gated by `METRICS_TOKEN`, 404 when unset. Reports egress, the
+storage pragmas, stream connections, and — so the triggers in `docs/specs/SCALING.md` can actually
+be watched — `scale` (row counts, database and media bytes against the 900MB volume, the largest
+single uploader) and `limits` (how many callers are tracked and how many are blocked).
 
 ---
 
