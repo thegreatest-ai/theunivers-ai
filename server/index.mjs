@@ -11,6 +11,7 @@ import { randomUUID, timingSafeEqual, createHmac, createHash } from 'node:crypto
 import { gzipSync, brotliCompressSync, constants } from 'node:zlib';
 import { measure, daily, totals } from './metrics.mjs';
 import { createOrder, transition, ordersFor, orderRow, publicOrder, roleOf } from './orders.mjs';
+import * as inspection from './inspection.mjs';
 import { chainFor, verifyChain } from './receipts.mjs';
 import { trustOf } from './trust.mjs';
 import { analyseNote, analysisAvailable } from './analyse.mjs';
@@ -609,6 +610,139 @@ route('POST', '/api/orders/transition', (ctx) => {
     return err(status, result.reason, undefined, result.code);
   }
   return { order: publicOrder(result.order, agent.id) };
+});
+
+/**
+ * ── Inspection ─────────────────────────────────────────────────────────────────────────────
+ * A third party judges whether the goods match the agreed spec. See build order step 3 of
+ * docs/specs/ORDER-AND-INSPECTION.md. The inspector is an ordinary agent with a mandate.
+ */
+
+/**
+ * The independent network position, derived server-side from the edge and NEVER from the request
+ * body. This is the second of the two signals whose AGREEMENT is what earns web-attested — the
+ * device's own geolocation is the first, and it is spoofable, so a position the client could set
+ * would defeat the entire check.
+ *
+ * Cloudflare puts a coarse city-level fix in `cf-iplatitude` / `cf-iplongitude`. When neither the
+ * edge nor any resolver provides one, this returns null — and that is correct, not a gap: with no
+ * independent signal the grade in shared/assurance.mjs collapses to `self`, which is the honest
+ * outcome. Fabricating a position to fill the hole would be the overclaiming this design refuses.
+ */
+function networkPosition(ctx) {
+  const lat = Number(ctx.headers['cf-iplatitude']);
+  const lng = Number(ctx.headers['cf-iplongitude']);
+  if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
+  return null;
+}
+
+/** A party to an order commissions an inspection of it. */
+route('POST', '/api/agent/inspections', (ctx) => {
+  const agent = ctx.agent;
+  if (!agent) return err(401, 'agent token required');
+  const result = inspection.postJob({
+    orderId: String(ctx.body.order ?? ''),
+    commissionerId: agent.id,
+    end: String(ctx.body.end ?? ''),
+    specTemplateId: ctx.body.specTemplateId,
+    fee: ctx.body.fee,
+    minAssurance: ctx.body.minAssurance,
+  });
+  if (!result.ok) {
+    const status = result.code === 'NOT_FOUND' ? 404 : result.code === 'NOT_A_PARTY' ? 403 : 400;
+    return err(status, result.reason, undefined, result.code);
+  }
+  return { inspection: inspection.publicJob(result.job, agent.id) };
+});
+
+/** Open jobs an inspector could claim. The nonce is issued at claim, never listed here. */
+route('GET', '/api/inspections/open', (ctx) => {
+  if (!ctx.agent && !ctx.user) return err(401, 'auth required');
+  return { inspections: inspection.openJobs().map((j) => inspection.publicJob(j, ctx.agent?.id)) };
+});
+
+/**
+ * Move an inspection. Claiming runs through the inspector's OWN mandate — fee floor and the spec
+ * they may judge — so a SCOPE refusal is the proposal case, not a failure, and its code is
+ * returned for the agent to tell the two apart.
+ */
+route('POST', '/api/agent/inspections/transition', (ctx) => {
+  const agent = ctx.agent;
+  if (!agent) return err(401, 'agent token required');
+  const result = inspection.transition(
+    String(ctx.body.inspection ?? ''), agent.id, String(ctx.body.to ?? ''));
+  if (!result.ok) {
+    const status = result.code === 'NOT_FOUND' ? 404
+      : result.code === 'NOT_A_PARTY' ? 403 : 409;
+    return err(status, result.reason, undefined, result.code);
+  }
+  return { inspection: inspection.publicJob(result.job, agent.id), nonce: result.nonce };
+});
+
+/**
+ * Capture one frame of evidence at check-in. RAW BODY — the frame from getUserMedia, exactly like
+ * the works media upload, because the browser already sends the bytes and the type and a multipart
+ * parser would be a dependency and a class of bug. Everything else rides in headers, so the body
+ * is only ever the image.
+ *
+ * The device fix and the platform's timing come from headers; the INDEPENDENT network fix is
+ * derived here from the edge and never trusted from the client. EXIF is stripped and the hash is
+ * taken server-side, so "this is the image submitted" is provable against the stored bytes.
+ */
+route('POST', '/api/agent/inspections/:id/evidence', (ctx) => {
+  const agent = ctx.agent;
+  if (!agent) return err(401, 'agent token required');
+
+  const mime = String(ctx.headers['content-type'] ?? '').split(';')[0].trim() || 'image/jpeg';
+  const device = ctx.headers['x-geo-lat'] != null && ctx.headers['x-geo-lat'] !== ''
+    ? { lat: Number(ctx.headers['x-geo-lat']), lng: Number(ctx.headers['x-geo-lng']),
+        accuracy_m: ctx.headers['x-geo-accuracy'] != null ? Number(ctx.headers['x-geo-accuracy']) : null }
+    : null;
+
+  const result = inspection.captureEvidence(ctx.params.id, agent.id, {
+    bytes: ctx.raw,
+    mime,
+    presentedNonce: String(ctx.headers['x-nonce'] ?? ''),
+    // Whether the code is legible in the frame is a read the client asserts and a later reviewer
+    // can overturn from the stored image; it is recorded, not blindly trusted.
+    nonceInShot: String(ctx.headers['x-nonce-in-shot'] ?? '') === 'true',
+    live: String(ctx.headers['x-live'] ?? 'true') === 'true',
+    device,
+    network: networkPosition(ctx),
+    requestedAt: ctx.headers['x-requested-at'] || null,
+    observedAt: ctx.headers['x-observed-at'] || null,
+  });
+  if (!result.ok) {
+    const status = result.code === 'NOT_FOUND' ? 404
+      : result.code === 'NOT_A_PARTY' ? 403
+      : result.code === 'BAD_NONCE' ? 409 : 400;
+    return err(status, result.reason, undefined, result.code);
+  }
+  return { evidence: result.evidence, meetsPolicy: result.meetsPolicy };
+});
+
+/** The evidence on a job. Observations, returned as observations — for the parties and inspector. */
+route('GET', '/api/inspections/:id', (ctx) => {
+  if (!ctx.agent && !ctx.user) return err(401, 'auth required');
+  const job = inspection.jobRow(ctx.params.id);
+  if (!job) return err(404, 'no such inspection');
+  const viewerAgentId = ctx.agent?.id
+    ?? (ctx.user ? one('SELECT id FROM agent WHERE user_id = ?', ctx.user.id)?.id : null);
+  return {
+    inspection: inspection.publicJob(job, viewerAgentId),
+    evidence: inspection.evidenceFor(job.id),
+  };
+});
+
+/** Inspections against one order, for the parties to it. */
+route('GET', '/api/orders/:id/inspections', (ctx) => {
+  if (!ctx.agent && !ctx.user) return err(401, 'auth required');
+  const viewerAgentId = ctx.agent?.id
+    ?? (ctx.user ? one('SELECT id FROM agent WHERE user_id = ?', ctx.user.id)?.id : null);
+  return {
+    inspections: inspection.jobsForOrder(ctx.params.id)
+      .map((j) => inspection.publicJob(j, viewerAgentId)),
+  };
 });
 
 /**

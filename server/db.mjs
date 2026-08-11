@@ -521,6 +521,83 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS agent_message_from_idx   ON agent_message(from_agent_id, created_at);
 `);
 
+/**
+ * Inspection jobs and their evidence. See docs/specs/ORDER-AND-INSPECTION.md, build order step 3.
+ *
+ * An inspection is a JOB, not new party machinery: the inspector is an ordinary agent whose
+ * mandate says which spec templates they may judge and what fee they will accept. The job hangs
+ * off an order and names the END it covers — origin (before shipment) or arrival — because with
+ * arrival-only records "the seller shipped bad goods" and "transit destroyed them" produce
+ * identical evidence, and the dispute that will dominate this platform has no resolvable form.
+ *
+ * `min_assurance` is the floor the commissioner demands, graded in shared/assurance.mjs. `fee` is
+ * two columns for the same reason an order's price is — the currency is enforced in the currency
+ * it was agreed in, never converted, so it must be as queryable as the number.
+ *
+ * status has no CHECK listing the states: the machine lives in shared/inspection-states.mjs where
+ * the browser reads it too, and a second copy here would be one more place to forget.
+ */
+db.exec(`
+  CREATE TABLE IF NOT EXISTS inspection_job (
+    id                TEXT PRIMARY KEY,
+    order_id          TEXT NOT NULL REFERENCES "order"(id),
+    commissioner_id   TEXT NOT NULL REFERENCES agent(id),   -- the party who posted it
+    inspector_id      TEXT REFERENCES agent(id),            -- null until claimed
+    end               TEXT NOT NULL CHECK (end IN ('origin','arrival')),
+    spec_template_id  TEXT NOT NULL DEFAULT 'default',
+    fee_amount        REAL NOT NULL,
+    fee_currency      TEXT NOT NULL,
+    min_assurance     TEXT NOT NULL DEFAULT 'web-attested',
+    -- The unannounced fix: a nonce the platform issues at CHECK-IN and a moment it chose. Faking a
+    -- reading you did not know would be asked for is materially harder than faking a scheduled one.
+    nonce             TEXT,
+    nonce_issued_at   TEXT,
+    status            TEXT NOT NULL DEFAULT 'posted',
+    claimed_at        TEXT,
+    created_at        TEXT NOT NULL,
+    updated_at        TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS inspection_order_idx     ON inspection_job(order_id, status);
+  CREATE INDEX IF NOT EXISTS inspection_inspector_idx ON inspection_job(inspector_id, status);
+
+  /*
+   * Evidence — ONE row per captured frame, written at check-in.
+   *
+   * What is stored is an OBSERVATION, never a verdict: the coordinates the device reported, the
+   * network position we derived independently, the assurance grade and its reasons, the SHA-256 of
+   * the image bytes taken AT CAPTURE. "the device reported these coordinates" is true and stays
+   * true when challenged; "the inspector was present" is a claim the system cannot support.
+   *
+   * The image bytes live in the media store, addressed by the same id; only the HASH is the proof,
+   * so the file may live anywhere and remain provably the one submitted. EXIF is stripped before
+   * storage and never read — EXIF GPS is attacker-controlled, and coordinates come from the fix the
+   * platform requested, not from what the file claims about itself.
+   *
+   * lat/lng are the DEVICE reading, kept queryable. net_lat/net_lng are the independent network
+   * reading. The grade is a function of whether they agree — consistency, not location.
+   */
+  CREATE TABLE IF NOT EXISTS inspection_evidence (
+    id            TEXT PRIMARY KEY,
+    job_id        TEXT NOT NULL REFERENCES inspection_job(id),
+    media_id      TEXT,                                     -- where the stripped bytes were stored
+    sha256        TEXT NOT NULL,                            -- the proof; hashed at capture
+    nonce         TEXT NOT NULL,                            -- the code that had to be in the shot
+    live          INTEGER NOT NULL DEFAULT 0,               -- from a media stream, not a file
+    lat           REAL,                                     -- device geolocation
+    lng           REAL,
+    accuracy_m    REAL,
+    net_lat       REAL,                                     -- independent network position
+    net_lng       REAL,
+    source        TEXT,                                     -- device | network
+    assurance     TEXT NOT NULL DEFAULT 'self',
+    reasons       TEXT NOT NULL DEFAULT '[]',               -- why the grade landed where it did
+    requested_at  TEXT,                                     -- when the platform ASKED for the fix
+    observed_at   TEXT,                                     -- when the device REPORTED it
+    created_at    TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS evidence_job_idx ON inspection_evidence(job_id, created_at);
+`);
+
 db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS agent_name_unique
          ON agent (lower(trim(name)))`);
 ensureColumn('mandate', 'expires_at', `expires_at TEXT DEFAULT '9999-12-31T00:00:00.000Z'`);

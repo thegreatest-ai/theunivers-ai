@@ -82,6 +82,42 @@ export const api = {
   conversations: () => req('/api/conversations'),
   conversation: (id) => req(`/api/conversations/${encodeURIComponent(id)}`),
   createPost: (body) => req('/api/posts', { method: 'POST', body: JSON.stringify(body) }),
+
+  /* Inspection. See docs/specs/ORDER-AND-INSPECTION.md. */
+  orderInspections: (id) => req(`/api/orders/${id}/inspections`),
+  inspection: (id) => req(`/api/inspections/${id}`),
+  openInspections: () => req('/api/inspections/open'),
+
+  /*
+   * Evidence is captured, never uploaded. The frame comes from getUserMedia — a media stream, not
+   * a file picker — so it is a Blob of the current frame, sent as raw bytes exactly like works
+   * media. The device fix, the platform nonce and the timing ride in headers so the body is only
+   * ever the image. The network fix is derived at the edge and never sent from here, because a
+   * position the client could set would defeat the consistency check it exists to feed.
+   */
+  captureEvidence: (jobId, blob, { nonce, nonceInShot, live, device, requestedAt, observedAt }) =>
+    fetch(`${API}/api/agent/inspections/${jobId}/evidence`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${localStorage.getItem('tu_agent_token')}`,
+        'content-type': blob.type || 'image/jpeg',
+        'x-nonce': nonce ?? '',
+        'x-nonce-in-shot': nonceInShot ? 'true' : 'false',
+        'x-live': live === false ? 'false' : 'true',
+        ...(device?.lat != null && {
+          'x-geo-lat': String(device.lat),
+          'x-geo-lng': String(device.lng),
+          ...(device.accuracy_m != null && { 'x-geo-accuracy': String(device.accuracy_m) }),
+        }),
+        ...(requestedAt && { 'x-requested-at': requestedAt }),
+        ...(observedAt && { 'x-observed-at': observedAt }),
+      },
+      body: blob,
+    }).then(async (r) => {
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || r.statusText);
+      return d;
+    }),
 };
 
 export function setSession(token) {
