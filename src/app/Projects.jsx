@@ -71,6 +71,8 @@ export function ProjectDetail() {
   const [data, setData] = useState(null);
   const [all, setAll] = useState([]);
   const [renaming, setRenaming] = useState(false);
+  const [working, setWorking] = useState('');
+  const [problem, setProblem] = useState('');
   const [name, setName] = useState('');
 
   const load = () => Promise.all([
@@ -91,6 +93,18 @@ export function ProjectDetail() {
     await api.renameProject(id, name.trim());
     setRenaming(false);
     load();
+  }
+
+  async function analyse(noteId) {
+    setWorking(noteId); setProblem('');
+    try {
+      await api.analyse(noteId);
+      await load();
+    } catch (e) {
+      // Say what actually happened. "Could not analyse" would hide the only useful distinction:
+      // whether the material is wrong or the platform is not set up.
+      setProblem(e.message);
+    } finally { setWorking(''); }
   }
 
   async function move(noteId, to) {
@@ -132,6 +146,16 @@ export function ProjectDetail() {
             {st.hint && <p className="app-note" style={{ margin: '8px 0 0' }}>{st.hint}</p>}
 
             {n.body && <p className="prj-body">{n.body}</p>}
+
+            {n.status !== 'analysed' && (
+              <div>
+                <button className="app-cta" disabled={working === n.id}
+                        onClick={() => analyse(n.id)}>
+                  {working === n.id ? 'Reading…' : 'Ask your agent to read this'}
+                </button>
+                {problem && <p className="app-error" style={{ marginBottom: 0 }}>{problem}</p>}
+              </div>
+            )}
 
             <h4 className="prj-srch">Sources</h4>
             <ol className="prj-sources">

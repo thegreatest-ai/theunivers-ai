@@ -11,6 +11,7 @@ import { measure, daily, totals } from './metrics.mjs';
 import { createOrder, transition, ordersFor, orderRow, publicOrder, roleOf } from './orders.mjs';
 import { chainFor, verifyChain } from './receipts.mjs';
 import { trustOf } from './trust.mjs';
+import { analyseNote, analysisAvailable } from './analyse.mjs';
 import { subscribe, publish, publishAll, streamStats } from './events.mjs';
 import { take, refund, clientIp, LIMITS } from './ratelimit.mjs';
 import { sendMail, resetEmail, mailConfigured } from './mail.mjs';
@@ -905,6 +906,31 @@ route('POST', '/api/projects/rename', (ctx) => {
  * The reason the whole structure is shallow: a line of research reveals what it was only after you
  * have been at it a while, so re-filing has to be one action rather than a migration.
  */
+/**
+ * Ask for a note to be analysed.
+ *
+ * The PERSON asks; the model reads; the citations are written by the runner. That keeps the
+ * division from `who-may.test.mjs` intact — a person never cites, they only ask, and what gets
+ * cited is decided by whatever actually did the reading.
+ *
+ * Awaited rather than queued. A note has a handful of sources and this is one model call, so a
+ * queue would add a job table, a worker and a retry story to solve a problem that does not exist
+ * yet. It becomes wrong the moment a note has fifty sources; that is when to add one.
+ */
+route('POST', '/api/notes/analyse', async (ctx) => {
+  const user = ctx.user;
+  if (!user) return err(401, 'sign in required');
+
+  const r = await analyseNote(String(ctx.body.note ?? ''), user.id);
+  if (!r.ok) {
+    // NO_MODEL is a configuration fact, not a failure of this note — say so plainly rather than
+    // leaving someone to wonder what they did wrong.
+    return err(r.code === 'NO_MODEL' ? 503 : 409, r.reason, undefined, r.code);
+  }
+  publish(user.id, 'project', { note: String(ctx.body.note) });
+  return r;
+});
+
 route('POST', '/api/notes/move', (ctx) => {
   const user = ctx.user;
   if (!user) return err(401, 'sign in required');
@@ -1161,6 +1187,7 @@ route('GET', '/api/metrics', (ctx) => {
       synchronous: pragma('synchronous'),   // 0=OFF 1=NORMAL 2=FULL 3=EXTRA
     },
     mailConfigured: mailConfigured(),
+    analysisConfigured: analysisAvailable(),
     // Egress here UNDER-counts the stream: measure() tallies a response when it ends, and an SSE
     // response ends only on disconnect. Heartbeats and events are not counted. Given the point of
     // the stream is to send far less than polling did, an undercount of a small number is

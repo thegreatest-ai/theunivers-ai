@@ -204,6 +204,32 @@ was found only by sending to an address that was not the account owner's.
 
 ---
 
+## A model reading strangers' text
+
+`server/analyse.mjs` is the first place a model reads text written by other people. ADR-0001 says
+that text is data and never instruction; this is where the principle becomes code.
+
+Three defences, in order of how much they are worth:
+
+**1. Structural — the only one that survives a successful injection.** The runner can write exactly
+two things: `note.body`, and `citation` rows whose source already belongs to that note. It cannot
+reach a mandate, an order, a user or another person's note. A perfect injection gets to write a
+paragraph into the reader's own file and cite a post the reader themselves filed.
+
+**2. Validation.** Every id the model returns is checked against the sources actually attached, so
+it cannot cite something that is not there — and therefore cannot manufacture standing for an
+account by naming it.
+
+**3. Framing.** Sources are fenced and declared to be data. Worth doing, worth trusting least: a
+framing instruction is a request, and overriding requests is exactly what an injection attempts.
+
+Note also what is not attackable by design: **there is no tier column to grant.** Standing is
+derived on read, so "give this account T4" is not a thing that can be written, however
+persuasively it is asked for.
+
+Tested in `test/analyse.test.mjs`, including an assertion that enumerates every table the runner
+writes to and fails if it is anything but `note` and `citation`.
+
 ## Known gaps
 
 See `KNOWN-ISSUES.md`. The security-relevant ones today: `GOOGLE_CLIENT_SECRET` needs rotating,

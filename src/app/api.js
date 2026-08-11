@@ -38,6 +38,7 @@ export const api = {
   project: (id) => req(`/api/projects/${id}`),
   share: (body) => req('/api/projects/share', { method: 'POST', body: JSON.stringify(body) }),
   renameProject: (id, name) => req('/api/projects/rename', { method: 'POST', body: JSON.stringify({ id, name }) }),
+  analyse: (note) => req('/api/notes/analyse', { method: 'POST', body: JSON.stringify({ note }) }),
   moveNote: (note, project) => req('/api/notes/move', { method: 'POST', body: JSON.stringify({ note, project }) }),
   seen: (posts) => req('/api/views', { method: 'POST', body: JSON.stringify({ posts }) }),
   saveDraft: (body) => req('/api/drafts', { method: 'POST', body: JSON.stringify(body) }),

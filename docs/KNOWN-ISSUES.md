@@ -10,6 +10,20 @@ Last reviewed: 2026-08-10 · registration is OPEN · 1 real user
 
 
 
+## MEDIUM — no model configured, so nothing can be analysed
+
+`ANTHROPIC_API_KEY` is unset in production, so `/api/notes/analyse` returns `503 NO_MODEL` and a
+shared note keeps its **captured** status — which is the honest state: the material was kept and
+nothing has read it.
+
+**Fix:** `npm run secret ANTHROPIC_API_KEY`. `ANALYSE_MODEL` defaults to Haiku, because reading a
+handful of posts is not work that needs the strongest model.
+
+This is the same shape as the mailer before Resend: the feature is built and refuses honestly
+rather than pretending. `/api/metrics` reports `analysisConfigured`.
+
+---
+
 ## LOW — rate-limit state is per-process
 
 `server/ratelimit.mjs` holds counters in memory. Correct for one machine, wrong the moment there
