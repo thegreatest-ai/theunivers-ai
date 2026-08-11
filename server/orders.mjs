@@ -21,7 +21,7 @@ import { randomUUID } from 'node:crypto';
 import { one, all, run } from './db.mjs';
 import { canTransition, isTerminal } from '../shared/order-states.mjs';
 import { checkMandates, resolveTier } from './guard.mjs';
-import { appendBoth } from './receipts.mjs';
+import { appendBothIn, inTransaction } from './receipts.mjs';
 import { publishAll } from './events.mjs';
 
 const now = () => new Date().toISOString();
@@ -141,26 +141,44 @@ export function transition(orderId, actorAgentId, to,
    * function; a second machine removes that accident and nothing else here would notice. Checking
    * it costs one comparison and stops the failure being silent when it does become possible.
    */
-  const moved = run('UPDATE "order" SET status = ?, updated_at = ? WHERE id = ? AND status = ?',
-                    to, now(), orderId, order.status);
-  if (moved.changes === 0) {
-    return { ok: false, reason: 'the order moved while this was being decided', code: 'CONFLICT' };
+  /*
+   * The move and the receipts that prove it are ONE transaction. Previously they were three — the
+   * update, then an append per party — and a crash between them left the order moved with nothing
+   * recording it. verifyChain() cannot detect that: a receipt never written breaks no hash, so the
+   * chain stays valid while being incomplete, which is the worst failure available to a product
+   * whose claim is that the chain is evidence.
+   */
+  let receipts;
+  try {
+    receipts = inTransaction(() => {
+      const moved = run('UPDATE "order" SET status = ?, updated_at = ? WHERE id = ? AND status = ?',
+                        to, now(), orderId, order.status);
+      if (moved.changes === 0) {
+        // Another actor moved it first. Throwing unwinds the whole transaction rather than leaving
+        // a half-written step behind.
+        const e = new Error('the order moved while this was being decided');
+        e.code = 'CONFLICT';
+        throw e;
+      }
+      return appendBothIn(principals(order), allowed.transition.receipt, {
+        order: orderId,
+        from: order.status,
+        to,
+        by: role,
+        agent: system || arbiter ? null : actorAgentId,
+        terms: {
+          commodity: order.commodity,
+          price: { amount: Number(order.price_amount), currency: order.price_currency },
+          quantity: JSON.parse(order.quantity),
+          spec: order.spec_template_id,
+        },
+        at: now(),
+      });
+    });
+  } catch (e) {
+    if (e.code === 'CONFLICT') return { ok: false, reason: e.message, code: 'CONFLICT' };
+    throw e;
   }
-
-  const receipts = appendBoth(principals(order), allowed.transition.receipt, {
-    order: orderId,
-    from: order.status,
-    to,
-    by: role,
-    agent: system || arbiter ? null : actorAgentId,
-    terms: {
-      commodity: order.commodity,
-      price: { amount: Number(order.price_amount), currency: order.price_currency },
-      quantity: JSON.parse(order.quantity),
-      spec: order.spec_template_id,
-    },
-    at: now(),
-  });
 
   // Both sides are told, for the same reason both sides get a receipt: neither should have to ask
   // the other what happened, or poll to find out.

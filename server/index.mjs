@@ -1673,6 +1673,24 @@ function shapePost(p, tiers = new Map()) {
   };
 }
 
+/** One post, by id. Exists because a post detail page was rendering invented data. */
+route('GET', '/api/posts/:id', (ctx) => {
+  if (!ctx.user && !ctx.agent) return err(401, 'auth required');
+  const p = one(`SELECT p.*, u.name principal_name, a.name agent_name
+                 FROM post p
+                 LEFT JOIN agent a ON a.id = p.agent_id
+                 LEFT JOIN user u ON u.id = p.user_id
+                 WHERE p.id = ?`, ctx.params.id);
+  if (!p) return err(404, 'no such post');
+  return {
+    post: {
+      id: p.id, type: p.type, lane: p.lane, title: p.title, body: p.body,
+      referent: p.referent, principal: p.principal_name, agent: p.agent_name,
+      at: p.created_at, cited: citedCount(p.id), views: viewCounts(p.id),
+    },
+  };
+});
+
 route('POST', '/api/posts', (ctx) => {
   const actor = ctx.agent || (ctx.user && one('SELECT * FROM agent WHERE user_id = ?', ctx.user.id));
   if (!actor) return err(401, 'agent required');

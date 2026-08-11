@@ -106,27 +106,6 @@ rather than pretending. `/api/metrics` reports `analysisConfigured`.
 
 ---
 
-## HIGH — an order can change state without the receipt that proves it
-
-`transition()` in `server/orders.mjs` updates the order's status, then calls `appendBoth()`, which
-opens **two separate transactions** — one per party. Nothing wraps the three writes together. If the
-process dies between the update and the appends, the order has moved and nothing records that it
-did; if it dies between the two appends, one party holds a receipt the other does not.
-
-Not theoretical on Fly: `auto_stop_machines = "suspend"` stops the machine when it idles, and a
-deploy restarts it. Both land in exactly this window.
-
-**`verifyChain()` will never detect it.** A receipt that was never written breaks no hash, so the
-chain stays perfectly valid while being incomplete. On a product whose claim is that the chain is
-evidence, this is the worst failure available — silent, permanent, and invisible to the check built
-to find tampering.
-
-**Fix:** give `appendReceipt` a mode that joins an existing transaction rather than opening its own
-`BEGIN IMMEDIATE`, wrap the status change and both appends in one, and move `publishAll` after the
-commit. Deliberately not done as part of the scaling work — it restructures the append-only spine
-and wants its own change and its own tests. See `docs/specs/SCALING.md`.
-
----
 
 ## LOW — SSE subscribers are per-process
 
@@ -161,6 +140,40 @@ removes the worst of the drift risk, but the consolidation decision is still ope
 ---
 
 ## Resolved, kept for the lessons
+
+<details><summary>An order could move without the receipt proving it — and the chain could not tell</summary>
+
+`transition()` ran three separate transactions: the status `UPDATE`, then one receipt append per
+party, with nothing around them. A crash between them left the order moved and nothing recording it.
+
+**`verifyChain()` could not detect this.** A receipt that was never written breaks no hash, so the
+chain stayed valid while being incomplete — on a product whose claim is that the chain is evidence,
+silently missing evidence is the worst available failure. Not theoretical on Fly, where
+`auto_stop_machines = "suspend"` and every deploy land in exactly that window.
+
+Fixed by making the move and its receipts one transaction: `inTransaction()` in `receipts.mjs`,
+with `appendReceiptIn`/`appendBothIn` that join a transaction the caller already opened rather than
+starting their own — SQLite has no nested `BEGIN`. A losing compare-and-swap now throws, which
+unwinds the whole thing instead of leaving a half-written step.
+
+Two tests: one for the ordering, and one for the property, because the original shape had the check
+in the right *place* and still lost evidence.
+
+</details>
+
+<details><summary>/app/space/:id rendered a guard refusal that never happened</summary>
+
+`Thread.jsx` ignored its `:id` and rendered a fabricated negotiation from `mock.js`, including a
+`FLOOR` refusal with a code and a reason. A fair placeholder when nothing was real; indefensible
+once genuine threads appeared beside it, because an invented refusal is visually identical to a
+recorded one.
+
+**Inventing evidence in the interface is the same failure as a receipt asserting a verdict** —
+worse, because it looks like the feature working. Now renders the actual post via
+`GET /api/posts/:id`, and shows no negotiation at all, since none is recorded against a post.
+`mock.js` is deleted.
+
+</details>
 
 <details><summary>The Bridge polled every 4 seconds — replaced with Server-Sent Events</summary>
 

@@ -86,7 +86,34 @@ test('transition() acts on the result instead of assuming it worked', () => {
 
   const casAt = SRC.indexOf('const moved = run(');
   const guardAt = SRC.indexOf('moved.changes === 0');
-  const receiptAt = SRC.indexOf('appendBoth(');
+  const receiptAt = SRC.indexOf('appendBothIn(');
   assert.ok(casAt < guardAt && guardAt < receiptAt,
     'the check must come between the write and the receipts, or it guards nothing');
+});
+
+test('the move and its receipts are ONE transaction', () => {
+  /*
+   * Stronger than the ordering test above, and the reason this file has two.
+   *
+   * The original shape had the check in the right PLACE and still lost evidence: the update and the
+   * two appends were three separate transactions with nothing around them, so a crash between them
+   * left the order moved and nothing recording it. verifyChain() cannot see that — a receipt never
+   * written breaks no hash, so the chain stays valid while being incomplete.
+   *
+   * The property is therefore not "the check is in the right order". It is that the whole thing
+   * either happens or does not.
+   */
+  const SRC = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), '..', 'server', 'orders.mjs'), 'utf8');
+
+  assert.match(SRC, /inTransaction\(\(\) => \{/, 'the move must run inside a transaction');
+  assert.match(SRC, /appendBothIn\(/,
+    'and must use the append that JOINS that transaction, not one that opens its own');
+  assert.doesNotMatch(SRC, /[^a-zA-Z]appendBoth\(/,
+    'appendBoth opens its own transaction — using it here would reopen the gap this closes');
+
+  const txnAt = SRC.indexOf('inTransaction(() => {');
+  assert.ok(txnAt >= 0 && txnAt < SRC.indexOf('const moved = run(')
+            && txnAt < SRC.indexOf('appendBothIn('),
+    'both the write and the receipts must be inside it, not either side of it');
 });
