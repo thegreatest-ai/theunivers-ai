@@ -19,8 +19,9 @@
 import { useEffect, useState } from 'react';
 import { Link, useOutletContext } from 'react-router-dom';
 import { api } from './api';
+import Works from './Works';
 
-const TAB = ['Agent', 'Anchors', 'Receipts'];
+const TAB = ['Published', 'Agent', 'Anchors', 'Receipts'];
 
 /** What an anchor is, in words rather than a column name. */
 const ANCHOR_LABEL = {
@@ -39,7 +40,7 @@ const ANCHOR_LABEL = {
 export default function You() {
   const { me } = useOutletContext();
   const [p, setP] = useState(null);
-  const [tab, setTab] = useState('Agent');
+  const [tab, setTab] = useState('Published');
   const [chainRows, setChainRows] = useState([]);
 
   useEffect(() => { api.profile().then(setP).catch(() => {}); }, []);
@@ -108,6 +109,8 @@ export default function You() {
           <button key={t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>{t}</button>
         ))}
       </nav>
+
+      {tab === 'Published' && <Works userId={p.user.id} own />}
 
       {tab === 'Agent' && (
         <div className="app-card">

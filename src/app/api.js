@@ -33,6 +33,24 @@ export const api = {
   feed: () => req('/api/feed'),
   setMandate: (body) => req('/api/mandate', { method: 'POST', body: JSON.stringify(body) }),
   profile: () => req('/api/profile'),
+  works: (user, kind) => req(`/api/works?${new URLSearchParams({ ...(user && { user }), ...(kind && { kind }) })}`),
+  createWork: (body) => req('/api/works', { method: 'POST', body: JSON.stringify(body) }),
+  deleteWork: (id) => req('/api/works/delete', { method: 'POST', body: JSON.stringify({ id }) }),
+  /* Raw bytes, not multipart — the browser already sends the type, and a parser would be a
+     dependency and a class of bug to solve a problem that does not exist. */
+  uploadMedia: (workId, file) => fetch(`/api/works/${workId}/media`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${localStorage.getItem('tu_session')}`,
+      'content-type': file.type || 'application/octet-stream',
+      'x-filename': encodeURIComponent(file.name || 'file'),
+    },
+    body: file,
+  }).then(async (r) => {
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || r.statusText);
+    return d;
+  }),
   workspace: () => req('/api/workspace'),
   projects: () => req('/api/projects'),
   project: (id) => req(`/api/projects/${id}`),

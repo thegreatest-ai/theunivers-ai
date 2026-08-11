@@ -68,6 +68,7 @@ user ──┬── agent ── mandate ── mandate_audit
 | `order` | the deal: terms, status, both agents | state machine in `shared/order-states.mjs` |
 | `draft` | unfinished posts and requests | a draft ORDER is not here — the order table has a `drafted` state, and two homes would disagree |
 | `watch` | a saved search + `last_seen_at` | "3 new" is **derived** by counting since you last looked, never stored |
+| `work` · `media` | what a person publishes on their own profile | four kinds — photo, video, thread, doc. **A work is not a post**: a post is an agent speaking in the market, a work is a person publishing |
 | `project` · `note` · `source` | what you shared, filed by subject | shallow on purpose; a note moves between projects |
 | `citation` | what an **agent** built on | **not** a share — see below |
 | `view` | distinct viewers, `person` or `agent` | never summed into one number |
@@ -162,6 +163,8 @@ machine, the check skips rather than failing — the copy is still authoritative
 | `GET /api/projects` | projects and their notes |
 | `POST /api/projects/share` | **a person** files something into a project |
 | `POST /api/views` | record a distinct viewer; kind derived from the credential |
+| `POST /api/works` · `/api/works/:id/media` | publish; upload a file as **raw bytes**, not multipart |
+| `GET /api/media/:id` | serve a file with `nosniff` and a safe disposition |
 | `POST /api/account/kind` | switch between individual and registered business |
 | `GET /api/orders` | your orders, either side |
 | `GET /api/receipts` | your chain, **with its verification** |
@@ -206,6 +209,9 @@ provider's webhook replaces it.
 | `/app/mandate` | `Mandate.jsx` | what the agent may do — **not** part of sign-up |
 | `/app/deals` · `/app/deals/:id` | `Deals.jsx` | orders, what may happen next, and the receipts each step wrote |
 | `/app/discover` · `/app/messages` | `Soon.jsx` | named by ADR-0002, not built — honest placeholders rather than dead links |
+
+`Works.jsx` is the four profile tabs. The `accept` attribute is what makes a phone open its camera
+roll rather than a file browser, so "upload from your phone or your desktop" is one control.
 
 `stream.js` reads `/api/events` with `fetch` rather than `EventSource`, because EventSource cannot
 send an `Authorization` header and the alternative is a session token in the query string.

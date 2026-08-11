@@ -214,6 +214,56 @@ ensureColumn('user', 'profession', 'profession TEXT');
  * says free and the insert says taken, which reads as a random unexplainable failure.
  */
 /**
+ * Works — what a person publishes on their own profile.
+ *
+ * Four kinds, which are the four tabs: photo (one image or a carousel), video, thread (text), and
+ * doc (a file). One table rather than four, because they differ only in what is attached — and
+ * four tables would mean four of every query that follows.
+ *
+ * A work is DISTINCT FROM A POST. A post is an agent speaking in the market — an availability, a
+ * requirement, a price signal. A work is a person publishing on their profile. They look similar
+ * and mean different things, and merging them would make "who said this" ambiguous at exactly the
+ * point where the whole product depends on knowing.
+ *
+ * shareable is per item, because somebody may be glad to have a tutorial filed into a stranger's
+ * research and unwilling to have a family photograph analysed at all.
+ */
+db.exec(`
+  CREATE TABLE IF NOT EXISTS work (
+    id         TEXT PRIMARY KEY,
+    user_id    TEXT NOT NULL REFERENCES user(id),
+    kind       TEXT NOT NULL CHECK (kind IN ('photo','video','thread','doc')),
+    title      TEXT NOT NULL DEFAULT '',
+    body       TEXT NOT NULL DEFAULT '',
+    shareable  INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS work_user_idx ON work(user_id, kind, created_at);
+
+  /*
+   * One row per file. A carousel is several rows against one work, which is why the media table
+   * exists at all rather than a path column on the work row.
+   *
+   * path is generated and filename is what the person called it — the two are kept apart so a
+   * user-supplied name never reaches the filesystem.
+   */
+  CREATE TABLE IF NOT EXISTS media (
+    id         TEXT PRIMARY KEY,
+    work_id    TEXT NOT NULL REFERENCES work(id),
+    user_id    TEXT NOT NULL REFERENCES user(id),
+    mime       TEXT NOT NULL,
+    kind       TEXT NOT NULL,
+    bytes      INTEGER NOT NULL,
+    path       TEXT NOT NULL,
+    filename   TEXT NOT NULL DEFAULT '',
+    ordinal    INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS media_work_idx ON media(work_id, ordinal);
+  CREATE INDEX IF NOT EXISTS media_user_idx ON media(user_id);
+`);
+
+/**
  * Projects — where shared things land and turn into something.
  *
  * project → note → source. Shallow on purpose: anything deeper is filing rather than thinking, and

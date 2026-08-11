@@ -10,6 +10,21 @@ Last reviewed: 2026-08-10 · registration is OPEN · 1 real user
 
 
 
+## MEDIUM — media lives on the Fly volume, which is ~900MB
+
+Fine for photographs and documents in a pilot. **Wrong for video at any real scale**: twenty-odd
+clips fill the disk, and serving them from `bom` costs $0.12/GB — Fly's most expensive egress band.
+The same bytes on Cloudflare R2 cost nothing to serve.
+
+Guarded rather than ignored: a 120MB per-person quota, per-type size caps, and `/api/metrics`
+reports usage — so the day this must move arrives as a warning rather than a full disk.
+
+**Fix when video is used in earnest:** add an R2 or Tigris provider to `server/storage.mjs`. It is
+written as a provider with one implementation precisely so that is a `put`/`get`/`remove` and
+nothing else.
+
+---
+
 ## MEDIUM — no model configured, so nothing can be analysed
 
 `ANTHROPIC_API_KEY` is unset in production, so `/api/notes/analyse` returns `503 NO_MODEL` and a

@@ -12,6 +12,7 @@ import { createOrder, transition, ordersFor, orderRow, publicOrder, roleOf } fro
 import { chainFor, verifyChain } from './receipts.mjs';
 import { trustOf } from './trust.mjs';
 import { analyseNote, analysisAvailable } from './analyse.mjs';
+import * as store from './storage.mjs';
 import { subscribe, publish, publishAll, streamStats } from './events.mjs';
 import { take, refund, clientIp, LIMITS } from './ratelimit.mjs';
 import { sendMail, resetEmail, mailConfigured } from './mail.mjs';
@@ -967,6 +968,137 @@ route('GET', '/api/agent/projects', (ctx) => {
   };
 });
 
+/**
+ * ── Works — what a person publishes on their own profile ─────────────────────────────────
+ * Four kinds, which are the four tabs: photo (single or carousel), video, thread, doc.
+ */
+
+/** Media rows shaped for a client, with a URL rather than a disk path. */
+const mediaFor = (workId) =>
+  all('SELECT id, mime, kind, bytes, filename, ordinal FROM media WHERE work_id = ? ORDER BY ordinal', workId)
+    .map((m) => ({ ...m, url: `/api/media/${m.id}` }));
+
+route('POST', '/api/works', (ctx) => {
+  const user = ctx.user;
+  if (!user) return err(401, 'sign in required');
+  const kind = String(ctx.body.kind ?? '');
+  if (!['photo', 'video', 'thread', 'doc'].includes(kind)) return err(400, 'unknown kind');
+
+  const title = String(ctx.body.title ?? '').slice(0, 200);
+  const body = String(ctx.body.body ?? '').slice(0, 10_000);
+  if (kind === 'thread' && !body.trim()) return err(400, 'a thread needs something to say');
+
+  const id = `wrk_${randomUUID().slice(0, 8)}`;
+  run(`INSERT INTO work (id, user_id, kind, title, body, shareable, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      id, user.id, kind, title, body,
+      // Default yes, because publishing to a profile in a place built on citation implies it.
+      // Per item, because a tutorial and a family photograph are not the same offer.
+      ctx.body.shareable === false ? 0 : 1, now());
+  return { work: { id, kind, title, body } };
+});
+
+/**
+ * Upload one file to a work.
+ *
+ * RAW BODY, not multipart. Multipart needs a parser, and a parser is a dependency plus a class of
+ * bug, to solve a problem the browser does not actually have: `fetch(url, { body: file })` sends
+ * the bytes and the type, which is everything needed. The filename rides in a header because it is
+ * metadata, not content.
+ */
+route('POST', '/api/works/:id/media', async (ctx) => {
+  const user = ctx.user;
+  if (!user) return err(401, 'sign in required');
+  const work = one('SELECT * FROM work WHERE id = ? AND user_id = ?', ctx.params.id, user.id);
+  if (!work) return err(404, 'no such work');
+
+  const mime = String(ctx.headers['content-type'] ?? '').split(';')[0].trim();
+  const spec = store.allowed(mime);
+  if (!spec) return err(415, `${mime || 'that file type'} is not accepted here`);
+
+  const used = one('SELECT COALESCE(SUM(bytes),0) b FROM media WHERE user_id = ?', user.id)?.b ?? 0;
+  if (used >= store.QUOTA_BYTES) {
+    return err(413, 'You have used your storage allowance. Remove something first.');
+  }
+
+  const buf = ctx.raw;
+  if (!buf?.length) return err(400, 'no file received');
+
+  let put;
+  try { put = store.put(buf, mime); } catch (e) { return err(413, e.message); }
+
+  const ordinal = one('SELECT COUNT(*) c FROM media WHERE work_id = ?', work.id)?.c ?? 0;
+  run(`INSERT INTO media (id, work_id, user_id, mime, kind, bytes, path, filename, ordinal, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      put.id, work.id, user.id, mime, put.kind, put.bytes, put.path,
+      String(ctx.headers['x-filename'] ?? '').slice(0, 160), ordinal, now());
+
+  return { media: { id: put.id, url: `/api/media/${put.id}`, bytes: put.bytes, kind: put.kind } };
+});
+
+/** Somebody's profile content, by kind. Public within the platform — it is a profile. */
+/**
+ * Serve an uploaded file.
+ *
+ * `nosniff` is not optional here. Without it a browser may look at the bytes, decide a file is
+ * HTML whatever we called it, and run it — on our own origin, with our own cookies. The upload
+ * allowlist already excludes SVG and HTML for the same reason; this is the second lock.
+ *
+ * Images and video are shown inline; anything else downloads, because "display this document" is
+ * how a viewer gets talked into rendering something it should not.
+ */
+route('GET', '/api/media/:id', (ctx) => {
+  if (!ctx.user && !ctx.agent) return err(401, 'auth required');
+  const m = one('SELECT * FROM media WHERE id = ?', ctx.params.id);
+  if (!m) return err(404, 'not found');
+  const bytes = store.get(m.path);
+  if (!bytes) return err(404, 'not found');
+
+  return {
+    __file: true,
+    bytes,
+    headers: {
+      'content-type': m.mime,
+      'content-length': String(bytes.length),
+      'x-content-type-options': 'nosniff',
+      'content-disposition':
+        (m.kind === 'image' || m.kind === 'video')
+          ? 'inline'
+          : `attachment; filename="${(m.filename || 'file').replace(/[^\w.\-]/g, '_')}"`,
+      'cache-control': 'private, max-age=86400',
+    },
+  };
+});
+
+route('GET', '/api/works', (ctx) => {
+  if (!ctx.user && !ctx.agent) return err(401, 'auth required');
+  const userId = String(ctx.query.get('user') ?? ctx.user?.id ?? '');
+  const kind = ctx.query.get('kind');
+  const rows = kind
+    ? all('SELECT * FROM work WHERE user_id = ? AND kind = ? ORDER BY created_at DESC', userId, kind)
+    : all('SELECT * FROM work WHERE user_id = ? ORDER BY created_at DESC', userId);
+  return {
+    works: rows.map((w) => ({
+      id: w.id, kind: w.kind, title: w.title, body: w.body,
+      shareable: Boolean(w.shareable), at: w.created_at, media: mediaFor(w.id),
+    })),
+  };
+});
+
+route('POST', '/api/works/delete', (ctx) => {
+  const user = ctx.user;
+  if (!user) return err(401, 'sign in required');
+  const id = String(ctx.body.id ?? '');
+  const work = one('SELECT * FROM work WHERE id = ? AND user_id = ?', id, user.id);
+  if (!work) return err(404, 'no such work');
+  // Bytes go too. The spec's erasure constraint is why media never reaches an immutable store:
+  // a deletion that leaves the file behind is not a deletion.
+  for (const m of all('SELECT path FROM media WHERE work_id = ?', id)) store.remove(m.path);
+  run('DELETE FROM media WHERE work_id = ?', id);
+  run('DELETE FROM work WHERE id = ?', id);
+  return { ok: true };
+});
+
 route('GET', '/api/workspace', (ctx) => {
   const user = ctx.user;
   if (!user) return err(401, 'sign in required');
@@ -1652,12 +1784,33 @@ const server = createServer(async (req, res) => {
     }
     if (!match) continue;
 
+    /*
+     * JSON for everything except a file, which arrives as raw bytes with its own content-type.
+     * Reading it as a Buffer rather than parsing multipart avoids a parser dependency and a class
+     * of bug, to solve a problem the browser does not have: fetch(url, { body: file }) already
+     * sends the bytes and the type.
+     */
     let body = {};
+    let raw = null;
     if (req.method === 'POST') {
-      body = await readJson(req);
+      const ct = String(req.headers['content-type'] ?? '');
+      if (ct.startsWith('application/json') || ct === '') {
+        body = await readJson(req);
+      } else {
+        const chunks = [];
+        let size = 0;
+        for await (const c of req) {
+          size += c.length;
+          // A hard ceiling above the largest per-file limit, so a hostile upload cannot exhaust
+          // memory before the per-type check ever runs.
+          if (size > 50_000_000) return void res.writeHead(413).end();
+          chunks.push(c);
+        }
+        raw = Buffer.concat(chunks);
+      }
     }
     const ctx = {
-      params, query: url.searchParams, body,
+      params, query: url.searchParams, body, raw,
       ip: clientIp(req),
       headers: req.headers,
       user: userFromSession(req.headers.authorization),
@@ -1668,6 +1821,11 @@ const server = createServer(async (req, res) => {
       if (out?.__error) {
         res.writeHead(out.status, { 'content-type': 'application/json', ...(out.headers ?? {}) });
         res.end(JSON.stringify({ error: out.message, ...(out.code ? { code: out.code } : {}) }));
+        return;
+      }
+      if (out?.__file) {
+        res.writeHead(200, out.headers);
+        res.end(out.bytes);
         return;
       }
       if (out?.__redirect) {
