@@ -10,6 +10,7 @@ import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { measure, daily, totals } from './metrics.mjs';
 import { createOrder, transition, ordersFor, orderRow, publicOrder, roleOf } from './orders.mjs';
 import { chainFor, verifyChain } from './receipts.mjs';
+import { trustOf } from './trust.mjs';
 import { subscribe, publish, publishAll, streamStats } from './events.mjs';
 import { take, refund, clientIp, LIMITS } from './ratelimit.mjs';
 import { sendMail, resetEmail, mailConfigured } from './mail.mjs';
@@ -605,6 +606,93 @@ route('POST', '/api/orders/transition', (ctx) => {
   return { order: publicOrder(result.order, agent.id) };
 });
 
+/**
+ * Everything the You screen shows in one call.
+ *
+ * One request rather than five, because a profile is read as a whole — five parallel fetches would
+ * paint the header in pieces and make a settled account look like it is still loading.
+ *
+ * `trust` is DERIVED here and returned with its explanation. It is never stored and never accepted
+ * from a request: the moment tier becomes a field somebody can set, this is a directory with
+ * badges rather than a record of conduct.
+ */
+route('GET', '/api/profile', (ctx) => {
+  const user = ctx.user;
+  if (!user) return err(401, 'sign in required');
+
+  const agent = one('SELECT * FROM agent WHERE user_id = ?', user.id);
+  const mandate = agent
+    ? one("SELECT * FROM mandate WHERE agent_id = ? AND status = 'active'", agent.id)
+    : null;
+
+  const anchors = all(
+    `SELECT id, type, issuer, method, status, reference, verified_at, expires_at, created_at
+     FROM anchor WHERE user_id = ? ORDER BY created_at DESC`, user.id);
+
+  const chain = verifyChain(user.id);
+  const orders = agent
+    ? one(`SELECT COUNT(*) c FROM "order" WHERE buyer_agent_id = ? OR seller_agent_id = ?`,
+          agent.id, agent.id)
+    : { c: 0 };
+
+  return {
+    user: publicUser(user),
+    agent: agent ? publicAgent(agent, true) : null,
+    mandate: mandate ? publicMandate(mandate) : null,
+    trust: trustOf(user.id),
+    anchors,
+    counts: {
+      anchors: anchors.length,
+      receipts: chain.length ?? 0,
+      mandates: mandate ? 1 : 0,
+      deals: orders?.c ?? 0,
+    },
+    chain: { ok: chain.ok, length: chain.length ?? 0, at: chain.at ?? null },
+  };
+});
+
+/**
+ * Switch between acting as an individual and as a registered business.
+ *
+ * A business is not a label — it is a claim that a registration exists, so switching TO business
+ * records that registration as a **pending** anchor. Pending because nobody has checked it, and
+ * writing it as verified on the user's own say-so would make standing something you can assert.
+ *
+ * Switching back to individual does NOT delete the anchor. Receipts may already point at standing
+ * that was derived while it existed, and deleting the evidence would rewrite what those receipts
+ * meant. It is retired instead.
+ */
+route('POST', '/api/account/kind', (ctx) => {
+  const user = ctx.user;
+  if (!user) return err(401, 'sign in required');
+
+  const kind = String(ctx.body.kind ?? '');
+  if (kind !== 'individual' && kind !== 'business') {
+    return err(400, 'kind must be individual or business');
+  }
+
+  if (kind === 'business') {
+    const reference = String(ctx.body.licenceNo ?? '').trim();
+    if (!reference) return err(400, 'A registration number is required to act as a business.');
+    const jurisdiction = String(ctx.body.jurisdiction ?? user.jurisdiction);
+    const type = String(ctx.body.licenceType ?? 'trade_licence');
+
+    const existing = one(
+      'SELECT id FROM anchor WHERE user_id = ? AND type = ? AND reference = ?',
+      user.id, type, reference);
+    if (!existing) {
+      run(`INSERT INTO anchor (id, user_id, type, issuer, method, status, reference, created_at)
+           VALUES (?, ?, ?, ?, 'document', 'pending', ?, ?)`,
+          `anc_${randomUUID().slice(0, 8)}`, user.id, type, jurisdiction, reference, now());
+    }
+    run('UPDATE user SET kind = ?, jurisdiction = ? WHERE id = ?', kind, jurisdiction, user.id);
+  } else {
+    run('UPDATE user SET kind = ? WHERE id = ?', kind, user.id);
+  }
+
+  return { user: publicUser(one('SELECT * FROM user WHERE id = ?', user.id)) };
+});
+
 route('GET', '/api/orders', (ctx) => {
   const user = ctx.user;
   if (!user) return err(401, 'sign in required');
@@ -1026,6 +1114,9 @@ function publicUser(u) {
   return {
     id: u.id, email: u.email, name: u.name,
     kind: u.kind, jurisdiction: u.jurisdiction,
+    // Stored since the profession field was added and never returned, so nothing could show it.
+    // It is the demand signal PRODUCT-SHAPE.md wanted — of no use sitting in a column unread.
+    profession: u.profession ?? null,
     // Whether a password exists — never the hash. The UI needs this to say "set" vs "change",
     // and to warn an OAuth-only account that it currently has no way back in without Google.
     hasPassword: Boolean(u.password_hash),

@@ -309,3 +309,58 @@
   display:grid;place-items:center;font-size:.68rem;color:var(--muted);flex:none}
 .deal-rtype{font-weight:600}
 .deal-hash{font-family:'Space Grotesk',monospace;font-size:.72rem;color:var(--muted);margin-left:auto}
+
+/* ══ You ══════════════════════════════════════════════════════════════════════════════════ */
+.you,.settings{max-width:720px;margin:0 auto;padding:22px 16px;display:flex;flex-direction:column;gap:16px}
+.you-pad{padding:26px}
+.you-head{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
+.you-avatar{width:68px;height:68px;border-radius:99px;flex:none;display:grid;place-items:center;
+  font-size:1.4rem;font-weight:600;color:#fff;background:var(--grad)}
+.you-id{flex:1;min-width:0}
+.you-id h1{margin:0;font-size:1.3rem;line-height:1.2}
+.you-handle{margin:2px 0 4px;color:var(--cyan);font-size:.9rem}
+/* The tier and the word "derived" sit together on purpose — the badge is meaningless without it. */
+.you-tier{display:inline-flex;align-items:center;gap:8px;margin-top:10px;padding:5px 12px;
+  border-radius:99px;border:1px solid rgba(56,189,248,.35)}
+.you-tier b{color:var(--cyan)}
+.you-tier span{font-size:.7rem;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.you-settings{color:var(--muted);text-decoration:none;font-size:.85rem;white-space:nowrap}
+.you-settings:hover{color:var(--text)}
+
+.you-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);
+  border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.you-stats>div{background:var(--bg);padding:14px 8px;text-align:center}
+.you-stats b{display:block;font-size:1.25rem;font-variant-numeric:tabular-nums}
+.you-stats span{font-size:.68rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+
+.you-why h3{margin:0 0 8px;font-size:.9rem}
+.you-why ul{margin:0;padding-left:18px;color:var(--muted);font-size:.86rem;line-height:1.7}
+
+.you-tabs{display:flex;gap:4px;border-bottom:1px solid var(--line)}
+.you-tabs button{background:none;border:none;cursor:pointer;font-family:inherit;font-size:.9rem;
+  color:var(--muted);padding:10px 14px;border-bottom:2px solid transparent}
+.you-tabs button.on{color:var(--text);border-bottom-color:var(--cyan)}
+
+/* ══ Settings ═════════════════════════════════════════════════════════════════════════════
+   One grouped list, so there is exactly ONE place to look for a switch. Groups are named for
+   what a person wants, not for the subsystem behind it. */
+.set-title{margin:0;font-size:1.3rem}
+.set-group h2{margin:0 0 8px;font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.set-rows{border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.set-row{width:100%;display:flex;align-items:center;gap:12px;padding:14px 16px;text-align:left;
+  background:var(--glass);border:none;border-bottom:1px solid var(--line);cursor:pointer;
+  font-family:inherit;font-size:.94rem;color:var(--text);text-decoration:none}
+.set-row:last-child{border-bottom:none}
+.set-row:hover{background:rgba(255,255,255,.05)}
+.set-row.danger{color:#f87171}
+.set-label{display:flex;flex-direction:column;gap:3px;flex:1;min-width:0}
+.set-hint{font-size:.76rem;color:var(--muted);line-height:1.45}
+.set-value{color:var(--muted);font-size:.86rem;white-space:nowrap}
+.set-chev{color:var(--muted);flex:none}
+.set-inline{cursor:default;flex-wrap:wrap}
+.set-inline:hover{background:var(--glass)}
+.set-inline .set-chev{display:none}
+.set-panel{margin-top:-8px}
+.set-foot{text-align:center;padding-top:8px}
+.settings p{font-size:.9rem;line-height:1.6;color:var(--muted)}
+.settings .app-card h3{font-size:.95rem;color:var(--text)}

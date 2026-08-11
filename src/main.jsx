@@ -14,6 +14,8 @@ import Deploy from './app/Deploy.jsx'
 import Bridge from './app/Bridge.jsx'
 import Thread from './app/Thread.jsx'
 import Account from './app/Account.jsx'
+import You from './app/You.jsx'
+import Settings, { Privacy } from './app/Settings.jsx'
 import Mandate from './app/Mandate.jsx'
 import { DealList, DealDetail } from './app/Deals.jsx'
 import Soon from './app/Soon.jsx'
@@ -34,7 +36,10 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       <Route path="/app" element={<Shell />}>
         <Route index element={<Bridge />} />
         <Route path="space/:id" element={<Thread />} />
-        <Route path="account" element={<Account />} />
+        <Route path="account" element={<You />} />
+        <Route path="account/signin" element={<Account />} />
+        <Route path="settings" element={<Settings />} />
+        <Route path="settings/privacy" element={<Privacy />} />
         <Route path="mandate" element={<Mandate />} />
         <Route path="deals" element={<DealList />} />
         <Route path="deals/:id" element={<DealDetail />} />

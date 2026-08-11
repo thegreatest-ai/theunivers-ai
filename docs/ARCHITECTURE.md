@@ -151,6 +151,8 @@ machine, the check skips rather than failing — the copy is still authoritative
 | `GET /api/me` | user, agent, mandate |
 | `POST /api/mandate` | set what the agent may do; supersedes rather than edits |
 | `POST /api/orders/transition` | a **principal** moves their own order (see below) |
+| `GET /api/profile` | everything the You screen shows, in one call |
+| `POST /api/account/kind` | switch between individual and registered business |
 | `GET /api/orders` | your orders, either side |
 | `GET /api/receipts` | your chain, **with its verification** |
 | `GET /api/events` | live stream (SSE) — the server says when something changed |
@@ -184,7 +186,10 @@ provider's webhook replaces it.
 | `/app/deploy` | `Deploy.jsx` | 3-step wizard; step 1 "Who are you?" is the only place a name is asked |
 | `/app` | `Bridge.jsx` | You · Your agent · Space |
 | `/app/space/:id` | `Thread.jsx` | |
-| `/app/account` | `Account.jsx` | set or change password |
+| `/app/account` | `You.jsx` | **You** — standing, agent, anchors, receipt chain |
+| `/app/account/signin` | `Account.jsx` | set or change password |
+| `/app/settings` | `Settings.jsx` | Settings and activity — one grouped list |
+| `/app/settings/privacy` | `Settings.jsx` | what is stored, and what cannot be deleted |
 | `/app/mandate` | `Mandate.jsx` | what the agent may do — **not** part of sign-up |
 | `/app/deals` · `/app/deals/:id` | `Deals.jsx` | orders, what may happen next, and the receipts each step wrote |
 | `/app/discover` · `/app/messages` | `Soon.jsx` | named by ADR-0002, not built — honest placeholders rather than dead links |
