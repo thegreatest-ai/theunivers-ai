@@ -66,9 +66,23 @@ when there is any doubt*, as judgement rather than as a guard.
 
 ## What this obliges
 
-- **Write the standard.** It does not exist yet. It is a short public document — what is not allowed,
-  what happens when it is found, and how to appeal — and it blocks nothing technical, but it is owed
-  before an audience arrives.
+- ~~**Write the standard.**~~ **DONE 2026-08-12 — `docs/STANDARD.md`.** Written against the **Santa
+  Clara Principles 2.0**, the reference twelve major platforms endorse, rather than invented. That
+  research found **two places where this posture does not meet them**, and the standard discloses
+  both in §6 rather than papering over them:
+
+  1. **Appeals are not reviewed by someone uninvolved.** The Principles require review by a person
+     "not involved in the initial decision". With one operator that is structurally impossible.
+     Claiming a panel would be a lie; routing appeals to a second inbox belonging to the same person
+     would be the same lie with a form in front of it. **Closes when a second person can act as
+     operator.**
+  2. **A reporter is told nothing about the outcome.** The Principles say flaggers should get a log
+     of their reports and what happened. §"a reporter is not owed a relationship" above stands, and
+     is now a *disclosed deviation* rather than an unexamined preference.
+
+  What the posture does meet: notice of what was actioned and why, durable and surviving suspension;
+  the reason and removing party recorded; content identifiable by id; and no automated enforcement
+  of any kind.
 - **The interface says "advisory"** where it describes the ladder, and **names the operator only on
   the appeal path**.
 - **No `moderator` column, no operator dashboard, no second desk** — all three already refused, and
