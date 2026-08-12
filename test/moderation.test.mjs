@@ -23,6 +23,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
+import { MODERATION_ACTIONS, AVAILABLE_ACTIONS } from '../shared/moderation-actions.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -182,8 +183,10 @@ describe('resolving a report', () => {
 
   test('the author\'s chain records it as an observation, not a verdict', async () => {
     const [receipt] = rows(
-      "SELECT type, user_id, payload FROM receipt WHERE type = 'moderation.takedown'");
+      "SELECT type, user_id, payload FROM receipt WHERE type = 'moderation.removed'");
     assert.ok(receipt, 'a moderation act with no receipt is the hole withdraw still has');
+    assert.equal(receipt.type, MODERATION_ACTIONS.takedown.receipt,
+      'every receipt type in this system is domain.pastParticiple — takedown was the one noun');
     assert.equal(receipt.user_id, 'usr_ana', 'it happened to the author; it is their record');
     const payload = JSON.parse(receipt.payload);
     assert.equal(payload.source, 'operator-token',
@@ -223,4 +226,12 @@ describe('resolving a report', () => {
         'a restore would mean keeping the payload we just removed; the author republishes instead');
     }
   });
+});
+
+test('a rung that is defined but not built is not callable', () => {
+  // limit and suspend exist in the ladder so the ADR and the code use one vocabulary. Neither is
+  // implemented, and a half-wired rung is worse than an absent one.
+  assert.deepEqual(AVAILABLE_ACTIONS.sort(), ['dismiss', 'takedown']);
+  assert.equal(MODERATION_ACTIONS.limit.implemented, false);
+  assert.equal(MODERATION_ACTIONS.suspend.implemented, false);
 });

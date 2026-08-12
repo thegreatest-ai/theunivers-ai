@@ -39,6 +39,7 @@ import { passwordError } from '../shared/password-policy.mjs';
 import { handleError } from '../shared/agent-name.mjs';
 import { rank, order, paginate, sideOf, citerWeight, PER_PAGE } from '../shared/ranking.mjs';
 import { review as reviewTerms } from '../shared/terms-diff.mjs';
+import { MODERATION_ACTIONS, AVAILABLE_ACTIONS } from '../shared/moderation-actions.mjs';
 import {
   oauthConfigured, googleAuthUrl, githubAuthUrl,
   finishGoogle, finishGithub,
@@ -2468,7 +2469,11 @@ route('POST', '/api/moderation/resolve', (ctx) => {
   }
 
   const action = String(ctx.body.action ?? '');
-  if (!['dismiss', 'takedown'].includes(action)) return err(400, 'action must be dismiss or takedown');
+  // The enum comes from the shared ladder, so a rung that is defined but not built stays
+  // uncallable rather than half-wired behind a string comparison here.
+  if (!AVAILABLE_ACTIONS.includes(action)) {
+    return err(400, `action must be one of ${AVAILABLE_ACTIONS.join(', ')}`);
+  }
 
   const report = one('SELECT * FROM report WHERE id = ?', String(ctx.body.report ?? ''));
   if (!report) return err(404, 'no such report');
@@ -2504,7 +2509,7 @@ route('POST', '/api/moderation/resolve', (ctx) => {
           WHERE id = ? AND status = 'open'`, reason, at, report.id);
     // On the AUTHOR's chain: it is their record that this happened to them. An observation, not a
     // verdict — "a post was taken down under report X for this stated reason", never "guilty".
-    return appendReceiptIn(p.user_id, 'moderation.takedown', {
+    return appendReceiptIn(p.user_id, MODERATION_ACTIONS.takedown.receipt, {
       post: p.id, report: report.id, reason, bodySha256: digest, source: 'operator-token',
     });
   });
