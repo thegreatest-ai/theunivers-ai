@@ -607,6 +607,60 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS follow_followee_idx ON follow(followee_id, created_at);
 
+  /*
+   * ─── SAFETY ─────────────────────────────────────────────────────────────────────────────
+   *
+   * Registration is OPEN. There is no invite gate in front of the door, so the first abuse
+   * arrives WITH the first audience rather than after it, and these two tables are the floor a
+   * product needs before it has one.
+   *
+   * BLOCK is an edge shaped exactly like follow, and for the same reasons: the primary key on the
+   * pair makes blocking twice the same as blocking once, and a self-block is refused by CHECK
+   * rather than by a handler, because a rule enforced in one caller lasts until somebody writes a
+   * second caller.
+   *
+   * A block is ONE-WAY and PRIVATE. The blocked party is never told — a notification would make
+   * blocking an act of confrontation, which is exactly what somebody being harassed cannot afford.
+   */
+  CREATE TABLE IF NOT EXISTS block (
+    blocker_id TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+    blocked_id TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (blocker_id, blocked_id),
+    CHECK (blocker_id <> blocked_id)
+  );
+  CREATE INDEX IF NOT EXISTS block_blocked_idx ON block(blocked_id);
+
+  /*
+   * A REPORT is a person asking for a human to look. It is deliberately NOT an enforcement
+   * mechanism and nothing acts on it automatically: a count of reports that removes content is a
+   * brigading tool, and the first people to discover that are the ones you least want to hand it
+   * to.
+   *
+   * subject_kind is CHECKed rather than free text because the reviewer's queue draws a different
+   * card per kind, and an untyped report is a pile of strings somebody has to interpret.
+   *
+   * status starts open and only a reviewer moves it. outcome records what was DONE, which is
+   * a different question from what was decided — a dismissed report and an actioned one both close,
+   * and only one of them changed anything.
+   */
+  CREATE TABLE IF NOT EXISTS report (
+    id           TEXT PRIMARY KEY,
+    reporter_id  TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+    subject_kind TEXT NOT NULL CHECK (subject_kind IN ('post','work','person','message')),
+    subject_id   TEXT NOT NULL,
+    reason       TEXT NOT NULL,
+    detail       TEXT NOT NULL DEFAULT '',
+    status       TEXT NOT NULL DEFAULT 'open'
+                 CHECK (status IN ('open','actioned','dismissed')),
+    outcome      TEXT,
+    reviewed_by  TEXT REFERENCES user(id),
+    created_at   TEXT NOT NULL,
+    decided_at   TEXT
+  );
+  CREATE INDEX IF NOT EXISTS report_open_idx    ON report(status, created_at);
+  CREATE INDEX IF NOT EXISTS report_subject_idx ON report(subject_kind, subject_id);
+
   CREATE INDEX IF NOT EXISTS agent_message_to_idx     ON agent_message(to_agent_id, created_at);
   CREATE INDEX IF NOT EXISTS agent_message_from_idx   ON agent_message(from_agent_id, created_at);
 `);
