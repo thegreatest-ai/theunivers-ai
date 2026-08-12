@@ -250,6 +250,21 @@ ensureColumn('mandate', 'counterparty_min_tier', `counterparty_min_tier TEXT DEF
 // placeholder one. A null here means "this account signs in with a provider", and the login
 // handler says so rather than failing with a generic wrong-password.
 ensureColumn('user', 'password_hash', 'password_hash TEXT');
+
+/*
+ * Taking a post down is an OPERATOR act, and `withdrawn_at` alone cannot say who did it — an
+ * author's withdrawal and an operator's takedown would be the same nullable timestamp, which is
+ * precisely the conflation ADR-0003 forbids. `taken_down_at` records that it was ours.
+ *
+ * `body_sha256` is the whole appeal mechanism. Both paths empty title and body, so once either has
+ * run there is nothing left to dispute or to re-read. Hashing the content BEFORE emptying it means
+ * an author who kept their own copy can prove what was removed, and a takedown receipt attests to
+ * something instead of to a blank. The platform keeps the hash and never the bytes — evidence
+ * without custody, which is what this product argues for everywhere else.
+ */
+ensureColumn('post', 'taken_down_at', 'taken_down_at TEXT');
+ensureColumn('post', 'takedown_report_id', 'takedown_report_id TEXT');
+ensureColumn('post', 'body_sha256', 'body_sha256 TEXT');
 ensureColumn('user', 'reset_token', 'reset_token TEXT');
 ensureColumn('user', 'reset_expires', 'reset_expires TEXT');
 

@@ -17,7 +17,7 @@ import { gzipSync, brotliCompressSync, constants } from 'node:zlib';
 import { measure, daily, totals } from './metrics.mjs';
 import { createOrder, transition, ordersFor, orderRow, publicOrder, roleOf } from './orders.mjs';
 import * as inspection from './inspection.mjs';
-import { chainFor, verifyChain } from './receipts.mjs';
+import { chainFor, verifyChain, appendReceiptIn, inTransaction } from './receipts.mjs';
 import { trustOf, tierOf } from './trust.mjs';
 import { analyseNote, analysisAvailable } from './analyse.mjs';
 import { draftFromInstruction, draftingAvailable } from './mandate-draft.mjs';
@@ -1925,6 +1925,13 @@ route('GET', '/api/posts/:id', (ctx) => {
     return {
       post: {
         id: p.id, withdrawn: true, withdrawnAt: p.withdrawn_at,
+        // Who removed it, because an author's withdrawal and an operator's takedown are different
+        // facts and one nullable timestamp cannot say which. The client renders one tombstone
+        // component with two sentences; conflating them is the lie ADR-0003 forbids.
+        takenDown: Boolean(p.taken_down_at),
+        removedBy: p.taken_down_at ? 'operator' : 'author',
+        // The hash of what was removed. The bytes are gone; this is what an appeal argues against.
+        bodySha256: p.body_sha256 ?? null,
         principal: p.principal_name, agent: p.agent_name, at: p.created_at,
         cited: citedCount(p.id),
       },
@@ -1959,8 +1966,9 @@ route('POST', '/api/posts/:id/withdraw', (ctx) => {
 
   const at = now();
   run(
-    `UPDATE post SET withdrawn_at = ?, title = '', body = '', referent = NULL WHERE id = ?`,
-    at, p.id,
+    `UPDATE post SET withdrawn_at = ?, body_sha256 = ?, title = '', body = '', referent = NULL
+      WHERE id = ?`,
+    at, bodyDigest(p), p.id,
   );
   // Citations of it are deliberately untouched: they are the citer's record, not the author's.
   return { withdrawn: true, at, citations: citedCount(p.id) };
@@ -2388,6 +2396,91 @@ route('GET', '/api/moderation/queue', (ctx) => {
         `SELECT COUNT(DISTINCT reporter_id) c FROM report
          WHERE subject_kind = ? AND subject_id = ?`, r.subject_kind, r.subject_id).c,
     })),
+  };
+});
+
+/** What was removed, hashed before it is emptied. Title and body, exactly as they were served. */
+const bodyDigest = (p) => createHash('sha256').update(`${p.title}\n\n${p.body}`).digest('hex');
+
+/**
+ * The write side of the queue: dismiss a report, or take a post down.
+ *
+ * TAKEDOWN IS NOT A DELETE. `citation.post_id` is `ON DELETE RESTRICT`, so a cited post cannot be
+ * deleted — and that constraint is the point, not an obstacle to route around. Citations are the
+ * CITER's record of what they built on; destroying them to act against an author would erase a
+ * third party's evidence as a side effect. So takedown does exactly what withdrawal does — stamp,
+ * empty, leave every citation intact — and adds who did it and under which report.
+ *
+ * `withdrawn_at` is set as well as `taken_down_at`, deliberately. Every read path in this file
+ * already filters on `withdrawn_at IS NULL`; a second visibility column would mean auditing all of
+ * them and getting one wrong, which is how removed content stays visible on a single surface.
+ * One predicate hides it, one column records who.
+ *
+ * ONE-WAY. There is no un-takedown, because a restore would require keeping the payload — the very
+ * thing a takedown exists to remove — in the live database. If an operator is wrong the author
+ * republishes, and a later `moderation.restored` receipt can say the takedown was mistaken. The
+ * chain gains a correction; it never loses a link.
+ *
+ * `report.reviewed_by` stays NULL. It is a `user(id)` FK, there is no operator user row, and there
+ * is no signing key in this system — the chain is hashed, not signed. `source: 'operator-token'`
+ * is the honest provenance; inventing a signer to satisfy the phrase "reviewer as signer" would
+ * put a name in the record that nothing backs.
+ */
+route('POST', '/api/moderation/resolve', (ctx) => {
+  const want = process.env.METRICS_TOKEN;
+  if (!want) return err(404, 'not found');
+  const got = String(ctx.body.token ?? '');
+  if (got.length !== want.length || !timingSafeEqual(Buffer.from(got), Buffer.from(want))) {
+    return err(401, 'bad operator token');
+  }
+
+  const action = String(ctx.body.action ?? '');
+  if (!['dismiss', 'takedown'].includes(action)) return err(400, 'action must be dismiss or takedown');
+
+  const report = one('SELECT * FROM report WHERE id = ?', String(ctx.body.report ?? ''));
+  if (!report) return err(404, 'no such report');
+  if (report.status !== 'open') return err(409, `report is already ${report.status}`);
+
+  // A decision with no stated reason cannot be appealed, and an unappealable decision is the thing
+  // this product exists not to be.
+  const reason = String(ctx.body.reason ?? '').trim();
+  if (!reason) return err(400, 'a reason is required');
+
+  const at = now();
+
+  if (action === 'dismiss') {
+    run(`UPDATE report SET status = 'dismissed', outcome = ?, decided_at = ?
+          WHERE id = ? AND status = 'open'`, reason, at, report.id);
+    // Nothing happens to the content. Dismissing is the rung that leaves the post exactly as it is.
+    return { report: report.id, action, at };
+  }
+
+  if (report.subject_kind !== 'post') {
+    return err(400, 'only a post can be taken down today — work, person and message need their own rungs');
+  }
+  const p = one('SELECT * FROM post WHERE id = ?', report.subject_id);
+  if (!p) return err(404, 'no such post');
+  if (p.withdrawn_at) return err(409, 'already gone');
+
+  const digest = bodyDigest(p);
+  const receipt = inTransaction(() => {
+    run(`UPDATE post SET withdrawn_at = ?, taken_down_at = ?, takedown_report_id = ?,
+                         body_sha256 = ?, title = '', body = '', referent = NULL
+          WHERE id = ? AND withdrawn_at IS NULL`, at, at, report.id, digest, p.id);
+    run(`UPDATE report SET status = 'actioned', outcome = ?, decided_at = ?
+          WHERE id = ? AND status = 'open'`, reason, at, report.id);
+    // On the AUTHOR's chain: it is their record that this happened to them. An observation, not a
+    // verdict — "a post was taken down under report X for this stated reason", never "guilty".
+    return appendReceiptIn(p.user_id, 'moderation.takedown', {
+      post: p.id, report: report.id, reason, bodySha256: digest, source: 'operator-token',
+    });
+  });
+
+  return {
+    report: report.id, action, post: p.id, at,
+    bodySha256: digest,
+    receipt: receipt?.id ?? null,
+    citations: citedCount(p.id),
   };
 });
 
