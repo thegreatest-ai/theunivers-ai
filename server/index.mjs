@@ -18,6 +18,7 @@ import { measure, daily, totals } from './metrics.mjs';
 import { createOrder, transition, ordersFor, orderRow, publicOrder, roleOf } from './orders.mjs';
 import * as inspection from './inspection.mjs';
 import { chainFor, verifyChain, appendReceiptIn, inTransaction } from './receipts.mjs';
+import { insertCitation, postDigest } from './citations.mjs';
 import { trustOf, tierOf } from './trust.mjs';
 import { analyseNote, analysisAvailable } from './analyse.mjs';
 import { draftFromInstruction, draftingAvailable } from './mandate-draft.mjs';
@@ -1089,13 +1090,7 @@ route('POST', '/api/agent/cite', (ctx) => {
     // Self-citation earns nothing. Recorded, so the note's provenance is complete, but the author
     // is left null so it cannot raise their own count.
     const selfCite = src.author_id === agent.user_id;
-    const id = `cit_${randomUUID().slice(0, 8)}`;
-    run(`INSERT INTO citation (id, note_id, source_id, user_id, post_id, author_id, used_for, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        id, noteId, src.id, agent.user_id, src.post_id,
-        selfCite ? null : src.author_id,
-        String(u.usedFor ?? '').slice(0, 200), now());
-    written.push(id);
+    written.push(insertCitation({ noteId, source: src, userId: agent.user_id, usedFor: u.usedFor }));
   }
 
   if (ctx.body.body != null) {
@@ -1998,7 +1993,7 @@ route('POST', '/api/posts/:id/withdraw', (ctx) => {
   run(
     `UPDATE post SET withdrawn_at = ?, body_sha256 = ?, title = '', body = '', referent = NULL
       WHERE id = ?`,
-    at, bodyDigest(p), p.id,
+    at, postDigest(p), p.id,
   );
   // Citations of it are deliberately untouched: they are the citer's record, not the author's.
   return { withdrawn: true, at, citations: citedCount(p.id) };
@@ -2447,8 +2442,6 @@ route('GET', '/api/moderation/queue', (ctx) => {
   };
 });
 
-/** What was removed, hashed before it is emptied. Title and body, exactly as they were served. */
-const bodyDigest = (p) => createHash('sha256').update(`${p.title}\n\n${p.body}`).digest('hex');
 
 /**
  * The write side of the queue: dismiss a report, or take a post down.
@@ -2511,7 +2504,7 @@ route('POST', '/api/moderation/resolve', (ctx) => {
   if (!p) return err(404, 'no such post');
   if (p.withdrawn_at) return err(409, 'already gone');
 
-  const digest = bodyDigest(p);
+  const digest = postDigest(p);
   const receipt = inTransaction(() => {
     run(`UPDATE post SET withdrawn_at = ?, taken_down_at = ?, takedown_report_id = ?,
                          body_sha256 = ?, title = '', body = '', referent = NULL

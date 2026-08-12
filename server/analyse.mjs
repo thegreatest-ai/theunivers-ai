@@ -29,6 +29,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { one, all, run } from './db.mjs';
+import { insertCitation } from './citations.mjs';
 
 const now = () => new Date().toISOString();
 
@@ -149,11 +150,7 @@ export async function analyseNote(noteId, userId) {
   run('DELETE FROM citation WHERE note_id = ?', noteId);
   for (const u of used) {
     const src = known.get(String(u.source));
-    const selfCite = src.author_id === userId;      // recorded, but earns its author nothing
-    run(`INSERT INTO citation (id, note_id, source_id, user_id, post_id, author_id, used_for, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        `cit_${randomUUID().slice(0, 8)}`, noteId, src.id, userId, src.post_id,
-        selfCite ? null : src.author_id, String(u.usedFor ?? '').slice(0, 200), now());
+    insertCitation({ noteId, source: src, userId, usedFor: u.usedFor });
   }
   run("UPDATE note SET body = ?, status = 'analysed', updated_at = ? WHERE id = ?",
       body, now(), noteId);

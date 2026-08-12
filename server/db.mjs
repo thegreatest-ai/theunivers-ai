@@ -265,6 +265,21 @@ ensureColumn('user', 'password_hash', 'password_hash TEXT');
 ensureColumn('post', 'taken_down_at', 'taken_down_at TEXT');
 ensureColumn('post', 'takedown_report_id', 'takedown_report_id TEXT');
 ensureColumn('post', 'body_sha256', 'body_sha256 TEXT');
+
+/*
+ * A citation binds WHAT it was built on, not just which row.
+ *
+ * Without this a citation is a pair of ids, and the thing they point at can change or empty out
+ * underneath it — so the citer's own record of what they used becomes unverifiable through no act
+ * of theirs. content_hash is the cited body at the moment of citing; cited_state is what it was
+ * then. Bound at insert, never recomputed: a later withdrawal or takedown moves the READER's view
+ * to 'historically valid, currently unavailable' and must not invalidate anybody downstream.
+ *
+ * This is also what stops a dependency walk being added to verifyChain later. There is nothing to
+ * walk — the fact is already in the row.
+ */
+ensureColumn('citation', 'content_hash', 'content_hash TEXT');
+ensureColumn('citation', 'cited_state', "cited_state TEXT NOT NULL DEFAULT 'live'");
 ensureColumn('user', 'reset_token', 'reset_token TEXT');
 ensureColumn('user', 'reset_expires', 'reset_expires TEXT');
 
@@ -823,14 +838,19 @@ ensureForeignKeys('source', {
 ensureForeignKeys('citation', {
   references: ['post_id', 'author_id'],
   create: `CREATE TABLE "citation" (
-    id         TEXT PRIMARY KEY,
-    note_id    TEXT NOT NULL REFERENCES note(id),
-    source_id  TEXT NOT NULL REFERENCES source(id),
-    user_id    TEXT NOT NULL REFERENCES user(id),
-    post_id    TEXT REFERENCES post(id) ON DELETE RESTRICT,
-    author_id  TEXT REFERENCES user(id) ON DELETE RESTRICT,
-    used_for   TEXT NOT NULL DEFAULT '',
-    created_at TEXT NOT NULL
+    id           TEXT PRIMARY KEY,
+    note_id      TEXT NOT NULL REFERENCES note(id),
+    source_id    TEXT NOT NULL REFERENCES source(id),
+    user_id      TEXT NOT NULL REFERENCES user(id),
+    post_id      TEXT REFERENCES post(id) ON DELETE RESTRICT,
+    author_id    TEXT REFERENCES user(id) ON DELETE RESTRICT,
+    used_for     TEXT NOT NULL DEFAULT '',
+    -- What was cited, bound at insert. The rebuild has to carry these or it silently drops the
+    -- binding on every existing row: ensureColumn runs BEFORE this, so the new shape must know
+    -- about them.
+    content_hash TEXT,
+    cited_state  TEXT NOT NULL DEFAULT 'live',
+    created_at   TEXT NOT NULL
   )`,
   indexes: [
     'CREATE INDEX IF NOT EXISTS citation_post_idx   ON citation(post_id)',

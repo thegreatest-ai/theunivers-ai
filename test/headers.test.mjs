@@ -80,9 +80,14 @@ describe('security headers', () => {
   test('the origins the product really loads are declared', async () => {
     const csp = (await head('/api/health')).headers['content-security-policy'];
     // index.html links the Google Fonts stylesheet; App.jsx:10 pulls three.js planet textures.
+    // Environment HDR is same-origin (/assets/hdri/…) — do not reopen githack/githubusercontent.
     assert.ok(csp.includes('https://fonts.googleapis.com'), 'the font stylesheet would be blocked');
     assert.ok(csp.includes('https://fonts.gstatic.com'), 'the font files would be blocked');
     assert.ok(csp.includes('https://cdn.jsdelivr.net'), 'the marketing page textures would be blocked');
+    assert.equal(csp.includes('raw.githack.com'), false,
+      'Environment HDR is local; githack must stay out of CSP');
+    assert.equal(csp.includes('raw.githubusercontent.com'), false,
+      'do not open connect-src for a CDN that githack redirects into');
   });
 
   test('React inline styles are allowed, because style attributes are how it renders', async () => {

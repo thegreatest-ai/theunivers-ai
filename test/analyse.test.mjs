@@ -13,6 +13,8 @@ import { fileURLToPath } from 'node:url';
 
 const SRC = readFileSync(
   join(dirname(fileURLToPath(import.meta.url)), '..', 'server', 'analyse.mjs'), 'utf8');
+const CITATIONS = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), '..', 'server', 'citations.mjs'), 'utf8');
 
 test('a model can only cite sources actually attached to the note', () => {
   // The defence that survives a successful injection: an id the model invents is dropped, so it
@@ -49,8 +51,11 @@ test('re-analysing replaces citations rather than adding more', () => {
 });
 
 test('self-citation is recorded but earns nothing, here too', () => {
-  assert.match(SRC, /selfCite \? null : src\.author_id/,
-    'the runner must apply the same self-citation rule as /api/agent/cite');
+  // Both paths now call insertCitation(), so 'the same rule' is one function rather than two
+  // copies that agreed on the day they were written.
+  assert.match(SRC, /insertCitation\(/, 'the runner must go through the shared insert');
+  assert.match(CITATIONS, /selfCite \? null : source\.author_id/,
+    'and that insert must null the author on a self-citation');
 });
 
 test('no model means no analysis, and the note keeps saying "captured"', () => {

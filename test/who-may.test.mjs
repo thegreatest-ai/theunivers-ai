@@ -19,6 +19,8 @@ import { fileURLToPath } from 'node:url';
 
 const SERVER = readFileSync(
   join(dirname(fileURLToPath(import.meta.url)), '..', 'server', 'index.mjs'), 'utf8');
+const CITATIONS = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), '..', 'server', 'citations.mjs'), 'utf8');
 
 /** The body of one route handler, so a guard in a neighbouring route cannot be mistaken for this one. */
 function routeBody(method, path) {
@@ -57,7 +59,10 @@ test('self-citation is excluded from the count, not from the record', () => {
   // post_id alone, so citing your own post still raised the number from 1 to 2.
   assert.match(SERVER, /author_id IS NOT NULL/,
     'citedCount must exclude rows whose author was nulled by the self-citation guard');
-  assert.match(SERVER, /selfCite \? null : src\.author_id/,
+  // The rule moved to server/citations.mjs when the two insert paths were folded into one — which
+  // is a stronger guarantee than this test could make: there is now nowhere for a second copy to
+  // drift from.
+  assert.match(CITATIONS, /selfCite \? null : source\.author_id/,
     'a self-citation must still be written, so provenance stays complete');
 });
 
