@@ -38,6 +38,7 @@ import { hashPassword, verifyPassword } from './passwords.mjs';
 import { passwordError } from '../shared/password-policy.mjs';
 import { handleError } from '../shared/agent-name.mjs';
 import { rank, order, paginate, sideOf, PER_PAGE } from '../shared/ranking.mjs';
+import { TERMINAL as ORDER_TERMINAL } from '../shared/order-states.mjs';
 import { review as reviewTerms } from '../shared/terms-diff.mjs';
 import {
   oauthConfigured, googleAuthUrl, githubAuthUrl,
@@ -567,6 +568,9 @@ route('POST', '/api/agent/orders', (ctx) => {
   const seller = one('SELECT * FROM agent WHERE lower(trim(name)) = ?', handle.toLowerCase());
   if (!seller) return err(404, 'no agent with that name');
   if (seller.id === agent.id) return err(400, 'an agent cannot trade with itself');
+  // A block bars a new dealing, and answers exactly as an unknown handle does. "You are blocked"
+  // is not owed to the party blocked — the same reason a blocked profile is 404 and not 403.
+  if (principalsHidden(agent, seller)) return err(404, 'no agent with that name');
 
   const commodity = String(ctx.body.commodity ?? '').trim();
   const amount = Number(ctx.body.price?.amount);
@@ -2227,6 +2231,30 @@ const isHidden = (viewerId, otherId) =>
                               OR (blocker_id = ? AND blocked_id = ?) LIMIT 1`,
     viewerId, otherId, otherId, viewerId));
 
+/**
+ * A block is a rule about PEOPLE, and an agent acts for a person — so it has to reach the agent
+ * surfaces or it is bypassable by delegation. Without this, A blocks B and B's agent still opens a
+ * thread with A's agent: every person-to-person filter holds and the block is worth nothing to the
+ * person who asked for it.
+ */
+const principalsHidden = (a, b) => isHidden(a?.user_id, b?.user_id);
+
+/**
+ * An order between these two agents that is still moving.
+ *
+ * A block bars NEW dealings; it must not void a recorded obligation, or blocking becomes a way out
+ * of one. It must equally not silence the channel a live order is negotiated through — an
+ * obligation you cannot discharge is worse for the blocker than one they can finish and leave.
+ * So the exception is narrow and deliberate: an existing live order keeps its thread open, and
+ * nothing else survives the block.
+ */
+const liveOrderBetween = (a, b) => Boolean(one(
+  `SELECT 1 x FROM "order"
+     WHERE ((buyer_agent_id = ? AND seller_agent_id = ?)
+         OR (buyer_agent_id = ? AND seller_agent_id = ?))
+       AND status NOT IN (${ORDER_TERMINAL.map(() => '?').join(', ')}) LIMIT 1`,
+  a.id, b.id, b.id, a.id, ...ORDER_TERMINAL));
+
 route('POST', '/api/block', (ctx) => {
   if (!ctx.user) return err(401, 'sign in required');
   const target = findPerson(ctx.body.person ?? ctx.body.handle ?? ctx.body.id);
@@ -2642,6 +2670,12 @@ route('POST', '/api/agent/messages', (ctx) => {
   const other = one('SELECT * FROM agent WHERE lower(trim(name)) = ?', handle.toLowerCase());
   if (!other) return err(404, 'no agent with that name');
   if (other.id === agent.id) return err(400, 'an agent cannot message itself');
+  // Same answer as an unknown handle, for the same reason. The live-order exception is the only
+  // way across a block, and it exists so an obligation can be discharged, not so a conversation
+  // can be resumed.
+  if (principalsHidden(agent, other) && !liveOrderBetween(agent, other)) {
+    return err(404, 'no agent with that name');
+  }
 
   const body = String(ctx.body.body ?? '').trim();
   if (!body) return err(400, 'body required');

@@ -27,7 +27,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const TOKEN = 'operator-token-for-the-safety-test';
 
 let PORT; let child; let DB;
-const TOK = { ana: 'tok_s_ana', ben: 'tok_s_ben' };
+const TOK = {
+  ana: 'tok_s_ana', ben: 'tok_s_ben',
+  // The agents the same two people act through. A block that only knows about the people is a
+  // block with a door left open behind it.
+  anaAgent: 'tok_agent_ana', benAgent: 'tok_agent_ben',
+};
 const ID = { ana: 'usr_ana', ben: 'usr_ben' };
 
 function freePort() {
@@ -218,5 +223,85 @@ describe('the reviewer queue', () => {
     assert.equal(rep.kind, 'post');
     assert.equal(rep.reason, 'spam');
     assert.equal(rep.alsoReported, 1, 'distinct people, so one person reporting twice counts once');
+  });
+});
+
+/**
+ * A BLOCK HAS TO REACH THE AGENT SURFACES.
+ *
+ * Every filter in `describe('blocking')` above is about what a PERSON sees. But a person here acts
+ * through an agent, and the agent has its own token, its own thread table and its own order route.
+ * If the block stops at the person, then A blocks B, B tells their agent to open a thread with A's
+ * agent, and the block is worth nothing to the person who asked for it — while still telling them
+ * they are safe. That is the worst shape a safety feature can take.
+ */
+describe('a block reaches the agent surfaces', () => {
+  test('a block against a handle that resolves to nobody is refused, not recorded', async () => {
+    // Caught while writing these: `person: 'ben'` is not a handle — the handle is `ben.works` —
+    // and a block that answers 200 for a reference it could not resolve is the "recorded but not
+    // enforced" shape this file's header calls worse than having no feature at all.
+    assert.equal((await api('/api/block', { method: 'POST', as: 'ana', body: { person: 'ben' } })).status, 404);
+  });
+
+  test('before any block, one agent may message the other', async () => {
+    const r = await api('/api/agent/messages', {
+      method: 'POST', as: 'benAgent', body: { to: 'ana.works', body: 'opening' },
+    });
+    assert.equal(r.status, 200, 'baseline: the agent channel is open between these two');
+  });
+
+  test('after the block, the blocked party\'s agent cannot reach the blocker\'s agent', async () => {
+    assert.equal((await api('/api/block', { method: 'POST', as: 'ana', body: { person: 'ben.works' } })).status, 200);
+    assert.equal((await api('/api/people/usr_ben', { as: 'ana' })).status, 404, 'person-level block is in effect');
+
+    const r = await api('/api/agent/messages', {
+      method: 'POST', as: 'benAgent', body: { to: 'ana.works', body: 'routing around it' },
+    });
+    assert.equal(r.status, 404);
+  });
+
+  test('and it holds in the other direction, as the person-level block does', async () => {
+    const r = await api('/api/agent/messages', {
+      method: 'POST', as: 'anaAgent', body: { to: 'ben.works', body: 'still blocked' },
+    });
+    assert.equal(r.status, 404, 'symmetric in effect, or the block announces itself by asymmetry');
+  });
+
+  test('a new order cannot be opened across a block either', async () => {
+    const r = await api('/api/agent/orders', {
+      method: 'POST', as: 'benAgent',
+      body: { sellerAgent: 'ana.works', commodity: 'urea', price: { amount: 100, currency: 'USD' } },
+    });
+    assert.equal(r.status, 404, 'a trade is a dealing, and a block bars new dealings');
+  });
+
+  test('the refusal does not disclose the block', async () => {
+    const blocked = await api('/api/agent/messages', {
+      method: 'POST', as: 'benAgent', body: { to: 'ana.works', body: 'x' },
+    });
+    const unknown = await api('/api/agent/messages', {
+      method: 'POST', as: 'benAgent', body: { to: 'nobody.at.all', body: 'x' },
+    });
+    assert.equal(blocked.status, unknown.status);
+    assert.deepEqual(blocked.json, unknown.json,
+      'a blocked handle and a handle that never existed must be indistinguishable');
+  });
+
+  test('a live order keeps its channel open — a block is not a way out of an obligation', async () => {
+    const db = new DatabaseSync(DB);
+    const t = new Date().toISOString();
+    db.prepare(`INSERT INTO "order"
+      (id,buyer_agent_id,seller_agent_id,commodity,price_amount,price_currency,
+       quantity,delivery_window,inspection_policy,status,created_at,updated_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
+      .run('ord_blocked', 'agt_ben', 'agt_ana', 'urea', 100, 'USD',
+           '{"value":1,"unit":"t"}', '{"from":"2026-08-12","to":"2026-09-12"}', '{}', 'drafted', t, t);
+    db.close();
+
+    const r = await api('/api/agent/messages', {
+      method: 'POST', as: 'benAgent', body: { to: 'ana.works', body: 'about the open order' },
+    });
+    assert.equal(r.status, 200,
+      'the exception is narrow: an obligation you cannot discharge is worse than one you can finish');
   });
 });
