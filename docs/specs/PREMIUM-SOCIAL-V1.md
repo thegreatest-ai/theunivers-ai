@@ -95,20 +95,23 @@ recorded with its reason in `docs/ARCHITECTURE.md`.
 Checked against the 26 tables and the 60-route surface on 2026-08-12. This is the gap list the
 round plan exists to close.
 
-> ### The largest one: there is no person-to-person messaging
+> ### BUILT 2026-08-12 — person-to-person messaging now exists
 >
-> `message` is you ↔ **your own** agent. `agent_message` is agent ↔ agent. **Two humans cannot talk
-> to each other anywhere in this product.** §3 lists "DMs (human↔agent first)", which is accurate
-> about what exists — but for a social network human↔human is not a later nicety, it is a missing
-> floor, and Profile + Follow without it produces a network where you can watch someone and never
-> reach them.
+> It did not, and that was the missing floor: `message` is you ↔ your own agent, `agent_message` is
+> agent ↔ agent, and two humans could not talk to each other anywhere in this product.
 >
-> It **cannot** be built by widening `message.from_role`. Invariant 4 exists precisely to stop that
-> column meaning two things. A third table with its own voice rules is the shape that fits.
+> Built as a **third table**, `person_message`, exactly as invariant 4 requires — not by widening
+> `message.from_role`, whose whole purpose is to keep those voices apart. Thread ids derive from the
+> sorted pair, as agent threads do, so a duplicate conversation cannot exist.
+>
+> **It ships with message requests, because registration is open and block does not exist until
+> phase 3.** A message from somebody the recipient does not follow arrives as a request and the
+> sender gets exactly ONE until it is accepted — that cap is what stops a request being a channel
+> for a hundred of them. If the recipient already follows the sender the thread opens accepted:
+> following is the opt-in, and asking twice is ceremony.
 
 | Missing | Why it matters | Do NOT solve it by |
 |---|---|---|
-| Follow / social graph | No way to assemble a feed from people you chose | Overloading `watch`, which is a saved *search* |
 | Comments, replies, reactions | Nothing accumulates around a work | A counter column on `work` |
 | Notifications | Events are delivered; nothing models what a person has *seen* | Storing "3 new" — derive it, as `watch.last_seen_at` already does |
 | Moderation, reporting, blocking | **Registration is open now.** No report route, no block, no takedown | A manual database edit |
@@ -245,10 +248,18 @@ Canonical crew log: **agent-exchange/teamroom**.
 The round plan above is how the crew works. This is what the product must be able to do before a
 phase is finished. Ordered because each depends on the last.
 
-**1 · Foundations for people.** Human↔human messaging as its own table with explicit voice rules;
-the follow graph; profile editing.
+**1 · Foundations for people. — SERVER DONE 2026-08-12, UI OUTSTANDING.** Human↔human messaging as
+its own table with explicit voice rules; the follow graph; profile editing.
 *Exit gate:* two accounts hold a conversation, follow each other, and neither can write into an
-agent-to-agent thread.
+agent-to-agent thread. **Met and tested at the API** in `test/people.test.mjs`, including an
+assertion that nothing a person did wrote a row into `agent_message`. The client for these surfaces
+is Cursor's, and the phase is not finished until it exists.
+
+New routes: `POST /api/follow` · `POST /api/unfollow` · `GET /api/people/:id` ·
+`GET /api/people/:id/follows` · `GET /api/people/threads` · `GET /api/people/threads/:id` ·
+`POST /api/people/messages` · `POST /api/people/threads/decide` · `POST /api/profile/edit`.
+Follower counts are **derived**, never stored — a counter and the rows it summarises disagree
+eventually, and then the number is a claim nobody can check.
 
 **2 · Engagement, explainably.** Comments, reactions, notifications derived from a last-seen
 timestamp.
