@@ -3,23 +3,7 @@
 Everything currently wrong or unfinished, worst first. **If you fix one, delete it here in the same
 commit** — a stale known-issues file is worse than none, because people stop trusting it.
 
-Last reviewed: 2026-08-11 · registration is OPEN · 1 real user
-
----
-
-## HIGH — `.env` cannot set `DB_PATH`, or anything else `db.mjs` reads
-
-`server/index.mjs` loads `.env` in its module body, but `import { db } from './db.mjs'` is hoisted
-and **evaluated first**. So `db.mjs` reads `process.env.DB_PATH` before the file has been parsed,
-and a `DB_PATH` set only in `.env` is silently ignored — the database opens at the default
-`./data/pilot.db` while the operator believes it is somewhere else.
-
-Every other variable read at import time in an imported module has the same problem; the ones read
-inside handlers are fine, which is why this has not bitten yet.
-
-**Fix:** move the loader into its own module and import it first, so it runs before anything that
-reads the environment. Found while pointing a dev run at a scratch database and getting the real
-one.
+Last reviewed: 2026-08-12 · registration is OPEN · 1 real user · nothing HIGH is open
 
 ---
 
@@ -142,6 +126,29 @@ removes the worst of the drift risk, but the consolidation decision is still ope
 ---
 
 ## Resolved, kept for the lessons
+
+<details><summary>`.env` could not set `DB_PATH`, and said nothing about it</summary>
+
+`server/index.mjs` parsed `.env` in its module body. ES module imports are evaluated **before** any
+statement in the importing file, so `db.mjs` had already read `process.env.DB_PATH` and frozen
+`./data/pilot.db` into a constant by the time the file was opened. A `DB_PATH` set only in `.env`
+was ignored, with no error and no warning — the operator worked against the wrong database
+believing otherwise. Four other modules read the environment at import time the same way:
+`storage.mjs` (`MEDIA_PATH`), `oauth.mjs` (`OAUTH_STATE_SECRET`), `mail.mjs` (`MAIL_FROM`,
+`NODE_ENV`) and `analyse.mjs` (`ANALYSE_MODEL`).
+
+**Why it survived so long: on Fly every variable is a real secret**, set in the actual environment,
+where the fallback never applies. The bug was invisible in production and only reachable by a
+developer pointing a local run somewhere — which is how it was found.
+
+Fixed by moving the loader into `server/env.mjs`, whose body runs on import, and importing it
+first in `index.mjs`. Precedence is unchanged: a real environment variable still beats the file.
+
+**The test is end-to-end, not a lint of import positions.** It boots the real server with `DB_PATH`
+set only in a file and asserts the database appears there — the assertion an ordering rule cannot
+fake. Verified by reintroducing the late import and watching it fail.
+
+</details>
 
 <details><summary>An order could move without the receipt proving it — and the chain could not tell</summary>
 
