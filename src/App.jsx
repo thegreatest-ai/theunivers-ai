@@ -340,7 +340,10 @@ function Scene() {
       <Backdrop /><StarFlow />
       <Vortex /><ConnectBurst />
       <Earth /><NeuronPlanet />
-      <Environment preset="night" />
+      {/* Local HDR — drei's preset="night" fetches raw.githack.com (→ githubusercontent),
+          which CSP correctly refuses and which githack itself now 403s. Same file, same path
+          shape, served from /assets so connect-src stays closed. */}
+      <Environment files="/assets/hdri/dikhololo_night_1k.hdr" />
       <Stars radius={90} depth={50} count={1300} factor={2.3} saturation={0} fade speed={0.4} />
       <CameraRig />
       <EffectComposer disableNormalPass>
@@ -463,12 +466,25 @@ function Overlay() {
   )
 }
 
-function Preloader() {
+function Preloader({ forceDone = false }) {
   const { progress, active } = useProgress()
   const [hide, setHide] = useState(false)
   const [minDone, setMinDone] = useState(false)
+  // Hard ceiling: if WebGL never starts (or textures never finish), progress stays < 100 and
+  // the navy preloader (z-index 90) covers Overlay forever — which is how a visitor without GL
+  // gets a black rectangle instead of the marketing copy that already exists in the DOM.
   useEffect(() => { const t = setTimeout(() => setMinDone(true), 1500); return () => clearTimeout(t) }, [])
-  useEffect(() => { if (minDone && !active && progress >= 100) { const t = setTimeout(() => setHide(true), 500); return () => clearTimeout(t) } }, [minDone, active, progress])
+  useEffect(() => {
+    const ready = forceDone || (minDone && !active && progress >= 100)
+    if (!ready) return
+    const t = setTimeout(() => setHide(true), 500)
+    return () => clearTimeout(t)
+  }, [forceDone, minDone, active, progress])
+  useEffect(() => {
+    if (forceDone) return
+    const t = setTimeout(() => setHide(true), 6000)
+    return () => clearTimeout(t)
+  }, [forceDone])
   return (
     <div className={`preloader ${hide ? 'done' : ''}`}>
       <div className="pl-mark"><StarMark /><span>theunivers<i>.ai</i></span></div>
@@ -490,17 +506,43 @@ function SmoothScroll() {
   return null
 }
 
+/** Canvas without a context takes the whole tree down; Overlay is the product, the scene is dress. */
+class SceneBoundary extends React.Component {
+  constructor(props) {
+    super(props)
+    this.state = { failed: false }
+  }
+  static getDerivedStateFromError() { return { failed: true } }
+  componentDidCatch() { /* Overlay still mounts; silence the scene */ }
+  render() { return this.state.failed ? null : this.props.children }
+}
+
+function canWebGL() {
+  try {
+    const c = document.createElement('canvas')
+    return !!(c.getContext('webgl2') || c.getContext('webgl') || c.getContext('experimental-webgl'))
+  } catch { return false }
+}
+
 export default function App() {
+  // null = not probed yet — do not mount Canvas until we know, or a failed createContext
+  // takes the whole tree (and Overlay with it) before SceneBoundary can help.
+  const [glOk, setGlOk] = useState(null)
+  useEffect(() => { setGlOk(canWebGL()) }, [])
   return (
     <>
-      <Preloader />
+      <Preloader forceDone={glOk === false} />
       <SmoothScroll />
-      <div className="canvas-fixed">
-        <Canvas dpr={[1, 2]} camera={{ position: [0, 3.4, 32], fov: 40 }} gl={{ antialias: true, powerPreference: 'high-performance', toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.12 }}>
-          <Suspense fallback={null}><Scene /><Preload all /></Suspense>
-          <AdaptiveDpr pixelated />
-        </Canvas>
-      </div>
+      {glOk === true ? (
+        <div className="canvas-fixed">
+          <SceneBoundary>
+            <Canvas dpr={[1, 2]} camera={{ position: [0, 3.4, 32], fov: 40 }} gl={{ antialias: true, powerPreference: 'high-performance', toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.12 }}>
+              <Suspense fallback={null}><Scene /><Preload all /></Suspense>
+              <AdaptiveDpr pixelated />
+            </Canvas>
+          </SceneBoundary>
+        </div>
+      ) : null}
       <div className="blackout" id="blackout" />
       <Overlay />
     </>
