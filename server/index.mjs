@@ -564,12 +564,12 @@ route('POST', '/api/agent/orders', (ctx) => {
   // The seller is named by HANDLE, resolved here. Accepting a raw agent id from the body would
   // let a caller address an agent they could not otherwise find or spell.
   const handle = String(ctx.body.sellerAgent ?? '').trim();
-  const seller = one('SELECT * FROM agent WHERE lower(trim(name)) = ?', handle.toLowerCase());
-  if (!seller) return err(404, 'no agent with that name');
+  const seller = counterpartyAgent(handle, agent.user_id);
+  // Unknown and blocked leave through the SAME return, after the SAME single query. A block bars
+  // a new dealing, and "you are blocked" is not owed to the party blocked — the reason a blocked
+  // profile answers 404 and not 403.
+  if (!seller || seller.hidden) return err(404, 'no agent with that name');
   if (seller.id === agent.id) return err(400, 'an agent cannot trade with itself');
-  // A block bars a new dealing, and answers exactly as an unknown handle does. "You are blocked"
-  // is not owed to the party blocked — the same reason a blocked profile is 404 and not 403.
-  if (principalsHidden(agent, seller)) return err(404, 'no agent with that name');
 
   const commodity = String(ctx.body.commodity ?? '').trim();
   const amount = Number(ctx.body.price?.amount);
@@ -2284,20 +2284,27 @@ const isHidden = (viewerId, otherId) =>
  * thread with A's agent: every person-to-person filter holds and the block is worth nothing to the
  * person who asked for it.
  */
-const principalsHidden = (a, b) => isHidden(a?.user_id, b?.user_id);
+const counterpartyAgent = (handle, viewerUserId) => one(
+  `SELECT a.*, EXISTS(
+       SELECT 1 FROM block b
+        WHERE (b.blocker_id = ? AND b.blocked_id = a.user_id)
+           OR (b.blocker_id = a.user_id AND b.blocked_id = ?)
+     ) AS hidden
+     FROM agent a WHERE lower(trim(a.name)) = ?`,
+  viewerUserId, viewerUserId, String(handle ?? '').trim().toLowerCase());
 
 /*
- * A KNOWN, ACCEPTED RESIDUAL: the refusals are byte-identical, the timings are not.
+ * The refusals are byte-identical AND now cost the same query.
  *
- * A handle that does not exist short-circuits at the agent lookup. A handle that exists but is
- * blocked resolves the agent AND runs the block query before returning the same 404. Sampled
- * enough times, that difference answers "does this handle exist and has it blocked me?" — the
- * question the identical body exists to refuse.
+ * openclaw found the residual: a handle that does not exist used to short-circuit at the agent
+ * lookup, while a blocked one resolved the agent and then ran a second block query before
+ * returning the same 404 — sampled enough, that answers the question the identical body refuses.
+ * gemini proposed folding both into one statement, which is better than the decoy query I had
+ * considered and rejected. Unknown and blocked now leave through one return after one EXISTS join.
  *
- * Not closed, deliberately. Equalising it means issuing a decoy query on the not-found path, and
- * over HTTP with network jitter dominating a sub-millisecond SQLite read, that buys an unmeasurable
- * improvement in exchange for a claim of constant time we could not test — and an untestable
- * security claim is worse than a documented gap. Written here rather than discovered later.
+ * Not called constant-time. Row-found and row-missing still differ inside SQLite, and over HTTP
+ * that difference is far under the jitter — but an untestable security claim is worse than a
+ * documented one, so this says what it did and not what it guarantees.
  */
 
 /*
@@ -2811,12 +2818,9 @@ route('POST', '/api/agent/messages', (ctx) => {
   if (!agent) return err(401, 'agent token required');
 
   const handle = String(ctx.body.to ?? '').trim();
-  const other = one('SELECT * FROM agent WHERE lower(trim(name)) = ?', handle.toLowerCase());
-  if (!other) return err(404, 'no agent with that name');
+  const other = counterpartyAgent(handle, agent.user_id);
+  if (!other || other.hidden) return err(404, 'no agent with that name');
   if (other.id === agent.id) return err(400, 'an agent cannot message itself');
-  // Same answer as an unknown handle, for the same reason. No exception: see the note above the
-  // block helpers for why a live order does not reopen this channel.
-  if (principalsHidden(agent, other)) return err(404, 'no agent with that name');
 
   const body = String(ctx.body.body ?? '').trim();
   if (!body) return err(400, 'body required');
