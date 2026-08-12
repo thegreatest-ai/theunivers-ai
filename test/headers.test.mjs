@@ -43,8 +43,11 @@ before(async () => {
   const DB = join(mkdtempSync(join(tmpdir(), 'headers-')), 'headers.db');
   child = spawn(process.execPath, [join(ROOT, 'server', 'index.mjs')], {
     cwd: ROOT,
+    // A real origin, because an empty string cannot be used to test the fallback: env.mjs applies
+    // .env with 'if (!process.env[key])', and '' is falsy, so the local .env's CORS_ORIGIN=* wins.
+    // What this pins is that the header REFLECTS configuration and is never hardcoded to '*'.
     env: { ...process.env, PORT: String(PORT), DB_PATH: DB, INVITE_CODE: 'headers-test',
-           OAUTH_STATE_SECRET: 'headers-secret' },
+           OAUTH_STATE_SECRET: 'headers-secret', CORS_ORIGIN: 'https://headers.test' },
     stdio: ['ignore', 'ignore', 'pipe'],
   });
   let stderr = ''; child.stderr.on('data', (d) => { stderr += d; });
@@ -93,5 +96,16 @@ describe('security headers', () => {
   test('React inline styles are allowed, because style attributes are how it renders', async () => {
     const csp = (await head('/api/health')).headers['content-security-policy'];
     assert.match(csp, /style-src [^;]*'unsafe-inline'/);
+  });
+});
+
+describe('cross-origin default', () => {
+  test('the fallback is our own origin, never the whole internet', async () => {
+    const origin = (await head('/api/health')).headers['access-control-allow-origin'];
+    assert.equal(origin, 'https://headers.test', 'the configured origin must be what is sent');
+    assert.notEqual(origin, '*',
+      'a default of "anyone" stops being harmless the first time a cookie appears, and nobody ' +
+      're-reads a header they have already seen work');
+    assert.match(origin, /^https?:\/\//, 'it must still be a usable origin, not empty');
   });
 });

@@ -22,6 +22,18 @@ There are now **zero posts** in production, since the only one belonged to that 
 
 ---
 
+## MEDIUM — CORS_ORIGIN is `*` in the deployed configuration, not in the code
+
+The code now defaults to `BASE_URL` and the header is tested to reflect configuration rather than
+being hardcoded — but `.env` on this machine carries `CORS_ORIGIN=*`, and `.env.example` shipped
+the same line, so every copy of that file taught the whole internet to be allowed. The example is
+fixed; **the real `.env` and the deploy secret are the owner's to change**, and until they do the
+running app still sends `*`.
+
+Low harm today: auth is a bearer token, not a cookie, so a browser on another origin gains nothing
+by being allowed to read a 401. It stops being harmless the first time a cookie or a same-site
+assumption appears — and nobody re-reads a header they have already seen work.
+
 ## MEDIUM — a shared operator token cannot say WHICH human moderated
 
 Every moderation act — `limit`, `takedown`, `dismiss` — is gated by one `METRICS_TOKEN` held in

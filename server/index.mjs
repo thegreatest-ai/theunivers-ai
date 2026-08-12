@@ -40,6 +40,7 @@ import { passwordError } from '../shared/password-policy.mjs';
 import { handleError } from '../shared/agent-name.mjs';
 import { rank, order, paginate, sideOf, citerWeight, PER_PAGE } from '../shared/ranking.mjs';
 import { review as reviewTerms } from '../shared/terms-diff.mjs';
+import { isWebAddress } from '../shared/safe-href.mjs';
 import { MODERATION_ACTIONS, AVAILABLE_ACTIONS } from '../shared/moderation-actions.mjs';
 import {
   oauthConfigured, googleAuthUrl, githubAuthUrl,
@@ -2783,7 +2784,11 @@ route('POST', '/api/profile/edit', (ctx) => {
       if (!url) continue;
       // http(s) only. A javascript: or data: URL in a profile is a link the interface would render
       // and somebody would click — refused here rather than escaped later in three places.
-      if (!/^https?:\/\/\S+$/i.test(url)) return err(400, `not a web address: ${url.slice(0, 60)}`);
+      //
+      // Same predicate the client renders through (shared/safe-href.mjs), not a second regex that
+      // agrees with it today. A server check and a client check that drift is how one of them ends
+      // up accepting what the other refuses.
+      if (!isWebAddress(url)) return err(400, `not a web address: ${url.slice(0, 60)}`);
       links.push({ label: label || url.replace(/^https?:\/\//i, '').slice(0, 40), url: url.slice(0, 300) });
     }
   }
@@ -3304,7 +3309,15 @@ const server = createServer(async (req, res) => {
   // response before the wrapper is in place — an uncounted reply is a silently wrong bill.
   measure(res);
 
-  res.setHeader('Access-Control-Allow-Origin', process.env.CORS_ORIGIN ?? '*');
+  /*
+   * Default to OUR OWN origin, not the whole internet.
+   *
+   * `*` was harmless-ish here — auth is a bearer token, not a cookie, so a browser on another
+   * origin gains nothing by being allowed to read a 401. But a default that says "anyone" is a
+   * default that stops being harmless the first time a cookie or a same-site assumption appears,
+   * and nobody re-reads a header they have already seen work.
+   */
+  res.setHeader('Access-Control-Allow-Origin', process.env.CORS_ORIGIN || BASE_URL);
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
   securityHeaders(res);
