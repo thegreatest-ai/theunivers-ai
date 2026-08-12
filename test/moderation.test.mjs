@@ -365,3 +365,30 @@ describe('a reported work can actually be acted on', () => {
       'the author sees their own, or they cannot see what they are appealing');
   });
 });
+
+describe('erasing your own work is not an exit from a review', () => {
+  test('the author cannot delete a work the operator has limited', async () => {
+    // Author erasure of a work is a real delete, bytes included, and that is correct — it is the
+    // right to erase and nothing else references a work. But the operator rungs reached works when
+    // limit learned a subject table, and without this guard an author under review could destroy
+    // the thing being reviewed along with the evidence of the decision.
+    const r = await api('/api/works/delete', {
+      method: 'POST', as: 'ana', body: { id: 'wrk_ana' },
+    });
+    assert.equal(r.status, 409);
+
+    const [still] = rows("SELECT id FROM work WHERE id = 'wrk_ana'");
+    assert.ok(still, 'the work must survive the attempt');
+  });
+
+  test('an unlimited work still deletes, bytes and all', async () => {
+    const db = new DatabaseSync(DB);
+    db.prepare('INSERT INTO work (id,user_id,kind,title,body,created_at) VALUES (?,?,?,?,?,?)')
+      .run('wrk_free', 'usr_ana', 'photo', 'mine', 'to erase', new Date().toISOString());
+    db.close();
+
+    const r = await api('/api/works/delete', { method: 'POST', as: 'ana', body: { id: 'wrk_free' } });
+    assert.equal(r.status, 200, 'the right to erase is not conditional on nobody having reported anything');
+    assert.equal(rows("SELECT id FROM work WHERE id = 'wrk_free'").length, 0);
+  });
+});

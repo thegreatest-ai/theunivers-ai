@@ -1428,6 +1428,19 @@ route('POST', '/api/works/delete', (ctx) => {
   const id = String(ctx.body.id ?? '');
   const work = one('SELECT * FROM work WHERE id = ? AND user_id = ?', id, user.id);
   if (!work) return err(404, 'no such work');
+
+  /*
+   * Erasing your own work is your right, and this really erases — nothing references a work but
+   * its own media rows, and a deletion that leaves the file behind is not a deletion.
+   *
+   * But it must not be a way OUT of a moderation action. The operator rungs reached works when
+   * limit and takedown learned a subject table; without this, an author under review could delete
+   * the thing being reviewed and take the evidence of the decision with it. Same shape as a block
+   * not being an exit from an obligation.
+   */
+  if (work.limited_at || work.taken_down_at) {
+    return err(409, 'this is under review by the operator and cannot be deleted yet');
+  }
   // Bytes go too. The spec's erasure constraint is why media never reaches an immutable store:
   // a deletion that leaves the file behind is not a deletion.
   for (const m of all('SELECT path FROM media WHERE work_id = ?', id)) store.remove(m.path);
