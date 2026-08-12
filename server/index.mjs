@@ -2,6 +2,11 @@
  * Private pilot API for theunivers.ai Bridge.
  * Web UI uses session Bearer tokens; AI agents use agent API tokens.
  */
+// FIRST, and it must stay first: this reads .env into process.env, and the imports below it are
+// evaluated in the order written. Several of them (db.mjs, storage.mjs, oauth.mjs, mail.mjs,
+// analyse.mjs) freeze a process.env value into a module constant as they load, so anything
+// imported above this line reads an environment that has not been populated yet. See server/env.mjs.
+import './env.mjs';
 import { createServer } from 'node:http';
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join, extname } from 'node:path';
@@ -20,16 +25,8 @@ import { subscribe, publish, publishAll, streamStats } from './events.mjs';
 import { take, refund, clientIp, limitStats, LIMITS } from './ratelimit.mjs';
 import { sendMail, resetEmail, mailConfigured } from './mail.mjs';
 
-// Tiny .env loader — no dependency
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const ROOT = join(__dirname, '..');
-const envFile = join(ROOT, '.env');
-if (existsSync(envFile)) {
-  for (const line of readFileSync(envFile, 'utf8').split('\n')) {
-    const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$/);
-    if (m && !process.env[m[1]]) process.env[m[1]] = m[2];
-  }
-}
 
 import { db, one, all, run } from './db.mjs';
 import {
