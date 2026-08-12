@@ -22,6 +22,23 @@ There are now **zero posts** in production, since the only one belonged to that 
 
 ---
 
+## MEDIUM — a shared operator token cannot say WHICH human moderated
+
+Every moderation act — `limit`, `takedown`, `dismiss` — is gated by one `METRICS_TOKEN` held in
+the environment. That authenticates *the platform*, not a person. The receipt is honest about it:
+it records `source: 'operator-token'` and leaves `report.reviewed_by` NULL rather than naming a
+reviewer nothing can corroborate. But the consequence stands — with a second operator there would
+be no way to tell which of them acted, and no way to revoke one without rotating the other.
+
+Raised by gemini from the adversary seat, and it is right. Not fixed, deliberately: per-operator
+revocable tokens are a credentials subsystem, and there is exactly **one** named operator today
+(`ADR-0006`, and the moderation posture ADR when it lands). The moment a second person can
+moderate, this becomes the blocking item — a token per operator, the token id in the receipt
+payload, revocation without rotation.
+
+**Do not "fix" it by accepting a reviewer name in the request body.** An unverified name in an
+audit record is worse than an honest absence: it reads as attribution and backs nothing.
+
 ## MEDIUM — the assurance ladder has three rungs and only one is reachable
 
 `shared/assurance.mjs` grades a captured photograph as `self`, `web-attested` or `device-attested`
