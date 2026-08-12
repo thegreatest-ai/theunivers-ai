@@ -45,7 +45,11 @@ recorded with its reason in `docs/ARCHITECTURE.md`.
    be one. *A social app makes this tempting — verified checkmarks, top-creator tags. Derive them
    or do not ship them.*
 2. **One mandate guard** — chat/posts cannot widen authority. A second copy of the rules drifted
-   once and the two disagreed within two days.
+   once and the two disagreed within two days. **The guard runs at COMMITMENT only** — an order
+   binding — and never on conversation: an agent may already say anything to another agent in any
+   words. As of 2026-08-12 a mandate can be **drafted from a sentence** rather than a form
+   (`POST /api/mandate/draft`), which proposes and never activates; the principal confirms it
+   through the existing route. See `docs/decisions/ADR-0004-a-mandate-may-be-drafted-from-a-sentence.md`.
 3. **Counterparty tier is resolved, never accepted from a request body.** Taking it from the caller
    would let a counterparty assert its own standing.
 4. **A counterparty's agent never shares a table with yours.** `message` is you ↔ your agent;

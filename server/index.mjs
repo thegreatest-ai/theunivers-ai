@@ -20,6 +20,7 @@ import * as inspection from './inspection.mjs';
 import { chainFor, verifyChain } from './receipts.mjs';
 import { trustOf } from './trust.mjs';
 import { analyseNote, analysisAvailable } from './analyse.mjs';
+import { draftFromInstruction, draftingAvailable } from './mandate-draft.mjs';
 import * as store from './storage.mjs';
 import { subscribe, publish, publishAll, streamStats } from './events.mjs';
 import { take, refund, clientIp, limitStats, LIMITS } from './ratelimit.mjs';
@@ -472,6 +473,30 @@ route('POST', '/api/proposals/decide', (ctx) => {
  * 'superseded' and a new row is written. Editing in place would rewrite history that receipts
  * already point at — a receipt saying "checked against mandate X" must keep meaning what it meant.
  */
+/**
+ * Draft a mandate from a sentence. PROPOSES ONLY — nothing here activates anything.
+ *
+ * Session-auth, and deliberately no agent-token path: an agent drafting its own mandate is an
+ * agent authoring its own authority. The principal reads the draft, changes what they like, and
+ * POSTs it to /api/mandate, which is still the only route that makes a mandate real.
+ */
+route('POST', '/api/mandate/draft', async (ctx) => {
+  if (!ctx.user) return err(401, 'sign in required');
+  const result = await draftFromInstruction(ctx.body.instruction, ctx.user.id);
+  if (!result.ok) return err(result.code === 'NO_MODEL' ? 503 : 400, result.reason, undefined, result.code);
+
+  return {
+    draft: result.draft,
+    // Named plainly so the interface can ask for them rather than filling them in silently.
+    unknown: result.unknown,
+    problems: result.problems,
+    ready: result.ready,
+    understood: result.understood,
+    // Said out loud, because a draft that looked like a decision would be the whole risk here.
+    note: 'Nothing has changed yet. Confirm this to make it your agent\'s mandate.',
+  };
+});
+
 route('POST', '/api/mandate', (ctx) => {
   const user = ctx.user;
   if (!user) return err(401, 'sign in required');
