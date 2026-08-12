@@ -5,11 +5,18 @@ commit** — a stale known-issues file is worse than none, because people stop t
 
 Last reviewed: 2026-08-12 · registration is OPEN · nothing HIGH is open
 
-Three accounts exist in production: the owner's, **one real signup** (2026-08-10), and one test
-account on `@example.com` created during the 08-11 build session. Counted from `/data/pilot.db` on
-the live machine, not from memory — an earlier note here said "1 real user" and was read as
-"one account", which is how a test row went unnoticed. The test row should be deleted; a seeded
-account in a production database inflates every count taken from it.
+**Two accounts in production, both the owner's** — the primary and a second address used to see the
+product as another person sees it. There are **no outside users yet**. Counted from
+`/data/pilot.db` on the live machine, not from memory: an earlier line here said "1 real user",
+which was read as "one account" and is how a seeded `@example.com` row went unnoticed for a day.
+
+That test account was deleted on 2026-08-12, along with the two rows on the owner's second account
+that referenced its post — a source citing it and a view of it. Deleting the post alone would not
+have errored: `source.post_id` and `source.author_id` carry **no foreign key**, so the citation
+would have been left pointing at content that no longer existed, which is the one failure this
+product cannot afford. `PRAGMA foreign_key_check` is clean and no reference dangles.
+
+There are now **zero posts** in production, since the only one belonged to that account.
 
 ---
 
