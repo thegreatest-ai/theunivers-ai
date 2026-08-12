@@ -130,6 +130,20 @@ describe('blocking', () => {
     assert.equal((await api('/api/people/usr_ben', { as: 'ana' })).status, 404);
   });
 
+  test('a blocked post is not reachable by id — the feed filter is not the only door', async () => {
+    // The id travels in a citation, a share and a URL. Filtering the feed alone made the block
+    // last exactly as long as nobody pasted a link.
+    const seen = await api('/api/posts/pst_ben', { as: 'ana' });
+    assert.equal(seen.status, 404);
+    const missing = await api('/api/posts/pst_does_not_exist', { as: 'ana' });
+    assert.deepEqual(seen.json, missing.json, 'a blocked post and one that never existed read alike');
+  });
+
+  test('a blocked profile\'s follower list is gone with the profile', async () => {
+    assert.equal((await api('/api/people/usr_ben/follows', { as: 'ana' })).status, 404,
+      'filtering the members but not the owner left the list readable after the profile vanished');
+  });
+
   test('neither can follow the other across a block', async () => {
     assert.equal((await api('/api/follow', { method: 'POST', as: 'ben', body: { person: 'ana.works' } })).status, 404);
   });

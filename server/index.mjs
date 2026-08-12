@@ -1911,6 +1911,18 @@ route('GET', '/api/posts/:id', (ctx) => {
   if (!p) return err(404, 'no such post');
 
   /*
+   * A block clears the feed; it has to clear this door too. Fetching by id was the way around it —
+   * the post id travels in a citation, a share and a URL, so "filtered from the feed" was privacy
+   * that lasted exactly as long as nobody pasted a link.
+   *
+   * 404 and not a tombstone, and the SAME 404 a missing post gets. A tombstone would confirm the
+   * post exists, which is the disclosure the block is for. This is not withdrawal: the post is
+   * still there for everyone else, it is gone for this reader only.
+   */
+  const viewerId = ctx.user?.id ?? ctx.agent?.user_id ?? null;
+  if (isHidden(viewerId, p.user_id)) return err(404, 'no such post');
+
+  /*
    * ADR-0003. A withdrawn post answers with a TOMBSTONE rather than a 404.
    *
    * The reader here is usually following a citation, and 404 answers their question wrongly: it
@@ -2592,7 +2604,9 @@ route('GET', '/api/people/:id', (ctx) => {
 route('GET', '/api/people/:id/follows', (ctx) => {
   if (!ctx.user) return err(401, 'sign in required');
   const target = findPerson(ctx.params.id);
-  if (!target) return err(404, 'no such person');
+  // The list members were filtered and the list OWNER was not, so a blocked profile answered 404
+  // while its follower list stayed readable. Same answer as a person who does not exist.
+  if (!target || isHidden(ctx.user.id, target.id)) return err(404, 'no such person');
   const dir = ctx.query.get('direction') === 'following' ? 'following' : 'followers';
   const rows = dir === 'followers'
     ? all(`SELECT u.* FROM follow f JOIN user u ON u.id = f.follower_id
