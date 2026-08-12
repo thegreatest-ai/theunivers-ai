@@ -48,10 +48,26 @@ export function userFromSession(authHeader) {
   return row;
 }
 
+/**
+ * The agent behind a bearer token — and only if it is still live.
+ *
+ * `agent.status` existed from the first schema and gated NOTHING: it was selected for display on
+ * three surfaces and checked on none, so a row set to 'suspended' changed what the interface said
+ * and not what the agent could do. There was therefore no way to stop a running agent at all,
+ * which is the gap gemini named from the adversary seat — a content ladder cannot answer an agent
+ * actively misbehaving, and the operator needs a stop that works before a policy exists to
+ * describe when to use it.
+ *
+ * Refusing here rather than per-route is deliberate: this is the one place an agent credential
+ * becomes an identity, so a route added tomorrow inherits the stop without knowing about it.
+ * Returning null makes a suspended agent indistinguishable from a bad token, which is also the
+ * honest answer — that credential no longer authenticates anything.
+ */
 export function agentFromToken(authHeader) {
   const t = bearer(authHeader);
   if (!t) return null;
-  return one('SELECT * FROM agent WHERE api_token = ?', t);
+  const agent = one('SELECT * FROM agent WHERE api_token = ?', t);
+  return agent && agent.status === 'live' ? agent : null;
 }
 
 function bearer(header) {

@@ -438,3 +438,37 @@ describe('withdrawing is not a way out of a review', () => {
     assert.equal(again.status, 409);
   });
 });
+
+describe('an agent can actually be stopped', () => {
+  test('a live agent token authenticates', async () => {
+    const r = await new Promise((resolve, reject) => {
+      const req = request({
+        host: '127.0.0.1', port: PORT, path: '/api/agent/me', method: 'GET', agent: false,
+        headers: { Authorization: 'Bearer tok_agent_m_ben' },
+      }, (res) => { res.resume(); res.on('end', () => resolve({ status: res.statusCode })); });
+      req.on('error', reject);
+      req.end();
+    });
+    assert.equal(r.status, 200);
+  });
+
+  test('suspending it stops the credential, not just the label', async () => {
+    // agent.status existed from the first schema and gated nothing — selected for display on three
+    // surfaces, checked on none. A row set to 'suspended' changed what the interface said and not
+    // what the agent could do, so there was no way to stop a running agent at all.
+    const db = new DatabaseSync(DB);
+    db.prepare("UPDATE agent SET status = 'suspended' WHERE id = 'agt_ben'").run();
+    db.close();
+
+    const r = await new Promise((resolve, reject) => {
+      const req = request({
+        host: '127.0.0.1', port: PORT, path: '/api/agent/me', method: 'GET', agent: false,
+        headers: { Authorization: 'Bearer tok_agent_m_ben' },
+      }, (res) => { res.resume(); res.on('end', () => resolve({ status: res.statusCode })); });
+      req.on('error', reject);
+      req.end();
+    });
+    assert.equal(r.status, 401,
+      'a suspended agent must be indistinguishable from a bad token — that credential authenticates nothing');
+  });
+});
