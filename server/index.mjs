@@ -2287,6 +2287,20 @@ const isHidden = (viewerId, otherId) =>
 const principalsHidden = (a, b) => isHidden(a?.user_id, b?.user_id);
 
 /*
+ * A KNOWN, ACCEPTED RESIDUAL: the refusals are byte-identical, the timings are not.
+ *
+ * A handle that does not exist short-circuits at the agent lookup. A handle that exists but is
+ * blocked resolves the agent AND runs the block query before returning the same 404. Sampled
+ * enough times, that difference answers "does this handle exist and has it blocked me?" — the
+ * question the identical body exists to refuse.
+ *
+ * Not closed, deliberately. Equalising it means issuing a decoy query on the not-found path, and
+ * over HTTP with network jitter dominating a sub-millisecond SQLite read, that buys an unmeasurable
+ * improvement in exchange for a claim of constant time we could not test — and an untestable
+ * security claim is worse than a documented gap. Written here rather than discovered later.
+ */
+
+/*
  * There is deliberately NO live-order exception on the message channel.
  *
  * The first version of this kept the thread open while an order was moving, reasoning that an
