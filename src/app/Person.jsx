@@ -11,10 +11,12 @@
  * cache of a derived number, which is the counter column the server refused to add.
  */
 import { useEffect, useState } from 'react';
-import { Link, useOutletContext, useParams } from 'react-router-dom';
-import { api } from './api';
+import { Link, useNavigate, useOutletContext, useParams } from 'react-router-dom';
+import { api, isUnknown } from './api';
 import FollowButton from './FollowButton';
+import { BlockButton, ReportButton, UnknownSubject } from './Safety';
 import Works from './Works';
+import { safeHref } from '../../shared/safe-href.mjs';
 
 export function profilePath(person) {
   const ref = person?.handle || person?.id;
@@ -24,6 +26,7 @@ export function profilePath(person) {
 export default function Person() {
   const { handle } = useParams();
   const { me } = useOutletContext();
+  const nav = useNavigate();
   const [person, setPerson] = useState(null);
   const [error, setError] = useState('');
   const [list, setList] = useState(null);
@@ -35,9 +38,15 @@ export default function Person() {
     setError('');
     api.person(handle)
       .then((d) => alive && setPerson(d.person))
-      .catch((e) => alive && setError(e.message));
+      .catch((e) => alive && setError(isUnknown(e) ? 'unknown' : 'failed'));
     return () => { alive = false; };
   }, [handle]);
+
+  function vanish() {
+    setPerson(null);
+    setList(null);
+    setError('unknown');
+  }
 
   async function openList(direction) {
     if (list?.direction === direction) {
@@ -48,15 +57,15 @@ export default function Person() {
       const d = await api.personFollows(person.handle || person.id, direction);
       setList(d);
     } catch (e) {
-      setError(e.message);
+      if (isUnknown(e)) vanish();
     }
   }
 
+  if (error === 'unknown') return <UnknownSubject kind="person" />;
   if (error && !person) {
     return (
       <div className="deal-empty">
-        <h2>No such person</h2>
-        <p className="app-note">{error}</p>
+        <h2>Could not open this</h2>
         <Link className="app-cta" to="/app/discover">Discover</Link>
       </div>
     );
@@ -90,18 +99,30 @@ export default function Person() {
 
         {self
           ? <Link to="/app/settings/profile" className="you-settings">Edit bio and links →</Link>
-          : <FollowButton person={person} onChange={setPerson} />}
+          : (
+            <div className="person-actions">
+              <FollowButton person={person} onChange={setPerson} onUnknown={vanish} />
+              <div className="person-more">
+                <BlockButton person={person} onBlocked={() => nav('/app/discover')} />
+                <ReportButton kind="person" subject={person.id} />
+              </div>
+            </div>
+          )}
       </header>
 
       {person.bio && <p className="you-bio">{person.bio}</p>}
 
-      {person.links?.length > 0 && (
+      {person.links?.some((l) => safeHref(l.url)) && (
         <ul className="you-links">
-          {person.links.map((l) => (
-            <li key={l.url}>
-              <a href={l.url} target="_blank" rel="noopener noreferrer">{l.label || l.url}</a>
-            </li>
-          ))}
+          {person.links.map((l) => {
+            const href = safeHref(l.url);
+            if (!href) return null;
+            return (
+              <li key={href}>
+                <a href={href} target="_blank" rel="noopener noreferrer">{l.label || href}</a>
+              </li>
+            );
+          })}
         </ul>
       )}
 
@@ -124,6 +145,11 @@ export default function Person() {
         <div className="app-card you-people">
           <h3>{list.direction === 'followers' ? 'Followers' : 'Following'}</h3>
           {list.people.length === 0 && <p className="app-note">Nobody here yet.</p>}
+          {list.people.length >= 200 && (
+            <p className="app-note">
+              Showing the 200 most recent. The count above is the full derived total.
+            </p>
+          )}
           {list.people.map((p) => (
             <div key={p.id} className="you-person">
               <Link className="you-person-name" to={profilePath(p)}>
@@ -131,15 +157,26 @@ export default function Person() {
                 {p.handle && <span className="app-meta">{p.handle}</span>}
               </Link>
               {p.id !== me?.user?.id && (
-                <FollowButton person={p} onChange={async (next) => {
-                  setList((cur) => cur && {
-                    ...cur,
-                    people: cur.people.map((x) => x.id === next.id ? next : x),
-                  });
-                  // Refetch the profile so follower counts stay derived, not incremented here.
-                  const d = await api.person(person.handle || person.id);
-                  setPerson(d.person);
-                }} />
+                <FollowButton
+                  person={p}
+                  onChange={async (next) => {
+                    setList((cur) => cur && {
+                      ...cur,
+                      people: cur.people.map((x) => x.id === next.id ? next : x),
+                    });
+                    // Refetch the profile so follower counts stay derived, not incremented here.
+                    const d = await api.person(person.handle || person.id);
+                    setPerson(d.person);
+                  }}
+                  onUnknown={() => {
+                    // A 404 here is a block, not a missing parent. Drop the row; do not
+                    // collapse Alice's page because Bob hid himself, and do not paint the body.
+                    setList((cur) => cur && {
+                      ...cur,
+                      people: cur.people.filter((x) => x.id !== p.id),
+                    });
+                  }}
+                />
               )}
             </div>
           ))}

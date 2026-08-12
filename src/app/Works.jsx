@@ -14,6 +14,7 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { api } from './api';
+import { ReportButton } from './Safety';
 
 export const KINDS = [
   { id: 'photo', label: 'Photos', accept: 'image/jpeg,image/png,image/webp,image/heic', multiple: true,
@@ -182,6 +183,7 @@ export default function Works({ userId, own }) {
               <span className="app-meta">
                 {w.shareable ? 'May be shared and cited' : 'Not for sharing'}
               </span>
+              {!own && <ReportButton kind="work" subject={w.id} />}
               {own && <button className="app-link" onClick={() => drop(w.id)}>Delete</button>}
             </div>
           </article>

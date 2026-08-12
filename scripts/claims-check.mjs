@@ -119,6 +119,29 @@ const CLAIMS = [
     why: 'the platform never holds funds — custody is the licensable act under CBUAE Article 62',
     fix: 'see docs/decisions/ADR-0002 and the payment boundary in docs/specs/ORDER-AND-INSPECTION.md',
   },
+  {
+    id: 'moderation-panel',
+    pattern: /moderation (?:team|panel)|review(?:er)? panel/i,
+    holds: () => false,
+    why: 'one named human reviews; a panel is not a thing we have',
+    fix: 'say "a person will review this" — V1 §8c default, gemini owns the posture',
+  },
+  {
+    id: 'report-status-update',
+    pattern: /you will (?:be )?(?:notified|hear back|get (?:an )?update|receive (?:a |an )?status)/i,
+    holds: () => false,
+    why: 'reporters are not promised an outcome — the API returns that a person will look, and that is all that is true',
+    fix: 'say you will not get a status update',
+  },
+  {
+    id: 'block-disclosure',
+    // The blocker's own list may say "blocked". This is the sentence the blocked party must
+    // never read — it is how a private act becomes a message, which is the 404-not-403 rule.
+    pattern: /you (?:are|have been|were) blocked|blocked you\b/i,
+    holds: () => false,
+    why: 'a block is private; the glass must read as "no such person" / "no such agent", never as a block',
+    fix: 'use UNKNOWN copy in Safety.jsx — same words for a missing row and a hidden one',
+  },
 ];
 
 /* ── Reading only what a user sees ───────────────────────────────────────────────────────── */

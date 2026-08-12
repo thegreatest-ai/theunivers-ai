@@ -34,6 +34,9 @@ Tests cover behaviour. `docs-check` covers documentation. This covers the senten
 | `encryption-at-rest` | "encrypted at rest", "zero-knowledge" | **never** |
 | `free` | "free while", "free forever", "free plan/tier", "for free" | no payment-provider code in the repo |
 | `custody` | "wallet", "we hold your funds", "held in escrow by us" | **never** |
+| `moderation-panel` | "moderation team", "moderation panel", "reviewer panel" | **never** |
+| `report-status-update` | "you will be notified", "you will hear back", "you will get an update" | **never** |
+| `block-disclosure` | "you are blocked", "you have been blocked", "blocked you" | **never** |
 
 **Never** means architecture, not settings. `e2e-encryption` cannot be made true by changing a
 variable, and `custody` must not be made true at all — holding funds is the licensable act under

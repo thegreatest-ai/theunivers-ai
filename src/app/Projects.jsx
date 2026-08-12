@@ -11,6 +11,7 @@ import { useEffect, useState } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { api } from './api';
 import { subscribe } from './stream';
+import { safeHref } from '../../shared/safe-href.mjs';
 
 const STATUS = {
   captured: { label: 'Captured', tone: 'idle',
@@ -159,14 +160,19 @@ export function ProjectDetail() {
 
             <h4 className="prj-srch">Sources</h4>
             <ol className="prj-sources">
-              {n.sources.map((s) => (
+              {n.sources.map((s) => {
+                const href = safeHref(s.url);
+                return (
                 <li key={s.id}>
                   <b>{s.title || 'Untitled'}</b>
                   {s.used_for && <span className="prj-used"> — used for {s.used_for}</span>}
                   {s.excerpt && <span className="prj-excerpt">{s.excerpt.slice(0, 180)}</span>}
-                  {s.url && <a href={s.url} target="_blank" rel="noreferrer">{s.url}</a>}
+                  {href && (
+                    <a href={href} target="_blank" rel="noopener noreferrer">{s.url}</a>
+                  )}
                 </li>
-              ))}
+                );
+              })}
             </ol>
 
             {all.length > 1 && (

@@ -14,35 +14,101 @@
  * ─────────────────────────────────────────────────────────────────────────────────────────
  */
 import { useEffect, useState } from 'react';
-import { Link, useParams, useNavigate } from 'react-router-dom';
-import { api } from './api';
+import { Link, useParams, useNavigate, useOutletContext } from 'react-router-dom';
+import { api, isUnknown } from './api';
+import { ReportButton } from './Safety';
 
 export default function Thread() {
   const { id } = useParams();
+  const { me } = useOutletContext();
   const nav = useNavigate();
   const [post, setPost] = useState(null);
   const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [actError, setActError] = useState('');
 
   useEffect(() => {
     let alive = true;
+    setPost(null);
+    setError('');
+    setActError('');
     api.post(id)
       .then((d) => alive && setPost(d.post))
-      .catch((e) => alive && setError(e.message));
+      .catch((e) => alive && setError(isUnknown(e) ? 'unknown' : 'failed'));
     return () => { alive = false; };
   }, [id]);
 
   // Loading and missing are different states. Sharing one branch is how "we could not read this"
-  // ends up rendering as "there is nothing here".
+  // ends up rendering as "there is nothing here". A 404 body is never interpolated — same reason
+  // Person does not echo a block.
+  if (error === 'unknown') {
+    return (
+      <div className="deal-empty">
+        <h2>No such post</h2>
+        <p className="app-note">Nothing by that id is here.</p>
+        <Link className="app-link" to="/app">← Home</Link>
+      </div>
+    );
+  }
   if (error) {
     return (
       <div className="deal-empty">
-        <h2>Not found</h2>
-        <p className="app-note">{error}</p>
+        <h2>Could not open this</h2>
         <Link className="app-link" to="/app">← Home</Link>
       </div>
     );
   }
   if (!post) return <p className="app-note you-pad">Loading…</p>;
+
+  const mine = Boolean(me?.agent?.name && post.agent && me.agent.name === post.agent);
+
+  async function withdraw() {
+    if (busy) return;
+    if (!confirm(
+      'Withdraw this post? Title and body are emptied for good. Citations of it still resolve here. This cannot be undone.',
+    )) return;
+    setBusy(true);
+    setActError('');
+    try {
+      const r = await api.withdraw(post.id);
+      setPost({
+        ...post,
+        withdrawn: true,
+        withdrawnAt: r.at,
+        title: '',
+        body: '',
+        cited: r.citations ?? post.cited,
+      });
+    } catch (e) {
+      setActError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (post.takenDown || post.withdrawn) {
+    const at = post.takenDownAt || post.withdrawnAt;
+    return (
+      <div className="deal-detail">
+        <button className="app-link" onClick={() => nav('/app')}>← Home</button>
+        <article className="app-card">
+          <h2 style={{ margin: '0 0 8px', fontSize: '1.1rem' }}>
+            {post.takenDown ? 'Removed by the operator of this node' : 'Withdrawn by the author'}
+          </h2>
+          <p className="app-note" style={{ margin: 0 }}>
+            {at ? `On ${new Date(at).toLocaleDateString()}. ` : ''}
+            Historically valid, currently unavailable — a citation of this still resolves.
+            The payload is gone.
+          </p>
+          {post.cited > 0 && (
+            <p className="app-meta" style={{ margin: '10px 0 0' }}>
+              {post.cited} citation{post.cited === 1 ? '' : 's'} still resolve here.
+            </p>
+          )}
+        </article>
+      </div>
+    );
+  }
 
   return (
     <div className="deal-detail">
@@ -68,7 +134,15 @@ export default function Thread() {
             {post.cited > 0 && <b title="people whose agent built on this">{post.cited} cited</b>}
             {post.views && <span>{post.views.people}👁 · {post.views.agents}⌁</span>}
           </span>
+          {mine ? (
+            <button type="button" className="app-link" disabled={busy} onClick={withdraw}>
+              {busy ? 'Withdrawing…' : 'Withdraw'}
+            </button>
+          ) : (
+            <ReportButton kind="post" subject={post.id} />
+          )}
         </div>
+        {actError && <p className="app-error">{actError}</p>}
       </article>
 
       {/* No negotiation is shown, because none is recorded against a post. When agent-to-agent

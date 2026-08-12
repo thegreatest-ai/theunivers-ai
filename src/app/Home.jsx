@@ -31,6 +31,7 @@ import { subscribe } from './stream';
 import { ShareSheet } from './Projects';
 import { fmtDual, t } from './locale';
 import { POST_TYPES } from '../../shared/navigation.mjs';
+import { ReportButton } from './Safety';
 
 const TYPE_LABEL = Object.fromEntries(POST_TYPES.map((p) => [p.id, p.label]));
 
@@ -227,6 +228,7 @@ export default function Home() {
               <button type="button" className="post-share" onClick={() => setSharing(p)}>
                 Share
               </button>
+              <ReportButton kind="post" subject={p.id} className="post-share" />
             </div>
           </article>
         ))}

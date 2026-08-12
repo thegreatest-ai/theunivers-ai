@@ -38,6 +38,10 @@ finished.
 interface until one exists. The second is one line and stops the interface implying a check that
 cannot happen.
 
+**Interface half done 2026-08-12 (cursor).** `src/app/Inspect.jsx` now says every capture grades
+`self` until a resolver exists. The resolver itself is still unconfigured — a buyer asking for
+`web-attested` still cannot get it. Do not close this until one of those two is true in production.
+
 ---
 
 ## MEDIUM — Messages has no composer for a typed offer

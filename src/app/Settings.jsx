@@ -18,6 +18,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useOutletContext } from 'react-router-dom';
 import { api, clearAuth } from './api';
+import { isWebAddress } from '../../shared/safe-href.mjs';
 import { LOCALES } from './locale';
 import Select from './Select';
 import { COUNTRIES } from './countries';
@@ -168,6 +169,7 @@ export default function Settings() {
 
       <Group title="Privacy and your data">
         <Row to="/app/settings/privacy" label="What we store, and what we cannot delete" />
+        <Row to="/app/settings/blocked" label="People you have blocked" hint="They are not told" />
         <Row to="/app/account/signin" label="How you sign in" value={user.signInMethod === 'password' ? 'Password' : user.signInMethod} />
       </Group>
 
@@ -220,10 +222,17 @@ export function ProfileEdit() {
     e.preventDefault();
     if (busy) return;
     setBusy(true); setError(''); setDone('');
+    const submitted = links.filter((l) => l.url.trim());
+    const bad = submitted.find((l) => !isWebAddress(l.url));
+    if (bad) {
+      setBusy(false);
+      setError(`not a web address: ${bad.url.trim().slice(0, 60)}`);
+      return;
+    }
     try {
       const r = await api.editProfile({
         bio,
-        links: links.filter((l) => l.url.trim()),
+        links: submitted,
       });
       setBio(r.person.bio || '');
       setLinks(r.person.links?.length

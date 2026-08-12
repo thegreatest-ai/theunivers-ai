@@ -206,6 +206,13 @@ export default function You() {
                 <span className="deal-rtype">{r.type}</span>
                 <span className="app-meta">{new Date(r.created_at).toLocaleDateString()}</span>
                 <code className="deal-hash" title={r.hash}>{r.hash.slice(0, 12)}…</code>
+                {String(r.type).startsWith('moderation.') && (
+                  <p className="app-note" style={{ margin: '6px 0 0' }}>
+                    Your appeal goes directly to the operator of this node
+                    {r.payload?.operator ? ` (${r.payload.operator})` : ''}.
+                    There is no panel.
+                  </p>
+                )}
               </li>
             ))}
           </ol>

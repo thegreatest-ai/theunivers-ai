@@ -2,6 +2,22 @@
 
 const API = import.meta.env.VITE_API_URL ?? '';
 
+/**
+ * Keep status. `Error.message` used to be the server body, so a 404 that said "blocked" would
+ * paint that on the glass while the server was trying not to. The glass maps 404s to its own
+ * copy; it must not interpolate this.
+ */
+export class ApiError extends Error {
+  constructor(status, data = {}) {
+    super(data.error || String(status));
+    this.name = 'ApiError';
+    this.status = status;
+    this.data = data;
+  }
+}
+
+export const isUnknown = (err) => err?.status === 404;
+
 function headers(extra = {}) {
   const h = { 'content-type': 'application/json', ...extra };
   const session = localStorage.getItem('tu_session');
@@ -9,14 +25,18 @@ function headers(extra = {}) {
   return h;
 }
 
+async function readBody(res) {
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, data);
+  return data;
+}
+
 async function req(path, opts = {}) {
   const res = await fetch(`${API}${path}`, {
     ...opts,
     headers: headers(opts.headers),
   });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || res.statusText);
-  return data;
+  return readBody(res);
 }
 
 export const api = {
@@ -45,6 +65,10 @@ export const api = {
   ),
   follow: (person) => req('/api/follow', { method: 'POST', body: JSON.stringify({ person }) }),
   unfollow: (person) => req('/api/unfollow', { method: 'POST', body: JSON.stringify({ person }) }),
+  block: (person) => req('/api/block', { method: 'POST', body: JSON.stringify({ person }) }),
+  unblock: (person) => req('/api/unblock', { method: 'POST', body: JSON.stringify({ person }) }),
+  blocks: () => req('/api/blocks'),
+  report: (body) => req('/api/report', { method: 'POST', body: JSON.stringify(body) }),
   editProfile: (body) => req('/api/profile/edit', { method: 'POST', body: JSON.stringify(body) }),
   works: (user, kind) => req(`/api/works?${new URLSearchParams({ ...(user && { user }), ...(kind && { kind }) })}`),
   createWork: (body) => req('/api/works', { method: 'POST', body: JSON.stringify(body) }),
@@ -59,11 +83,7 @@ export const api = {
       'x-filename': encodeURIComponent(file.name || 'file'),
     },
     body: file,
-  }).then(async (r) => {
-    const d = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(d.error || r.statusText);
-    return d;
-  }),
+  }).then(readBody),
   workspace: () => req('/api/workspace'),
   projects: () => req('/api/projects'),
   project: (id) => req(`/api/projects/${id}`),
@@ -90,6 +110,10 @@ export const api = {
   conversations: () => req('/api/conversations'),
   conversation: (id) => req(`/api/conversations/${encodeURIComponent(id)}`),
   createPost: (body) => req('/api/posts', { method: 'POST', body: JSON.stringify(body) }),
+  post: (id) => req(`/api/posts/${encodeURIComponent(id)}`),
+  /* Author session only. Empties title/body; citations stay and still resolve to the tombstone. */
+  withdraw: (id) => req(`/api/posts/${encodeURIComponent(id)}/withdraw`, { method: 'POST' }),
+  receipts: () => req('/api/receipts'),
 
   /* Inspection. See docs/specs/ORDER-AND-INSPECTION.md. */
   orderInspections: (id) => req(`/api/orders/${id}/inspections`),
@@ -121,11 +145,7 @@ export const api = {
         ...(observedAt && { 'x-observed-at': observedAt }),
       },
       body: blob,
-    }).then(async (r) => {
-      const d = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(d.error || r.statusText);
-      return d;
-    }),
+    }).then(readBody),
 };
 
 export function setSession(token) {

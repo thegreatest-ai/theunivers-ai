@@ -204,6 +204,10 @@ export default function Inspect({ job, onCaptured }) {
         the platform takes of the exact bytes stored, and the grade is whether your device’s
         position agrees with an independent one, not the position itself.
       </p>
+      <p className="muted">
+        Until a network-position resolver is configured, every capture grades <strong>self</strong>.
+        The other rungs exist in code and are not reachable.
+      </p>
       <p className="muted">Levels, weakest to strongest: {LEVELS.join(' · ')}.</p>
     </div>
   );

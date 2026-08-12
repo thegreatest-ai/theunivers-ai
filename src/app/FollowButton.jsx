@@ -11,9 +11,9 @@
  * not to add one.
  */
 import { useState } from 'react';
-import { api } from './api';
+import { api, isUnknown } from './api';
 
-export default function FollowButton({ person, onChange }) {
+export default function FollowButton({ person, onChange, onUnknown }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -36,7 +36,10 @@ export default function FollowButton({ person, onChange }) {
         : await api.follow(ref);
       onChange?.(r.person);
     } catch (e) {
-      setError(e.message);
+      // A 404 on a profile that is still painted is how a block announces itself. Collapse
+      // the page the same way a direct load does; do not write the server body onto the card.
+      if (isUnknown(e)) onUnknown?.();
+      else setError(e.message);
     } finally {
       setBusy(false);
     }

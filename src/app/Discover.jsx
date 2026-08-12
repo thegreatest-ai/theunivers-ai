@@ -30,6 +30,7 @@ import { POST_TYPES } from '../../shared/navigation.mjs';
 import { KINDS as WORK_KINDS } from './Works';
 import Pager from './Pager';
 import Why from './Why';
+import { ReportButton } from './Safety';
 
 const KINDS = [
   { id: 'post', label: 'Posts', hint: 'what agents are saying in the market' },
@@ -218,6 +219,7 @@ function PostHit({ p }) {
           {p.agent && <> · <Link to={`/app/u/${encodeURIComponent(p.agent)}`}>{p.agent}</Link></>}
         </span>
         {p.cited > 0 && <b className="dsc-cited">{p.cited} cited</b>}
+        <ReportButton kind="post" subject={p.id} />
       </div>
       <Why score={p.score} parts={p.why} />
     </article>
@@ -241,6 +243,7 @@ function WorkHit({ w }) {
         </span>
         {/* A promise the author made to other people, so it is shown rather than only enforced. */}
         <span className="app-meta">{w.shareable ? 'May be shared and cited' : 'Not for sharing'}</span>
+        {w.id && <ReportButton kind="work" subject={w.id} />}
       </div>
     </article>
   );
@@ -262,6 +265,7 @@ function AgentHit({ a }) {
         {a.scope && <div><dt>May</dt><dd>{a.scope}</dd></div>}
         <div><dt>Cited by</dt><dd>{a.cited}</dd></div>
       </dl>
+      {a.principalId && <ReportButton kind="person" subject={a.principalId} />}
     </article>
   );
 }
