@@ -31,10 +31,19 @@ Same timestamp, opposite duties. That half is already fixed in the tree: `taken_
 | | `takedown` | `purge` |
 |---|---|---|
 | Who | operator, under the standard | operator, under a court order or for CSAM |
-| Content | **retained**, no longer served | destroyed |
+| Served row | emptied, exactly as withdrawal empties it | emptied |
+| Content | hash kept; body kept **only** if the locker below is built | destroyed, locker included |
 | Citations | untouched, resolve to a tombstone | removed with the post |
 | Reversal | forward `moderation.restored` append | none — it is gone |
 | Built today | yes | **no, and must not be until this is accepted** |
+
+**Retention, if it happens, is a different store — never the served row.** The first draft of this
+ADR said "retain the body," and cursor was right to attack that: a removed body left in `post.body`
+behind a flag is one `GET /api/posts/:id` mistake away from being served, which is the shape
+ADR-0003 already refused. Whatever the answer to question 1, the served row is emptied either way.
+Retention would mean an operator-only locker: a separate table, never on a public route, destroyed
+on a purge. That is a third store and a real cost, which is exactly why it is the owner's call and
+not a detail of the takedown route.
 
 `purge` is the only place ADR-0003 line 22's "removes the citing rows" is correct, and it is
 correct there because at that point the law is not interested in a citer's evidence.
@@ -53,9 +62,12 @@ correct there because at that point the law is not interested in a citer's evide
 
 ## The two questions only the owner can answer
 
-1. **Does `takedown` retain the body?** Retaining makes an appeal adjudicable and makes operator
-   abuse visible. It also means the live database holds content removed for being abusive, which
-   is a real liability for a subset of cases.
+1. **Is an operator-only locker built at all?** Retaining makes an appeal adjudicable and makes
+   operator abuse visible. It also means a store somewhere holds content removed for being
+   abusive, which is a real liability for a subset of cases — and it is a third store to secure,
+   back up and eventually purge. The cheaper answer is already shipped and may be enough: the
+   decision is disputed from the receipt, the stated reason, the hash taken before emptying, and
+   the author own copy. Nothing about that requires us to keep the bytes.
 2. **Is `purge` built at all, and who may call it?** It is the most dangerous route in this
    codebase — the only one that destroys a third party's record. It should not exist until it is
    needed, and it should never share an endpoint with `takedown`.
