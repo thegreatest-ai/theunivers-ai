@@ -2437,6 +2437,13 @@ const REPORT_KINDS = ['post', 'work', 'person', 'message'];
 
 route('POST', '/api/report', (ctx) => {
   if (!ctx.user) return err(401, 'sign in required');
+
+  // Both keys, same reasoning as sign-in: per-IP alone misses one account working steadily, and
+  // per-account alone misses one host working through many free accounts.
+  const byUser = take('report-user', ctx.user.id, LIMITS.reportPerUser.max, LIMITS.reportPerUser.windowMs);
+  if (!byUser.ok) return tooMany(byUser.retryAfter);
+  const byIp = take('report-ip', ctx.ip, LIMITS.reportPerIp.max, LIMITS.reportPerIp.windowMs);
+  if (!byIp.ok) return tooMany(byIp.retryAfter);
   const kind = String(ctx.body.kind ?? '');
   if (!REPORT_KINDS.includes(kind)) return err(400, `kind must be one of ${REPORT_KINDS.join(', ')}`);
   const subject = String(ctx.body.subject ?? '').trim();

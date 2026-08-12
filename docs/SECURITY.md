@@ -109,10 +109,17 @@ address, and offices, cafés, universities and VPNs all look the same.
 | `forgotPerEmail` | 3 / hour | stops one address being mail-bombed |
 | `forgotPerIp` | 30 / hour | flood ceiling |
 | `resetPerIp` | 30 / hour | grinding, not guessing — the token is 24 random bytes |
+| `reportPerUser` | 20 / hour | already implausible for one genuine reporter |
+| `reportPerIp` | 100 / hour | the Sybil case: throwaway accounts sharing one host |
 
 `registerPerIp` was originally **5/hour**, which would have blocked an entire mobile carrier's
 users after five signups. It was found by six test signups locking the tester's own machine out for
 50 minutes. The limiter did exactly what it was told; what it was told was wrong.
+
+Reporting is brigade-proof per SUBJECT — one open report per person per thing — but until
+2026-08-12 nothing bounded how many DIFFERENT things one account could report, and every post and
+work id is a different subject. With registration open that was an unbounded write path behind a
+free signup: rows to store, a queue nobody can clear, and SQLITE_BUSY under enough of it.
 
 A **successful login refunds an attempt**, so someone who mistypes twice and then succeeds is not
 left one typo from a lockout. **Rejected attempts still count**, so an attacker cannot idle until a

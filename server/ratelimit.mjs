@@ -215,4 +215,15 @@ export const LIMITS = {
   forgotPerIp:     { max: 30,  windowMs: 60 * 60_000 },
 
   resetPerIp:      { max: 30,  windowMs: 60 * 60_000 },
+
+  // Reporting is brigade-proof per SUBJECT — one open report per person per thing — but nothing
+  // bounded how many DIFFERENT things one account could report, and every post and work id is a
+  // different subject. Registration is open, so that is an unbounded write path behind a free
+  // signup: rows to store, a queue nobody can clear, and SQLITE_BUSY under enough of it.
+  //
+  // Twenty an hour is already an implausible amount of genuine reporting by one person. The per-IP
+  // ceiling is the Sybil case — a swarm of throwaway accounts sharing one host — and is generous
+  // enough that a shared office reporting a real incident never meets it.
+  reportPerUser:   { max: 20,  windowMs: 60 * 60_000 },
+  reportPerIp:     { max: 100, windowMs: 60 * 60_000 },
 };
