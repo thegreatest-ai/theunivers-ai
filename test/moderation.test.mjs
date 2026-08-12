@@ -136,11 +136,11 @@ describe('resolving a report', () => {
   });
 
   test('it is closed without the operator token, and to an ordinary session', async () => {
-    assert.equal((await api('/api/moderation/resolve', {
-      method: 'POST', body: { report: reportId, action: 'dismiss', reason: 'no' },
+    assert.equal((await api('/api/moderation/dismiss', {
+      method: 'POST', body: { report: reportId, reason: 'no' },
     })).status, 401);
-    assert.equal((await api('/api/moderation/resolve', {
-      method: 'POST', as: 'ben', body: { report: reportId, action: 'dismiss', reason: 'no' },
+    assert.equal((await api('/api/moderation/dismiss', {
+      method: 'POST', as: 'ben', body: { report: reportId, reason: 'no' },
     })).status, 401, 'a signed-in person is not an operator — that is not decided in a schema');
   });
 
@@ -150,7 +150,7 @@ describe('resolving a report', () => {
     const r = await new Promise((resolve, reject) => {
       const payload = JSON.stringify({ report: reportId, action: 'takedown', reason: 'x' });
       const req = request({
-        host: '127.0.0.1', port: PORT, path: '/api/moderation/resolve', method: 'POST', agent: false,
+        host: '127.0.0.1', port: PORT, path: '/api/moderation/takedown', method: 'POST', agent: false,
         headers: {
           Authorization: 'Bearer tok_agent_m_ben',
           'content-type': 'application/json',
@@ -165,16 +165,16 @@ describe('resolving a report', () => {
   });
 
   test('a decision without a stated reason is refused', async () => {
-    const r = await api('/api/moderation/resolve', {
-      method: 'POST', body: { token: TOKEN, report: reportId, action: 'takedown', reason: '  ' },
+    const r = await api('/api/moderation/takedown', {
+      method: 'POST', body: { token: TOKEN, report: reportId, reason: '  ' },
     });
     assert.equal(r.status, 400, 'an unappealable decision is the thing this product is not');
   });
 
   test('taking it down leaves a tombstone that says an OPERATOR did it', async () => {
-    const r = await api('/api/moderation/resolve', {
+    const r = await api('/api/moderation/takedown', {
       method: 'POST',
-      body: { token: TOKEN, report: reportId, action: 'takedown', reason: 'off-platform spam' },
+      body: { token: TOKEN, report: reportId, reason: 'off-platform spam' },
     });
     assert.equal(r.status, 200);
 
@@ -216,8 +216,8 @@ describe('resolving a report', () => {
     assert.equal(report.reviewed_by, null,
       'no operator user row exists yet — leave the FK null rather than invent a reviewer');
 
-    const again = await api('/api/moderation/resolve', {
-      method: 'POST', body: { token: TOKEN, report: reportId, action: 'takedown', reason: 'again' },
+    const again = await api('/api/moderation/takedown', {
+      method: 'POST', body: { token: TOKEN, report: reportId, reason: 'again' },
     });
     assert.equal(again.status, 409);
   });
@@ -231,13 +231,15 @@ describe('resolving a report', () => {
       'one visibility predicate hides it — a second column would mean auditing every read path');
   });
 
-  test('there is no un-takedown', async () => {
-    for (const action of ['restore', 'untakedown', 'reinstate']) {
-      const r = await api('/api/moderation/resolve', {
-        method: 'POST', body: { token: TOKEN, report: reportId, action, reason: 'mistake' },
+  test('there is no un-takedown — the route does not exist', async () => {
+    // Reversal is a fresh publish under a new id, not a toggle. A restore would mean holding the
+    // payload a takedown exists to remove, and mutating the tombstone would erase the fact that
+    // something was down for three days.
+    for (const path of ['restore', 'untakedown', 'reinstate', 'resolve']) {
+      const r = await api(`/api/moderation/${path}`, {
+        method: 'POST', body: { token: TOKEN, report: reportId, reason: 'mistake' },
       });
-      assert.equal(r.status, 400,
-        'a restore would mean keeping the payload we just removed; the author republishes instead');
+      assert.equal(r.status, 404, `/api/moderation/${path} must not exist`);
     }
   });
 });

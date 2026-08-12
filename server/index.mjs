@@ -2483,14 +2483,12 @@ route('GET', '/api/moderation/queue', (ctx) => {
  * is the honest provenance; inventing a signer to satisfy the phrase "reviewer as signer" would
  * put a name in the record that nothing backs.
  */
-route('POST', '/api/moderation/resolve', (ctx) => {
+function resolveReport(ctx, action) {
   const ok = operatorAuthorised(ctx);
   if (ok === null) return err(404, 'not found');
   if (!ok) return err(401, 'bad operator token');
 
-  const action = String(ctx.body.action ?? '');
-  // The enum comes from the shared ladder, so a rung that is defined but not built stays
-  // uncallable rather than half-wired behind a string comparison here.
+  // The enum still comes from the shared ladder: a rung defined but not built has no route.
   if (!AVAILABLE_ACTIONS.includes(action)) {
     return err(400, `action must be one of ${AVAILABLE_ACTIONS.join(', ')}`);
   }
@@ -2540,7 +2538,22 @@ route('POST', '/api/moderation/resolve', (ctx) => {
     receipt: receipt?.id ?? null,
     citations: citedCount(p.id),
   };
-});
+}
+
+/*
+ * Two routes, one resolver.
+ *
+ * docs/specs/TAKEDOWN.md names POST /api/moderation/takedown and the code had grown
+ * /api/moderation/resolve with the action in the body — one act with two names is the drift this
+ * repo refuses everywhere else, so the spec wins. Dismiss gets its own path rather than riding a
+ * route called "takedown": an operator reading an access log should be able to tell what was done
+ * from the line, and "takedown, action=dismiss" reads as the opposite of what happened.
+ *
+ * The report transition lives in one function, so the two paths cannot diverge on how a report is
+ * closed — which is the reason the single route existed in the first place.
+ */
+route('POST', '/api/moderation/takedown', (ctx) => resolveReport(ctx, 'takedown'));
+route('POST', '/api/moderation/dismiss', (ctx) => resolveReport(ctx, 'dismiss'));
 
 /* ── Phase 1: follow ─────────────────────────────────────────────────────────────────────── */
 
