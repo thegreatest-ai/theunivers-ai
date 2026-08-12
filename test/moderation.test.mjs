@@ -32,7 +32,7 @@ const TITLE = 'a title that will be removed';
 const BODY = 'a body that will be removed';
 
 let PORT; let child; let DB;
-const TOK = { ana: 'tok_m_ana', ben: 'tok_m_ben' };
+const TOK = { ana: 'tok_m_ana', ben: 'tok_m_ben', operator: TOKEN };
 
 function freePort() {
   return new Promise((resolve, reject) => {
@@ -209,7 +209,7 @@ describe('resolving a report', () => {
   });
 
   test('it is gone from the queue, and gone from the feed', async () => {
-    const queue = await api(`/api/moderation/queue?token=${encodeURIComponent(TOKEN)}`);
+    const queue = await api('/api/moderation/queue', { as: 'operator' });
     assert.equal(queue.json.reports.filter((x) => x.subject === 'pst_target').length, 0);
 
     const feed = await api('/api/feed', { as: 'ben' });

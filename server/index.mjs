@@ -68,6 +68,30 @@ function route(method, path, handler) {
   routes.push({ method, parts: path.split('/').filter(Boolean), handler });
 }
 
+/**
+ * The operator credential, read from one place.
+ *
+ * It used to be read four ways: two GET routes took it from ?token=, two POST routes from the
+ * body. A token in a query string is written into every access log, proxy trace and browser
+ * history it passes, and leaves in the Referer header of anything that page links to — for a
+ * credential that reads platform metrics and clears the moderation queue.
+ *
+ * Header first, body second for POST, query never. One comparison site rather than four copies of
+ * a length check that throws if you forget it — the same reason the mandate has one enforcement
+ * site (invariant 02).
+ *
+ * Returns false when METRICS_TOKEN is unset so the caller can 404: off by default, and a forgotten
+ * variable fails closed rather than open.
+ */
+function operatorAuthorised(ctx) {
+  const want = process.env.METRICS_TOKEN;
+  if (!want) return null;
+  const header = String(ctx.headers?.authorization ?? '').replace(/^Bearer /i, '').trim();
+  const got = header || String(ctx.body?.token ?? '');
+  // Length first: timingSafeEqual throws on a mismatch rather than returning false.
+  return got.length === want.length && timingSafeEqual(Buffer.from(got), Buffer.from(want));
+}
+
 route('GET', '/api/health', () => ({
   ok: true,
   service: 'theunivers-bridge-pilot',
@@ -636,12 +660,9 @@ route('POST', '/api/agent/orders/transition', (ctx) => {
  * Gated by METRICS_TOKEN, and 404s when that is unset: off by default.
  */
 route('POST', '/api/orders/confirm-funding', (ctx) => {
-  const want = process.env.METRICS_TOKEN;
-  if (!want) return err(404, 'not found');
-  const got = String(ctx.body.token ?? '');
-  if (got.length !== want.length || !timingSafeEqual(Buffer.from(got), Buffer.from(want))) {
-    return err(401, 'bad operator token');
-  }
+  const ok = operatorAuthorised(ctx);
+  if (ok === null) return err(404, 'not found');
+  if (!ok) return err(401, 'bad operator token');
   const id = String(ctx.body.order ?? '');
   const result = transition(id, null, 'funded', { system: true });
   if (!result.ok) return err(409, result.reason, undefined, result.code);
@@ -1600,13 +1621,9 @@ route('GET', '/api/agent-name-available', (ctx) => {
  * open by default, so a forgotten variable fails closed.
  */
 route('GET', '/api/metrics', (ctx) => {
-  const want = process.env.METRICS_TOKEN;
-  if (!want) return err(404, 'not found');
-  const got = String(ctx.query.get('token') ?? '');
-  // Length check first: timingSafeEqual throws on a length mismatch.
-  if (got.length !== want.length || !timingSafeEqual(Buffer.from(got), Buffer.from(want))) {
-    return err(401, 'bad metrics token');
-  }
+  const ok = operatorAuthorised(ctx);
+  if (ok === null) return err(404, 'not found');
+  if (!ok) return err(401, 'bad metrics token');
   // Also report the storage pragmas. busy_timeout and synchronous are PER-CONNECTION, so opening
   // a second connection over `fly ssh` reads that connection's defaults and tells you nothing
   // about the running server. Reported from the server's own handle, they become checkable.
@@ -2411,12 +2428,9 @@ route('POST', '/api/report', (ctx) => {
  * hardest kind to take back.
  */
 route('GET', '/api/moderation/queue', (ctx) => {
-  const want = process.env.METRICS_TOKEN;
-  if (!want) return err(404, 'not found');
-  const got = String(ctx.query.get('token') ?? '');
-  if (got.length !== want.length || !timingSafeEqual(Buffer.from(got), Buffer.from(want))) {
-    return err(401, 'bad operator token');
-  }
+  const ok = operatorAuthorised(ctx);
+  if (ok === null) return err(404, 'not found');
+  if (!ok) return err(401, 'bad operator token');
   const rows = all(
     `SELECT * FROM report WHERE status = 'open' ORDER BY created_at ASC LIMIT 200`);
   return {
@@ -2461,12 +2475,9 @@ const bodyDigest = (p) => createHash('sha256').update(`${p.title}\n\n${p.body}`)
  * put a name in the record that nothing backs.
  */
 route('POST', '/api/moderation/resolve', (ctx) => {
-  const want = process.env.METRICS_TOKEN;
-  if (!want) return err(404, 'not found');
-  const got = String(ctx.body.token ?? '');
-  if (got.length !== want.length || !timingSafeEqual(Buffer.from(got), Buffer.from(want))) {
-    return err(401, 'bad operator token');
-  }
+  const ok = operatorAuthorised(ctx);
+  if (ok === null) return err(404, 'not found');
+  if (!ok) return err(401, 'bad operator token');
 
   const action = String(ctx.body.action ?? '');
   // The enum comes from the shared ladder, so a rung that is defined but not built stays
@@ -3118,6 +3129,12 @@ function serveStatic(req, res, urlPath) {
  *   fonts.gstatic.com     the font files that stylesheet points at
  *   cdn.jsdelivr.net      planet textures for the marketing page's three.js scene (App.jsx:10).
  *                         three itself is bundled; only the images are remote.
+ *
+ * Do NOT open connect-src for raw.githack.com / raw.githubusercontent.com. `<Environment
+ * preset="night" />` used to pull dikhololo_night_1k.hdr from there; that path is now
+ * `/assets/hdri/dikhololo_night_1k.hdr` (same file, same-origin). githack also 403s from
+ * Cloudflare as of 2026-08-12 — opening CSP to a dead CDN would have "fixed" the refuse and
+ * left the marketing page dark for a different reason.
  *
  * `style-src` needs 'unsafe-inline' because React writes `style={{…}}` as a style ATTRIBUTE, which
  * style-src-attr blocks without it. `script-src` deliberately does NOT get the same concession:

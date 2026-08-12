@@ -32,6 +32,8 @@ const TOK = {
   // The agents the same two people act through. A block that only knows about the people is a
   // block with a door left open behind it.
   anaAgent: 'tok_agent_ana', benAgent: 'tok_agent_ben',
+  // The operator credential travels in the Authorization header now, never a query string.
+  operator: TOKEN,
 };
 const ID = { ana: 'usr_ana', ben: 'usr_ben' };
 
@@ -230,7 +232,7 @@ describe('the reviewer queue', () => {
   });
 
   test('with the token it lists open reports, with distinct-reporter context', async () => {
-    const r = await api(`/api/moderation/queue?token=${encodeURIComponent(TOKEN)}`);
+    const r = await api('/api/moderation/queue', { as: 'operator' });
     assert.equal(r.status, 200);
     assert.ok(r.json.open >= 1);
     const rep = r.json.reports.find((x) => x.subject === 'pst_ben');
