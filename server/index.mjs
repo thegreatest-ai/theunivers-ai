@@ -2580,19 +2580,38 @@ function resolveReport(ctx, action) {
   }
   const p = one('SELECT * FROM post WHERE id = ?', report.subject_id);
   if (!p) return err(404, 'no such post');
-  if (p.withdrawn_at) return err(409, 'already gone');
+  if (p.taken_down_at) return err(409, 'already taken down');
 
-  const digest = postDigest(p);
+  /*
+   * WITHDRAWAL DOES NOT END A REVIEW — it upgrades the tombstone instead of blocking it.
+   *
+   * This used to 409 on `withdrawn_at`, which handed an author a way out: withdraw the post the
+   * moment a report lands, and the operator can no longer act, so no moderation record is ever
+   * made. The content being gone is not the point of a takedown; the RECORD is. Same shape as a
+   * block not being an exit from an obligation, and deleting a work not being an exit from a
+   * review.
+   *
+   * A withdrawn row is already empty, so the hash it carries is the one taken at withdrawal —
+   * re-hashing would digest two empty strings and attest to nothing.
+   */
+  const alreadyWithdrawn = Boolean(p.withdrawn_at);
+  const digest = alreadyWithdrawn ? (p.body_sha256 ?? null) : postDigest(p);
   const receipt = inTransaction(() => {
-    run(`UPDATE post SET withdrawn_at = ?, taken_down_at = ?, takedown_report_id = ?,
-                         body_sha256 = ?, title = '', body = '', referent = NULL
-          WHERE id = ? AND withdrawn_at IS NULL`, at, at, report.id, digest, p.id);
+    // COALESCE keeps the author's own withdrawal timestamp when there is one: they did withdraw
+    // it, and overwriting that would rewrite their act as ours.
+    run(`UPDATE post SET withdrawn_at = COALESCE(withdrawn_at, ?), taken_down_at = ?,
+                         takedown_report_id = ?, body_sha256 = COALESCE(body_sha256, ?),
+                         title = '', body = '', referent = NULL
+          WHERE id = ? AND taken_down_at IS NULL`, at, at, report.id, digest, p.id);
     run(`UPDATE report SET status = 'actioned', outcome = ?, decided_at = ?
           WHERE id = ? AND status = 'open'`, reason, at, report.id);
     // On the AUTHOR's chain: it is their record that this happened to them. An observation, not a
     // verdict — "a post was taken down under report X for this stated reason", never "guilty".
     return appendReceiptIn(p.user_id, MODERATION_ACTIONS.takedown.receipt, {
-      post: p.id, report: report.id, reason, policy, bodySha256: digest, source: 'operator-token',
+      post: p.id, report: report.id, reason, policy, bodySha256: digest,
+      // Says plainly that the author had already taken it down — the record should not read as
+      // though the operator removed something that was still up.
+      alreadyWithdrawn, source: 'operator-token',
     });
   });
 

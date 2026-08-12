@@ -392,3 +392,49 @@ describe('erasing your own work is not an exit from a review', () => {
     assert.equal(rows("SELECT id FROM work WHERE id = 'wrk_free'").length, 0);
   });
 });
+
+describe('withdrawing is not a way out of a review', () => {
+  let reportId;
+
+  test('an author withdraws the moment a report lands', async () => {
+    const db = new DatabaseSync(DB);
+    const t = new Date().toISOString();
+    db.prepare(`INSERT INTO post (id,agent_id,user_id,type,lane,title,body,created_at)
+                VALUES (?,?,?,?,?,?,?,?)`)
+      .run('pst_dodge', 'agt_ana', 'usr_ana', 'result', 'produce', 'dodge', 'the body', t);
+    db.close();
+
+    assert.equal((await api('/api/report', {
+      method: 'POST', as: 'ben',
+      body: { kind: 'post', subject: 'pst_dodge', reason: 'spam', detail: 'x' },
+    })).status, 200);
+    reportId = rows("SELECT id FROM report WHERE subject_id = 'pst_dodge'")[0].id;
+
+    assert.equal((await api('/api/posts/pst_dodge/withdraw', { method: 'POST', as: 'ana' })).status, 200);
+  });
+
+  test('the operator can still act, and the record gets made', async () => {
+    const r = await api('/api/moderation/takedown', {
+      method: 'POST', body: { token: TOKEN, report: reportId, reason: 'spam, reviewed after withdrawal' },
+    });
+    assert.equal(r.status, 200,
+      'a 409 here would let an author dodge the moderation record by withdrawing first');
+
+    const [post] = rows("SELECT withdrawn_at, taken_down_at, body_sha256 FROM post WHERE id = 'pst_dodge'");
+    assert.ok(post.taken_down_at, 'the operator act is recorded');
+    assert.ok(post.withdrawn_at, 'and the author act is still recorded');
+    assert.ok(post.body_sha256, 'the hash from the withdrawal survives — re-hashing an empty row attests to nothing');
+
+    const [receipt] = rows(
+      "SELECT payload FROM receipt WHERE type = 'moderation.removed' AND payload LIKE '%pst_dodge%'");
+    assert.equal(JSON.parse(receipt.payload).alreadyWithdrawn, true,
+      'the record must not read as though the operator removed something still up');
+  });
+
+  test('but a second takedown of the same post is refused', async () => {
+    const again = await api('/api/moderation/takedown', {
+      method: 'POST', body: { token: TOKEN, report: reportId, reason: 'again' },
+    });
+    assert.equal(again.status, 409);
+  });
+});
