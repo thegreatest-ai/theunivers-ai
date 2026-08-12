@@ -1,9 +1,71 @@
 # ADR-0006 — Takedown retains, purge destroys
 
-**Status:** PROPOSED — needs the owner. Do not build the second path until this is accepted.
+**Status:** **ACCEPTED by the owner, 2026-08-12** — with all three open questions answered "not yet".
 **Date:** 2026-08-12
 **Proposed by:** claude-code, recording a position three seats converged on independently.
-**Amends:** `ADR-0003-a-post-is-withdrawn-never-deleted.md`, line 22.
+**Amends:** `ADR-0003-a-post-is-withdrawn-never-deleted.md` §5, which was amended in place the same
+day and now agrees with the shipped code.
+
+---
+
+## THE OWNER'S ANSWERS — accepted 2026-08-12
+
+Each of the three questions below is answered **not yet**, each with the trigger that would reopen
+it. The reasoning is the same in all three: **an unused control is not free.** It has to be
+understood, maintained and honoured, and a ceremony nobody is disputing costs more than it protects
+while there are no users, no reports and no appeals.
+
+### 1 · Must a takedown be preceded by a limit? — NO GUARD. Operator judgement.
+
+The ladder is **advisory, not enforced**. `POST /api/moderation/takedown` does not refuse a subject
+that has never been limited, and no `N` is picked.
+
+A window nobody is disputing is ceremony. There is one operator, no outside users and no appeal has
+ever been filed; a hard guard would only delay the one person it was meant to constrain, and it
+would be honoured by a codebase nobody is arguing with.
+
+**Reopen it when the first genuine appeal is filed**, or when a second person can act as operator.
+Both make the ladder something a stranger relies on rather than something the owner follows.
+
+**THE SEVERITY BYPASS IS WRITTEN DOWN NOW, BEFORE IT IS NEEDED.** CSAM, live exploit payloads and
+credible threats to a person are removed **immediately**, with no limit rung first and no window,
+whatever this ADR later says about procedure. Recording it now rather than when it is needed is the
+whole point: the moment it is needed is the worst moment to be deciding it.
+
+### 2 · Is an operator-only locker built? — NO.
+
+Not built, and not to be built on speculation. **The shipped fallback is enough for now**: the
+receipt, the stated reason, `body_sha256` hashed before emptying, and the author's own copy. A
+decision is disputed from those four; none of them requires the platform to keep the bytes.
+
+The cost of the alternative is not theoretical — a store holding content removed **for being
+abusive** is a real liability, plus a third store to secure, back up and eventually purge.
+
+**Reopen it when an actual appeal cannot be adjudicated from the receipt and the hash.** That is the
+evidence that the cheap answer is insufficient, and until it exists the expensive one is a guess.
+
+### 3 · Is `purge` built? — NO. Not until compelled.
+
+**`purge` must not exist until a court order or a CSAM report actually arrives.** It is the only
+route in this codebase that destroys a third party's record, and it is built on the day it is
+compelled, not in advance.
+
+Building the most dangerous route ahead of need means it sits there, callable, protected only by
+the same operator token as the reversible rungs, for a case that may never come.
+
+**Reopen it when a legal instrument is in hand.** Then it is built to that instrument's shape, with
+a separate endpoint from `takedown`, as this ADR requires.
+
+---
+
+## What this obliges now
+
+- **Nothing to build.** All three answers are "not yet". The one thing that changed is that the
+  severity bypass is on the record.
+- **Any interface describing the ladder must say it is advisory**, since it is. Copy claiming a
+  limit is required before a removal would be a claim `claims-check.mjs` should catch.
+- **This section is the thing to re-read before anyone implements a locker, a purge route or a
+  waiting period.** Each has a named trigger; none of them is "somebody had time".
 
 ## The problem
 
@@ -35,7 +97,7 @@ Same timestamp, opposite duties. That half is already fixed in the tree: `taken_
 | Content | hash kept; body kept **only** if the locker below is built | destroyed, locker included |
 | Citations | untouched, resolve to a tombstone | removed with the post |
 | Reversal | forward `moderation.restored` append | none — it is gone |
-| Built today | yes | **no, and must not be until this is accepted** |
+| Built today | yes | **NO — and acceptance did not change that.** The owner answered question 2 "not yet": purge is built when a court order or CSAM report is in hand, never in advance |
 
 **Retention, if it happens, is a different store — never the served row.** The first draft of this
 ADR said "retain the body," and cursor was right to attack that: a removed body left in `post.body`
@@ -73,7 +135,10 @@ That argument does not need a schema change — the non-destructive state alread
 **procedure**: an operator limits first, and may only take down once the dispute window has closed.
 Which turns question 1 into a policy question with a number in it, below.
 
-## The questions only the owner can answer
+## The questions only the owner can answer — ANSWERED ABOVE, 2026-08-12
+
+*Left in full below because the reasoning behind each answer is the reasoning in the question. The
+answers are at the top of this document.*
 
 1. **Must a takedown be preceded by a limit, and for how long?** If yes, this is a guard on the
    takedown route — refuse unless the post has been limited for N days — plus a severity bypass for

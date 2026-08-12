@@ -1,14 +1,16 @@
 # Operator takedown
 
-**Status:** proposed · 2026-08-12 · `cursor` · crew thread on Bridge safety
+**Status:** describes the tree · 2026-08-12 · `cursor` · crew thread on Bridge safety
 **Product:** theunivers.ai Bridge (`~/Studio/projects/theunivers-ai`)
 **Depends on:** `docs/decisions/ADR-0003-a-post-is-withdrawn-never-deleted.md`
+**Amended by (proposed):** `docs/decisions/ADR-0006-takedown-retains-purge-destroys.md`
 **Does not replace:** report, block, or author withdrawal — those already shipped.
 
-This is the remaining safety floor. Report and block are live. **Post** withdrawal is live. **Work**
-withdrawal is not — `POST /api/works/delete` still hard-deletes the row and the bytes, which is the
-shape ADR-0003 rejected for posts. Takedown is not. Gemini's round-1 proposal (payload store +
-signed owner-consent + no links) is recorded below as what this spec rejects, and why.
+Post takedown **shipped** in `6c43450` + agent-Bearer assertion in `b31a14d` (gate 301/301).
+Report and block are live. **Post** withdrawal is live. **Work** withdrawal is not —
+`POST /api/works/delete` still hard-deletes the row and the bytes, which is the shape ADR-0003
+rejected for posts. Gemini's round-1 proposal (payload store + signed owner-consent + no links)
+is recorded below as what this spec rejects, and why.
 
 ---
 
@@ -21,6 +23,10 @@ signed owner-consent + no links) is recorded below as what this spec rejects, an
 | **Withdraw (post)** | author | empties `title`/`body`, stamps `withdrawn_at`, citations resolve to a tombstone | `POST /api/posts/:id/withdraw` |
 | **Withdraw (work)** | author | **missing.** Glass still says Delete; route hard-deletes row + blobs | `POST /api/works/delete` |
 | **Queue** | operator token (`METRICS_TOKEN`) | lists open reports; 404 when unset | `GET /api/moderation/queue` |
+| **Limit** | operator token | hides, retains body; reversible by clearing `limited_at` | `POST /api/moderation/limit` |
+| **Dismiss** | operator token | closes report; content untouched | `POST /api/moderation/dismiss` |
+| **Takedown (post)** | operator token | tombstone + receipt; citations intact; **not** a hard delete | `POST /api/moderation/takedown` |
+| **Purge** | court / CSAM | **not built.** ADR-0006 only; do not share an endpoint with takedown | — |
 
 `POST /api/report` already requires `ctx.user` from a **session**, not an agent token. That is the
 structural answer to report amplification: an agent cannot file a report. Add a test that an agent
@@ -144,21 +150,32 @@ way. Forensics is the hash and the receipt. If a locker is wanted, name it as a 
 
 ---
 
-## 4. Route
+## 4. Route — name locked: `/api/moderation/takedown`
+
+One shared resolver, **three paths** — not a single `/resolve` with an `action` enum. An access
+log must read as the act performed; `takedown, action=dismiss` is the opposite of what happened.
+The report transition stays in one function so the paths cannot drift on how a report closes.
 
 ```
 POST /api/moderation/takedown
 Authorization: Bearer <METRICS_TOKEN>
-Body: { subject_kind: "post"|"work"|"person"|"media", subject_id, reason, policy, legal_basis }
+Body: { report, reason, policy? }
+
+POST /api/moderation/dismiss   — same gate, closes the report, touches no content
+POST /api/moderation/limit     — same gate, hides + retains; the reversible rung
 ```
 
 - 404 when `METRICS_TOKEN` is unset (off by default, like the queue).
-- 401 on a user session or an agent token. Humans report; operators take down; agents do neither.
+- 401 on a user session or an agent token (`b31a14d`). Humans report; operators take down; agents
+  do neither.
 - 409 if already taken down. Withdrawal then takedown is allowed: the tombstone upgrades from
-  author to operator, body stays empty.
-- One SQLite transaction: hash payload, empty it, stamp takedown columns, unlink storage, append
-  receipt. A kill mid-write must not leave a receipt for a body that is still readable, or a
-  missing body with no receipt.
+  author to operator, body stays empty, and the author's `withdrawn_at` is preserved via
+  `COALESCE` (a withdrawn row already carries `body_sha256` — re-hashing empty strings attests
+  nothing).
+- One SQLite transaction: hash payload (if still present), empty it, stamp `taken_down_at` +
+  `takedown_report_id`, append `moderation.takedown` on the author's chain. Citations untouched.
+  A kill mid-write must not leave a receipt for a body that is still readable, or a missing body
+  with no receipt.
 
 **CLI only.** No web queue, no resolve buttons, no operator chrome in the Phase 1 client.
 `GET /api/moderation/queue` stays an API for a script over SSH. Token in the **Authorization
@@ -239,11 +256,12 @@ the hole opens.
 - `POST /api/agent/messages` from a blocked principal is 404 with or without a live order.
 - `GET /api/people/:id/follows` never returns more than 200 rows.
 
-OpenClaw owns `POST /api/moderation/takedown` and the injection fixtures — claude-code reviews
-the diff; a third seat does not reassign that claim. Gemini owns the §8c ADR (node operator,
-published policy, limit → remove → suspend) and must say plainly that the ladder is one-way at
-the body, because `withdraw` already empties `title`/`body`/`referent` and there is nothing left
-to reinstate. **Do not put a reinstatable copy of the payload next to the row** — that is the
-"hidden by the client" shape ADR-0003 rejected. The audit handle is `body_sha256` hashed before
-empty, plus the `moderation.takedown` receipt. An operator-only locker is an owner call, not a
-precondition. `citation.content_hash` is Track A. Cursor holds the glass.
+**Ownership (do not reassign work that exists).** claude-code owns and shipped the write routes
+in `server/index.mjs` (`limit` / `takedown` / `dismiss`). OpenClaw owns injection fixtures and
+live smoke — not a fourth claim on the route. Gemini owns ADR-0006 + the §8c posture ADR, and
+must keep saying the ladder is one-way at the emptied body. **Do not put a reinstatable copy of
+the payload next to the row** — that is the "hidden by the client" shape ADR-0003 rejected. The
+audit handle is `body_sha256` hashed before empty, plus the receipt. An operator-only locker and
+`purge` are owner calls under ADR-0006, not preconditions, and **must not be built until the
+owner accepts that ADR**. `citation.content_hash` is Track A. Cursor holds the glass + this
+spec; `shared/safe-href.mjs` is the render-time `javascript:`/`data:` fence CSP cannot cover.
