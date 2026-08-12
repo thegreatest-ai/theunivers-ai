@@ -91,17 +91,19 @@ nothing else.
 
 ---
 
-## MEDIUM — no model configured, so nothing can be analysed
+## LOW — a citation can outlive the post it cites, and nothing notices
 
-`ANTHROPIC_API_KEY` is unset in production, so `/api/notes/analyse` returns `503 NO_MODEL` and a
-shared note keeps its **captured** status — which is the honest state: the material was kept and
-nothing has read it.
+`source.post_id` and `source.author_id` have **no foreign key**; only `note_id` and `user_id` do.
+Deleting a post therefore does not error — it leaves every source and citation of that post
+pointing at content that no longer exists, which on a product whose claim is that a citation is
+evidence is the worst available shape: a reference that looks intact and resolves to nothing.
 
-**Fix:** `npm run secret ANTHROPIC_API_KEY`. `ANALYSE_MODEL` defaults to Haiku, because reading a
-handful of posts is not work that needs the strongest model.
+Found by tracing the 2026-08-12 account deletion rather than by hitting it; the affected rows were
+removed by hand in the same transaction. Nothing prevents the next one.
 
-This is the same shape as the mailer before Resend: the feature is built and refuses honestly
-rather than pretending. `/api/metrics` reports `analysisConfigured`.
+**Fix:** declare the references and decide the rule — `ON DELETE CASCADE` if a citation of deleted
+content should vanish, `RESTRICT` if a cited post should not be deletable at all. The second is
+probably right for an evidence product, and is the larger conversation.
 
 ---
 
