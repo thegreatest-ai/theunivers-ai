@@ -585,6 +585,77 @@ db.exec(`
     CHECK (from_agent_id <> to_agent_id)
   );
   CREATE INDEX IF NOT EXISTS agent_message_thread_idx ON agent_message(thread_id, created_at);
+
+  /*
+   * ─── PHASE 1: people ────────────────────────────────────────────────────────────────────
+   *
+   * follow is a plain edge, and the PRIMARY KEY on the pair is the whole design: one follow per
+   * pair, no duplicate row to reconcile, and "am I following them" is a lookup rather than a count.
+   * A self-follow is refused by CHECK rather than by the handler, because a rule enforced in one
+   * caller is a rule until somebody writes a second caller.
+   *
+   * Counts are NOT stored. A follower count is derived, for the same reason "3 new" is derived from
+   * watch.last_seen_at: a stored counter and the rows it summarises disagree eventually, and then
+   * the number on the screen is a claim nobody can check.
+   */
+  CREATE TABLE IF NOT EXISTS follow (
+    follower_id TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+    followee_id TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+    created_at  TEXT NOT NULL,
+    PRIMARY KEY (follower_id, followee_id),
+    CHECK (follower_id <> followee_id)
+  );
+  CREATE INDEX IF NOT EXISTS follow_followee_idx ON follow(followee_id, created_at);
+
+  /*
+   * person_message — a person talking to ANOTHER PERSON. It is a third table on purpose.
+   *
+   * message is you ↔ your own agent. agent_message is your agent ↔ a counterparty's agent.
+   * Neither can carry this, and widening message.from_role to a fourth value would undo the
+   * separation that exists so "who said this" is never a matter of inference. Three parties, three
+   * tables, and no column that means two things.
+   *
+   * thread_id is derived from the two user ids in sorted order, exactly as agent threads are —
+   * one conversation per pair, and no row that can disagree with its own members.
+   *
+   * There is no from_role: the sender is a user id, and there is nothing else it could be.
+   */
+  CREATE TABLE IF NOT EXISTS person_message (
+    id           TEXT PRIMARY KEY,
+    thread_id    TEXT NOT NULL,
+    from_user_id TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+    to_user_id   TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+    body         TEXT NOT NULL,
+    created_at   TEXT NOT NULL,
+    CHECK (from_user_id <> to_user_id)
+  );
+  CREATE INDEX IF NOT EXISTS person_message_thread_idx ON person_message(thread_id, created_at);
+  CREATE INDEX IF NOT EXISTS person_message_to_idx     ON person_message(to_user_id, created_at);
+
+  /*
+   * The thread's STATE, which is the safety half and cannot be derived from the messages.
+   *
+   * Registration is open and there is no block until phase 3, so an unrestricted inbox would ship a
+   * harassment surface with nothing to answer it. A message from somebody the recipient does not
+   * follow therefore arrives as a REQUEST: it is delivered, it is visible, and the sender may send
+   * exactly ONE until the recipient accepts. That is the settled pattern everywhere, and the
+   * one-message cap is what stops a request being a channel for a hundred of them.
+   *
+   * If the recipient already follows the sender the thread opens ACCEPTED — following somebody is
+   * the opt-in, and asking twice is ceremony.
+   *
+   * declined is kept rather than deleted, so a re-request can be refused without the recipient
+   * having to decide again. It is not a block: it is one thread, and it says so.
+   */
+  CREATE TABLE IF NOT EXISTS person_thread (
+    thread_id  TEXT PRIMARY KEY,
+    opened_by  TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+    other_id   TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+    state      TEXT NOT NULL DEFAULT 'pending'
+               CHECK (state IN ('pending','accepted','declined')),
+    created_at TEXT NOT NULL,
+    decided_at TEXT
+  );
   CREATE INDEX IF NOT EXISTS agent_message_to_idx     ON agent_message(to_agent_id, created_at);
   CREATE INDEX IF NOT EXISTS agent_message_from_idx   ON agent_message(from_agent_id, created_at);
 `);
@@ -674,6 +745,12 @@ ensureColumn('mandate', 'spec_template_id', `spec_template_id TEXT DEFAULT 'defa
 // ADR-0003. NULL means live; a timestamp means the author withdrew it. No default — an existing
 // post is not withdrawn, and a DEFAULT here would silently take down every post in the table.
 ensureColumn('post', 'withdrawn_at', 'withdrawn_at TEXT');
+
+// Phase 1 profile. `links` is a JSON array of {label, url}: loose on purpose, because the useful
+// set differs per profession and a schema here would refuse half of it. Validated at the handler,
+// where the limits can say why.
+ensureColumn('user', 'bio', 'bio TEXT');
+ensureColumn('user', 'links', `links TEXT NOT NULL DEFAULT '[]'`);
 
 /*
  * ADR-0003. `source` and `citation` referenced `post` and `user` by id and declared neither, so a

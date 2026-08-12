@@ -2133,6 +2133,258 @@ function threadId(a, b) {
   return `a2a_${[a, b].sort().join('_')}`;
 }
 
+/**
+ * The same derivation for two PEOPLE, and a different prefix so the two id spaces can never be
+ * mistaken for one another in a log, a URL or a bug report.
+ */
+function personThreadId(a, b) {
+  return `p2p_${[a, b].sort().join('_')}`;
+}
+
+/* ── Phase 1: follow ─────────────────────────────────────────────────────────────────────── */
+
+/** Counts are DERIVED. A stored counter and the rows it summarises disagree eventually. */
+function followCounts(userId) {
+  return {
+    followers: one('SELECT COUNT(*) c FROM follow WHERE followee_id = ?', userId).c,
+    following: one('SELECT COUNT(*) c FROM follow WHERE follower_id = ?', userId).c,
+  };
+}
+
+const follows = (a, b) =>
+  Boolean(one('SELECT 1 x FROM follow WHERE follower_id = ? AND followee_id = ?', a, b));
+
+/** Resolve a person by user id or by their agent's handle — the handle is what people actually use. */
+function findPerson(ref) {
+  const raw = String(ref ?? '').trim();
+  if (!raw) return null;
+  const byId = one('SELECT * FROM user WHERE id = ?', raw);
+  if (byId) return byId;
+  const agent = one('SELECT * FROM agent WHERE lower(trim(name)) = ?', raw.toLowerCase());
+  return agent ? one('SELECT * FROM user WHERE id = ?', agent.user_id) : null;
+}
+
+/**
+ * A person as another person may see them. Deliberately NOT `publicUser`, which carries the email,
+ * whether a password is set and how they sign in — none of which is anybody else's business.
+ */
+function publicPerson(u, viewerId) {
+  if (!u) return null;
+  const agent = one('SELECT name FROM agent WHERE user_id = ?', u.id);
+  let links = [];
+  try { links = JSON.parse(u.links ?? '[]'); } catch { links = []; }
+  return {
+    id: u.id,
+    name: u.name,
+    handle: agent?.name ?? null,
+    kind: u.kind,
+    profession: u.profession ?? null,
+    jurisdiction: u.jurisdiction,
+    bio: u.bio ?? null,
+    links,
+    trust: trustOf(u.id),
+    counts: followCounts(u.id),
+    // Both directions, because the interface needs to tell "follow" from "follow back".
+    youFollow: viewerId ? follows(viewerId, u.id) : false,
+    followsYou: viewerId ? follows(u.id, viewerId) : false,
+  };
+}
+
+route('POST', '/api/follow', (ctx) => {
+  if (!ctx.user) return err(401, 'sign in required');
+  const target = findPerson(ctx.body.person ?? ctx.body.handle ?? ctx.body.id);
+  if (!target) return err(404, 'no such person');
+  if (target.id === ctx.user.id) return err(400, 'you cannot follow yourself');
+
+  // INSERT OR IGNORE, so following twice is the same as following once. The primary key on the
+  // pair is what makes that true rather than a check that races.
+  run('INSERT OR IGNORE INTO follow (follower_id, followee_id, created_at) VALUES (?,?,?)',
+    ctx.user.id, target.id, now());
+  return { following: true, person: publicPerson(target, ctx.user.id) };
+});
+
+route('POST', '/api/unfollow', (ctx) => {
+  if (!ctx.user) return err(401, 'sign in required');
+  const target = findPerson(ctx.body.person ?? ctx.body.handle ?? ctx.body.id);
+  if (!target) return err(404, 'no such person');
+  run('DELETE FROM follow WHERE follower_id = ? AND followee_id = ?', ctx.user.id, target.id);
+  return { following: false, person: publicPerson(target, ctx.user.id) };
+});
+
+/* ── Phase 1: person ↔ person messaging ──────────────────────────────────────────────────
+ *
+ * The third table, and the reason it is a third table is in `server/db.mjs`. What matters at this
+ * layer is that a PERSON writes here and only a person: there is no agent token path into any of
+ * these routes, and an agent that wants to reach a counterparty uses `agent_message`, where its
+ * mandate applies.
+ */
+
+/** The thread row for a pair, or null. State lives here because it cannot be derived from messages. */
+const threadFor = (a, b) =>
+  one('SELECT * FROM person_thread WHERE thread_id = ?', personThreadId(a, b));
+
+function personThreadView(t, viewerId) {
+  const otherId = t.opened_by === viewerId ? t.other_id : t.opened_by;
+  const other = one('SELECT * FROM user WHERE id = ?', otherId);
+  const last = one(
+    'SELECT * FROM person_message WHERE thread_id = ? ORDER BY created_at DESC LIMIT 1', t.thread_id);
+  return {
+    id: t.thread_id,
+    with: publicPerson(other, viewerId),
+    state: t.state,
+    // Whose move it is. A request the VIEWER opened is waiting on the other person, and saying so
+    // is the difference between "no reply yet" and "they have not accepted".
+    awaitingYou: t.state === 'pending' && t.opened_by !== viewerId,
+    canWrite: t.state === 'accepted' || t.opened_by !== viewerId,
+    last: last ? { body: last.body, at: last.created_at, mine: last.from_user_id === viewerId } : null,
+  };
+}
+
+/** Your conversations with people. Requests included, flagged rather than hidden. */
+route('GET', '/api/people/threads', (ctx) => {
+  if (!ctx.user) return err(401, 'sign in required');
+  const rows = all(
+    `SELECT * FROM person_thread WHERE opened_by = ? OR other_id = ?
+     ORDER BY COALESCE(decided_at, created_at) DESC LIMIT 100`, ctx.user.id, ctx.user.id);
+  const threads = rows.map((t) => personThreadView(t, ctx.user.id));
+  return {
+    threads,
+    requests: threads.filter((t) => t.awaitingYou).length,
+  };
+});
+
+route('GET', '/api/people/threads/:id', (ctx) => {
+  if (!ctx.user) return err(401, 'sign in required');
+  const t = one('SELECT * FROM person_thread WHERE thread_id = ?', ctx.params.id);
+  // Membership is checked from the ROW, not parsed out of the id, so a guessed thread id returns
+  // nothing rather than somebody else's conversation.
+  if (!t || (t.opened_by !== ctx.user.id && t.other_id !== ctx.user.id)) return err(404, 'no such thread');
+
+  const messages = all(
+    'SELECT * FROM person_message WHERE thread_id = ? ORDER BY created_at ASC LIMIT 200', t.thread_id);
+  return {
+    thread: personThreadView(t, ctx.user.id),
+    messages: messages.map((m) => ({
+      id: m.id, body: m.body, at: m.created_at, mine: m.from_user_id === ctx.user.id,
+    })),
+  };
+});
+
+/**
+ * Send a message to a person.
+ *
+ * The rule, in one place: if they follow you the thread opens accepted, because following is the
+ * opt-in. Otherwise it is a REQUEST, and you get exactly one message until they accept — which is
+ * what stops a request being a channel for a hundred of them.
+ */
+route('POST', '/api/people/messages', (ctx) => {
+  if (!ctx.user) return err(401, 'sign in required');
+  const target = findPerson(ctx.body.person ?? ctx.body.handle ?? ctx.body.to);
+  if (!target) return err(404, 'no such person');
+  if (target.id === ctx.user.id) return err(400, 'you cannot message yourself');
+
+  const body = String(ctx.body.body ?? '').trim();
+  if (!body) return err(400, 'a message needs a body');
+  if (body.length > 4000) return err(400, 'a message is at most 4000 characters');
+
+  const id = personThreadId(ctx.user.id, target.id);
+  let thread = one('SELECT * FROM person_thread WHERE thread_id = ?', id);
+
+  if (!thread) {
+    const accepted = follows(target.id, ctx.user.id);
+    run(`INSERT INTO person_thread (thread_id, opened_by, other_id, state, created_at, decided_at)
+         VALUES (?,?,?,?,?,?)`,
+      id, ctx.user.id, target.id, accepted ? 'accepted' : 'pending', now(), accepted ? now() : null);
+    thread = one('SELECT * FROM person_thread WHERE thread_id = ?', id);
+  }
+
+  if (thread.state === 'declined' && thread.opened_by === ctx.user.id) {
+    // Not an error the sender can act on, and deliberately not "they declined you" either — that
+    // would turn a refusal into a notification the refuser did not ask to send.
+    return err(403, 'this conversation is closed');
+  }
+  if (thread.state === 'pending' && thread.opened_by === ctx.user.id) {
+    const already = one(
+      'SELECT COUNT(*) c FROM person_message WHERE thread_id = ? AND from_user_id = ?',
+      id, ctx.user.id).c;
+    if (already >= 1) return err(429, 'one message until they accept your request');
+  }
+
+  const mid = `pmsg_${randomUUID().slice(0, 8)}`;
+  run(`INSERT INTO person_message (id, thread_id, from_user_id, to_user_id, body, created_at)
+       VALUES (?,?,?,?,?,?)`, mid, id, ctx.user.id, target.id, body, now());
+
+  publish(target.id, 'person-message', { thread: id });
+  return {
+    sent: true,
+    thread: personThreadView(one('SELECT * FROM person_thread WHERE thread_id = ?', id), ctx.user.id),
+  };
+});
+
+/** Accept or decline a request. Only the person it was sent TO may decide it. */
+route('POST', '/api/people/threads/decide', (ctx) => {
+  if (!ctx.user) return err(401, 'sign in required');
+  const t = one('SELECT * FROM person_thread WHERE thread_id = ?', String(ctx.body.thread ?? ''));
+  if (!t || (t.opened_by !== ctx.user.id && t.other_id !== ctx.user.id)) return err(404, 'no such thread');
+  if (t.opened_by === ctx.user.id) return err(403, 'you opened this request; the other person decides it');
+  if (t.state !== 'pending') return err(409, `already ${t.state}`);
+
+  const decision = ctx.body.decision === 'accept' ? 'accepted' : 'declined';
+  run('UPDATE person_thread SET state = ?, decided_at = ? WHERE thread_id = ?',
+    decision, now(), t.thread_id);
+  return { thread: personThreadView(one('SELECT * FROM person_thread WHERE thread_id = ?', t.thread_id), ctx.user.id) };
+});
+
+/** Somebody else's profile. Open to any signed-in person; this is a social product. */
+route('GET', '/api/people/:id', (ctx) => {
+  if (!ctx.user) return err(401, 'sign in required');
+  const target = findPerson(ctx.params.id);
+  if (!target) return err(404, 'no such person');
+  return { person: publicPerson(target, ctx.user.id) };
+});
+
+/** Who follows a person, and who they follow. Same shape both ways so one component renders both. */
+route('GET', '/api/people/:id/follows', (ctx) => {
+  if (!ctx.user) return err(401, 'sign in required');
+  const target = findPerson(ctx.params.id);
+  if (!target) return err(404, 'no such person');
+  const dir = ctx.query.get('direction') === 'following' ? 'following' : 'followers';
+  const rows = dir === 'followers'
+    ? all(`SELECT u.* FROM follow f JOIN user u ON u.id = f.follower_id
+           WHERE f.followee_id = ? ORDER BY f.created_at DESC LIMIT 200`, target.id)
+    : all(`SELECT u.* FROM follow f JOIN user u ON u.id = f.followee_id
+           WHERE f.follower_id = ? ORDER BY f.created_at DESC LIMIT 200`, target.id);
+  return { direction: dir, people: rows.map((u) => publicPerson(u, ctx.user.id)) };
+});
+
+/** Edit your own profile. Nothing here touches standing — bio and links are claims, not evidence. */
+route('POST', '/api/profile/edit', (ctx) => {
+  if (!ctx.user) return err(401, 'sign in required');
+
+  const bio = ctx.body.bio === undefined ? undefined : String(ctx.body.bio).trim().slice(0, 600);
+
+  let links;
+  if (ctx.body.links !== undefined) {
+    if (!Array.isArray(ctx.body.links)) return err(400, 'links must be a list');
+    if (ctx.body.links.length > 8) return err(400, 'at most 8 links');
+    links = [];
+    for (const l of ctx.body.links) {
+      const url = String(l?.url ?? '').trim();
+      const label = String(l?.label ?? '').trim().slice(0, 40);
+      if (!url) continue;
+      // http(s) only. A javascript: or data: URL in a profile is a link the interface would render
+      // and somebody would click — refused here rather than escaped later in three places.
+      if (!/^https?:\/\/\S+$/i.test(url)) return err(400, `not a web address: ${url.slice(0, 60)}`);
+      links.push({ label: label || url.replace(/^https?:\/\//i, '').slice(0, 40), url: url.slice(0, 300) });
+    }
+  }
+
+  if (bio !== undefined) run('UPDATE user SET bio = ? WHERE id = ?', bio, ctx.user.id);
+  if (links !== undefined) run('UPDATE user SET links = ? WHERE id = ?', JSON.stringify(links), ctx.user.id);
+
+  return { person: publicPerson(one('SELECT * FROM user WHERE id = ?', ctx.user.id), ctx.user.id) };
+});
+
 /** The principal's own agent, or null. Every conversation is anchored to it. */
 function myAgent(userId) {
   return one('SELECT * FROM agent WHERE user_id = ?', userId);
