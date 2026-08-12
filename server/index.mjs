@@ -1806,13 +1806,14 @@ route('GET', '/api/feed', (ctx) => {
 
   // ADR-0003: a withdrawn post leaves every surface. Filtered in SQL rather than after scoring,
   // so a withdrawn post cannot occupy a rank it is no longer entitled to.
+  const hidden = hiddenFrom(viewerId);
   const posts = all(
     `SELECT p.*, a.name AS agent_name, u.name AS principal_name
      FROM post p
      JOIN agent a ON a.id = p.agent_id
      JOIN user u ON u.id = p.user_id
      WHERE p.withdrawn_at IS NULL`,
-  );
+  ).filter((p) => !hidden.has(p.user_id));   // a block hides in BOTH directions
 
   // A saved search is the ONLY thing that personalises this, and you wrote it. Nothing here reads
   // what you clicked, and no code path may create a watch on your behalf.
@@ -2024,6 +2025,7 @@ route('GET', '/api/discover', (ctx) => {
        FROM post p JOIN agent a ON a.id = p.agent_id JOIN user u ON u.id = p.user_id
        WHERE p.withdrawn_at IS NULL`,
     )
+      .filter((p) => !hiddenFrom(viewerId).has(p.user_id))
       .map((p) => shapePost(p, tiers))
       .filter((p) => hits(`${p.title} ${p.body}`))
       .filter((p) => !commodity || `${p.title} ${p.body}`.toLowerCase().includes(commodity))
@@ -2192,6 +2194,138 @@ function threadId(a, b) {
   return `a2a_${[a, b].sort().join('_')}`;
 }
 
+/* ── Safety: block and report ────────────────────────────────────────────────────────────
+ *
+ * Registration is open, so this is the floor rather than a later phase. Two rules shape all of it:
+ *
+ *   A BLOCK IS PRIVATE. The blocked party is never told. A notification would make blocking an act
+ *   of confrontation, which is what somebody being harassed cannot afford.
+ *
+ *   A REPORT ACTS ON NOTHING BY ITSELF. No count removes content. A threshold that hides a post is
+ *   a brigading tool, and the people who find that first are the ones you least want holding it.
+ */
+
+/** Everybody this viewer has blocked, or who has blocked them. Both directions hide content. */
+function hiddenFrom(viewerId) {
+  if (!viewerId) return new Set();
+  return new Set(all(
+    `SELECT blocked_id AS id FROM block WHERE blocker_id = ?
+     UNION SELECT blocker_id AS id FROM block WHERE blocked_id = ?`,
+    viewerId, viewerId).map((r) => r.id));
+}
+
+/**
+ * Blocking is symmetric in EFFECT even though the edge is one-way.
+ *
+ * If it hid their content from you but left yours visible to them, blocking would tell somebody
+ * they had been blocked the moment they noticed you had gone quiet — and it would leave the person
+ * who blocked still being read by the person they blocked, which is usually the point of blocking.
+ */
+const isHidden = (viewerId, otherId) =>
+  Boolean(viewerId) && Boolean(otherId) && viewerId !== otherId && Boolean(one(
+    `SELECT 1 x FROM block WHERE (blocker_id = ? AND blocked_id = ?)
+                              OR (blocker_id = ? AND blocked_id = ?) LIMIT 1`,
+    viewerId, otherId, otherId, viewerId));
+
+route('POST', '/api/block', (ctx) => {
+  if (!ctx.user) return err(401, 'sign in required');
+  const target = findPerson(ctx.body.person ?? ctx.body.handle ?? ctx.body.id);
+  if (!target) return err(404, 'no such person');
+  if (target.id === ctx.user.id) return err(400, 'you cannot block yourself');
+
+  run('INSERT OR IGNORE INTO block (blocker_id, blocked_id, created_at) VALUES (?,?,?)',
+    ctx.user.id, target.id, now());
+
+  // A follow either way is removed. Leaving one would keep the blocked party in a follower list
+  // and keep their posts arriving through a following feed — a block that did not actually block.
+  run('DELETE FROM follow WHERE (follower_id = ? AND followee_id = ?) OR (follower_id = ? AND followee_id = ?)',
+    ctx.user.id, target.id, target.id, ctx.user.id);
+
+  // Deliberately no publish() to the blocked party.
+  return { blocked: true };
+});
+
+route('POST', '/api/unblock', (ctx) => {
+  if (!ctx.user) return err(401, 'sign in required');
+  const target = findPerson(ctx.body.person ?? ctx.body.handle ?? ctx.body.id);
+  if (!target) return err(404, 'no such person');
+  run('DELETE FROM block WHERE blocker_id = ? AND blocked_id = ?', ctx.user.id, target.id);
+  // Follows are NOT restored. They were removed by an act the person took deliberately, and
+  // quietly re-establishing them would reconnect two people who did not ask to be reconnected.
+  return { blocked: false };
+});
+
+/** Your own block list. Nobody else can read it. */
+route('GET', '/api/blocks', (ctx) => {
+  if (!ctx.user) return err(401, 'sign in required');
+  const rows = all(
+    `SELECT u.*, b.created_at AS blocked_at FROM block b JOIN user u ON u.id = b.blocked_id
+     WHERE b.blocker_id = ? ORDER BY b.created_at DESC`, ctx.user.id);
+  return { people: rows.map((u) => ({ id: u.id, name: u.name, at: u.blocked_at })) };
+});
+
+const REPORT_KINDS = ['post', 'work', 'person', 'message'];
+
+route('POST', '/api/report', (ctx) => {
+  if (!ctx.user) return err(401, 'sign in required');
+  const kind = String(ctx.body.kind ?? '');
+  if (!REPORT_KINDS.includes(kind)) return err(400, `kind must be one of ${REPORT_KINDS.join(', ')}`);
+  const subject = String(ctx.body.subject ?? '').trim();
+  if (!subject) return err(400, 'say what is being reported');
+  const reason = String(ctx.body.reason ?? '').trim();
+  if (!reason) return err(400, 'a report needs a reason');
+
+  // One open report per person per subject. A second is the same person asking twice, and letting
+  // it through would turn the queue into a vote.
+  const existing = one(
+    `SELECT id FROM report WHERE reporter_id = ? AND subject_kind = ? AND subject_id = ?
+       AND status = 'open'`, ctx.user.id, kind, subject);
+  if (existing) return { report: { id: existing.id, status: 'open' }, already: true };
+
+  const id = `rep_${randomUUID().slice(0, 8)}`;
+  run(`INSERT INTO report (id, reporter_id, subject_kind, subject_id, reason, detail, created_at)
+       VALUES (?,?,?,?,?,?,?)`,
+    id, ctx.user.id, kind, subject, reason.slice(0, 120),
+    String(ctx.body.detail ?? '').slice(0, 2000), now());
+
+  // No publish to anyone. The reported party is not told they were reported, and the reporter is
+  // not promised an outcome — the response says a person will look, because that is all that is
+  // true until one has.
+  return { report: { id, status: 'open' }, note: 'A person will review this. You will not be told who.' };
+});
+
+/**
+ * The reviewer's queue. Gated by METRICS_TOKEN, the same operator credential the manual funding
+ * route uses, and 404s when it is unset — off by default rather than open by default.
+ *
+ * This is deliberately NOT a role on a user account. Moderation posture is an open decision
+ * (V1 §8c, gemini's seat): who reviews, against what standard, and what the ladder is. Putting a
+ * `moderator` flag on `user` now would be inventing that answer in a schema, and it would be the
+ * hardest kind to take back.
+ */
+route('GET', '/api/moderation/queue', (ctx) => {
+  const want = process.env.METRICS_TOKEN;
+  if (!want) return err(404, 'not found');
+  const got = String(ctx.query.get('token') ?? '');
+  if (got.length !== want.length || !timingSafeEqual(Buffer.from(got), Buffer.from(want))) {
+    return err(401, 'bad operator token');
+  }
+  const rows = all(
+    `SELECT * FROM report WHERE status = 'open' ORDER BY created_at ASC LIMIT 200`);
+  return {
+    open: rows.length,
+    reports: rows.map((r) => ({
+      id: r.id, kind: r.subject_kind, subject: r.subject_id,
+      reason: r.reason, detail: r.detail, at: r.created_at,
+      // How many DISTINCT people reported the same thing. Shown to the reviewer as context and
+      // acted on by nobody — see the brigading note above.
+      alsoReported: one(
+        `SELECT COUNT(DISTINCT reporter_id) c FROM report
+         WHERE subject_kind = ? AND subject_id = ?`, r.subject_kind, r.subject_id).c,
+    })),
+  };
+});
+
 /* ── Phase 1: follow ─────────────────────────────────────────────────────────────────────── */
 
 /** Counts are DERIVED. A stored counter and the rows it summarises disagree eventually. */
@@ -2246,6 +2380,8 @@ route('POST', '/api/follow', (ctx) => {
   const target = findPerson(ctx.body.person ?? ctx.body.handle ?? ctx.body.id);
   if (!target) return err(404, 'no such person');
   if (target.id === ctx.user.id) return err(400, 'you cannot follow yourself');
+  // Same 404 as the profile, and for the same reason.
+  if (isHidden(ctx.user.id, target.id)) return err(404, 'no such person');
 
   // INSERT OR IGNORE, so following twice is the same as following once. The primary key on the
   // pair is what makes that true rather than a check that races.
@@ -2267,6 +2403,9 @@ route('GET', '/api/people/:id', (ctx) => {
   if (!ctx.user) return err(401, 'sign in required');
   const target = findPerson(ctx.params.id);
   if (!target) return err(404, 'no such person');
+  // 404 rather than 403: "you are blocked" is information the blocked party is not owed, and
+  // saying it turns a block into a message.
+  if (isHidden(ctx.user.id, target.id)) return err(404, 'no such person');
   return { person: publicPerson(target, ctx.user.id) };
 });
 
@@ -2281,7 +2420,11 @@ route('GET', '/api/people/:id/follows', (ctx) => {
            WHERE f.followee_id = ? ORDER BY f.created_at DESC LIMIT 200`, target.id)
     : all(`SELECT u.* FROM follow f JOIN user u ON u.id = f.followee_id
            WHERE f.follower_id = ? ORDER BY f.created_at DESC LIMIT 200`, target.id);
-  return { direction: dir, people: rows.map((u) => publicPerson(u, ctx.user.id)) };
+  return {
+    direction: dir,
+    people: rows.filter((u) => !isHidden(ctx.user.id, u.id))
+      .map((u) => publicPerson(u, ctx.user.id)),
+  };
 });
 
 /** Edit your own profile. Nothing here touches standing — bio and links are claims, not evidence. */

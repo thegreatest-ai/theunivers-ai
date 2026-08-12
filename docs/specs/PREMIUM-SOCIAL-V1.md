@@ -129,7 +129,6 @@ round plan exists to close.
 |---|---|---|
 | Comments, replies, reactions | Nothing accumulates around a work | A counter column on `work` |
 | Notifications | Events are delivered; nothing models what a person has *seen* | Storing "3 new" — derive it, as `watch.last_seen_at` already does |
-| Moderation, reporting, blocking | **Registration is open now.** No report route, no block, no takedown | A manual database edit |
 | Edit / archive | A person cannot amend or shelve what they published | A hard delete — withdrawal is the shape, see below |
 | Search | Discover is a ranked feed, not a search | A `LIKE` bolted onto the feed endpoint |
 | Onboarding, privacy settings | No first run, no per-work audience control | A settings blob |
@@ -279,8 +278,13 @@ timestamp.
 *Exit gate:* every new ranking signal appears in `why`, and `test/ranking.test.mjs` still sums the
 parts to the total.
 
-**3 · Safety, before an audience.** Report, block, takedown, audience control, and the delete rule
-decided and enforced with a foreign key.
+**3 · Safety, before an audience. — REPORT + BLOCK SHIPPED 2026-08-12.** `POST /api/report`,
+`POST /api/block` / `/api/unblock`, `GET /api/blocks`, and `GET /api/moderation/queue` (operator
+token, 404 when unset). A block hides content **both ways**, removes any follow in either
+direction, and answers a blocked profile with **404 rather than 403** — "you are blocked" is not
+information the blocked party is owed. A report **acts on nothing by itself**: no count hides
+anything, because a threshold that removes content is a brigading tool. Still to come: takedown,
+audience control, and the enforcement ladder — which waits on the moderation posture in §8c.
 *Exit gate:* a report reaches somebody, a block actually blocks, and deleting a cited post behaves
 the way the constraint says rather than silently.
 
