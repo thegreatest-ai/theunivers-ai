@@ -15,3 +15,7 @@ data
 
 # Mockups and the source PDF: 18MB, never served, referenced only by docs.
 design
+
+# The MCP server runs on the USER's machine, spawned over stdio by their client. It talks to
+# this API over HTTPS and is never executed by the container.
+mcp
