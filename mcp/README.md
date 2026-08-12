@@ -68,6 +68,9 @@ process that can read `ps`, which is the same reason `scripts/set-secret.mjs` re
 | `propose_to_principal` | Ask for authority your mandate withholds. Scope only; it cannot move a floor |
 | `create_order` | Open an order. Drafting commits nobody |
 | `transition_order` | **The binding step.** Checked against your mandate, writes append-only receipts |
+| `commission_inspection` | Have somebody physically check the goods and file evidence |
+| `move_inspection` | Claim, check in, submit, accept, reject — only the party entitled to a move may make it |
+| `list_projects` | What your principal has filed, so a citation lands on the right note |
 
 Descriptions are written for the model that reads them: they say when to call a thing and what it
 commits, not merely what it does. `transition_order` says it binds, in words, because a model
@@ -87,6 +90,22 @@ The code is the part a principal can act on. Losing it to a friendlier sentence 
 knowing something failed and not what to change.
 
 ---
+
+## What is deliberately NOT a tool
+
+Two agent routes have no tool, and the reason is recorded in `NOT_EXPOSED` rather than left to be
+rediscovered:
+
+- **Evidence capture** takes raw image bytes with `x-geo-lat` and `x-nonce` headers from the device
+  that took the photograph. A chat client cannot produce a picture taken at a place with a nonce
+  visible in the frame — and that is the entire assurance model. A tool here could only ever grade
+  `self`, which is worse than no tool, because it would look like the feature working.
+- **Handle availability** is checked before an agent exists. This server needs a token to do
+  anything, so by the time it could call it the question is already answered.
+
+`npm run mcp:check` fails the build if an agent-facing route is neither a tool nor listed there with
+a reason — so an omission is a decision somebody wrote down. It found five on the day the server was
+written, including the whole inspection flow.
 
 ## Tested
 

@@ -198,6 +198,44 @@ const TOOLS = [
     method: 'POST', path: '/api/agent/orders',
   },
   {
+    name: 'commission_inspection',
+    description: 'Commission an independent inspection of an order — somebody physically checks '
+      + 'the goods and files evidence. Use this when a deal needs verifying before payment is '
+      + 'released. `end` is which side is being inspected.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        order: str('the order id'),
+        end: str('which end is inspected: origin | destination'),
+        specTemplateId: str('what standard it is checked against'),
+        fee: { type: 'number', description: 'what the inspector is paid' },
+        minAssurance: str('self | web-attested | device-attested — the evidence grade required'),
+      },
+      required: ['order', 'end'],
+    },
+    method: 'POST', path: '/api/agent/inspections',
+  },
+  {
+    name: 'move_inspection',
+    description: 'Move an inspection to its next state: claimed, checked_in, submitted, accepted, '
+      + 'rejected, disputed. Claiming a job commits the inspector to doing it. Only the party '
+      + 'entitled to a given move may make it — an inspector claims and submits, the commissioner '
+      + 'accepts or rejects.',
+    inputSchema: {
+      type: 'object',
+      properties: { inspection: str('the inspection id'), to: str('the next state') },
+      required: ['inspection', 'to'],
+    },
+    method: 'POST', path: '/api/agent/inspections/transition',
+  },
+  {
+    name: 'list_projects',
+    description: 'The projects and notes your principal has filed, so you can see what they are '
+      + 'working on and file a citation against the right one.',
+    inputSchema: { type: 'object', properties: {} },
+    method: 'GET', path: '/api/agent/projects',
+  },
+  {
     name: 'transition_order',
     description: 'Move an order to a new state. **This is the binding step.** Offering commits the '
       + 'buyer and accepting commits the seller, both are checked against your mandate, and both '
@@ -212,6 +250,22 @@ const TOOLS = [
     method: 'POST', path: '/api/agent/orders/transition',
   },
 ];
+
+/**
+ * DELIBERATELY NOT TOOLS. Read by `scripts/mcp-check.mjs`, which fails the build when an
+ * agent-facing route is neither exposed nor listed here — so an omission is a decision somebody
+ * wrote down rather than something nobody noticed.
+ */
+export const NOT_EXPOSED = {
+  'POST /api/agent/inspections/:id/evidence':
+    'takes RAW IMAGE BYTES with x-geo-lat / x-nonce headers from the device that took the '
+    + 'photograph. A chat client cannot produce a picture taken at a place with a nonce visible in '
+    + 'the frame, and that is the whole assurance model — wrapping it here would offer a capability '
+    + 'that can only ever grade `self`, which is worse than not offering it.',
+  'GET /api/agent-name-available':
+    'checks a handle before an agent exists. This server needs an agent token to do anything, so '
+    + 'by the time it can call it the question is already answered.',
+};
 
 /* ── HTTP ────────────────────────────────────────────────────────────────────────────── */
 
