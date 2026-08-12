@@ -49,6 +49,8 @@ const Conversation = named(() => import('./app/Messages.jsx'), 'Conversation')
 const NotFound = lazy(() => import('./app/NotFound.jsx'))
 const Settings = lazy(() => import('./app/Settings.jsx'))
 const Privacy = named(() => import('./app/Settings.jsx'), 'Privacy')
+const ProfileEdit = named(() => import('./app/Settings.jsx'), 'ProfileEdit')
+const Person = lazy(() => import('./app/Person.jsx'))
 const ProjectList = named(() => import('./app/Projects.jsx'), 'ProjectList')
 const ProjectDetail = named(() => import('./app/Projects.jsx'), 'ProjectDetail')
 const DealList = named(() => import('./app/Deals.jsx'), 'DealList')
@@ -84,6 +86,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="projects/:id" element={<ProjectDetail />} />
           <Route path="settings" element={<Settings />} />
           <Route path="settings/privacy" element={<Privacy />} />
+          <Route path="settings/profile" element={<ProfileEdit />} />
+          <Route path="u/:handle" element={<Person />} />
           <Route path="mandate" element={<Mandate />} />
           <Route path="deals" element={<DealList />} />
           <Route path="deals/:id" element={<DealDetail />} />

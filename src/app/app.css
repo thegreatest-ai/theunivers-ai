@@ -470,9 +470,11 @@
 .you-settings{grid-column:1/-1;color:var(--muted);text-decoration:none;font-size:.9rem;
   display:inline-flex;align-items:center;min-height:44px}
 .you-settings:hover{color:var(--text)}
+.you-actions{grid-column:1/-1;display:flex;flex-direction:column;align-items:flex-start}
 @media (min-width:600px){
   .you-head{grid-template-columns:auto minmax(0,1fr) auto}
   .you-settings{grid-column:auto;white-space:nowrap}
+  .you-actions{grid-column:auto}
 }
 
 .you-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);
@@ -494,6 +496,40 @@
   color:var(--muted);padding:12px 14px;border-bottom:2px solid transparent;white-space:nowrap;
   flex:none;min-height:44px}
 .you-tabs button.on{color:var(--text);border-bottom-color:var(--cyan)}
+
+.you-bio{margin:0;font-size:.95rem;line-height:1.55;color:var(--text)}
+.you-links{margin:0;padding:0;list-style:none;display:flex;flex-wrap:wrap;gap:8px 16px}
+.you-links a{font-size:.9rem}
+
+.you-stats-2{grid-template-columns:repeat(2,1fr)}
+.you-stats>button{background:var(--bg);padding:14px 8px;text-align:center;border:none;
+  cursor:pointer;font-family:inherit;color:inherit;min-height:44px}
+.you-stats>button.on{background:rgba(56,189,248,.08)}
+.you-stats>button b{display:block;font-size:1.25rem;font-variant-numeric:tabular-nums}
+.you-stats>button span{font-size:.68rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+
+.you-people h3{margin:0 0 8px;font-size:.9rem}
+.you-person{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+.you-person:last-child{border-bottom:none}
+.you-person>a,.you-person-name{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;text-decoration:none;color:var(--text)}
+.you-person>a:hover,.you-person-name:hover{color:var(--cyan)}
+
+.follow-wrap{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
+.you-head .follow-wrap{grid-column:1/-1}
+.follow-btn{padding:9px 18px;font-size:.85rem;min-width:7.5rem}
+.follow-err{font-size:.78rem}
+@media (min-width:600px){
+  .you-head .follow-wrap{grid-column:auto;justify-self:end}
+}
+
+.set-profile{display:flex;flex-direction:column;gap:18px}
+.set-link-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr) auto;gap:8px;align-items:center}
+.set-link-row input{padding:11px 13px;border-radius:11px;font-family:inherit;font-size:.94rem;color:#fff;
+  background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);outline:none;min-width:0}
+.set-link-row input:focus{border-color:rgba(56,189,248,.5)}
+@media (max-width:520px){
+  .set-link-row{grid-template-columns:1fr;gap:6px}
+}
 
 /* ══ Settings ═════════════════════════════════════════════════════════════════════════════
    One grouped list, so there is exactly ONE place to look for a switch. Groups are named for
@@ -720,7 +756,8 @@
 .dsc-hit-title{font-size:.98rem;font-weight:600;line-height:1.35;color:var(--text);text-decoration:none}
 a.dsc-hit-title:hover{color:var(--cyan)}
 .dsc-hit-body{margin:0;color:var(--muted);font-size:.85rem;line-height:1.5}
-.dsc-handle{color:var(--cyan);font-size:.95rem}
+.dsc-handle{color:var(--cyan);font-size:.95rem;text-decoration:none;font-weight:600}
+.dsc-handle:hover{text-decoration:underline;text-underline-offset:3px}
 .dsc-cited{color:var(--cyan);font-size:.76rem}
 /* Tier never appears without the word derived. It is computed from anchors and receipts, and a
    bare "T3" is indistinguishable from a badge somebody was awarded. */
@@ -742,11 +779,12 @@ button.wk-file{width:100%;background:none;border:none;border-bottom:1px solid va
    it may do", and it is the wrong blue on a dark background besides. Scoped to the content
    containers so it cannot reach the navigation, which colours itself. */
 .settings a:not(.app-link):not(.app-cta):not(.app-ghost),
-.you a:not(.app-link):not(.app-cta):not(.app-ghost):not(.you-settings),
+.you a:not(.app-link):not(.app-cta):not(.app-ghost):not(.you-settings):not(.you-person-name),
 .deal-empty a:not(.app-cta):not(.app-ghost),
 .deal-detail a:not(.app-cta):not(.app-ghost),
 .ws a:not(.app-link):not(.app-cta):not(.app-ghost),
 .home a:not(.app-link):not(.app-cta):not(.app-ghost):not(.app-post):not(.home-side-cta),
+.dsc a:not(.app-link):not(.app-cta):not(.app-ghost):not(.dsc-handle),
 .msg-readonly a{color:var(--cyan);text-decoration:underline;text-underline-offset:3px}
 
 /* ══ Readable at arm's length ═════════════════════════════════════════════════════════════
@@ -789,12 +827,12 @@ button.wk-file{width:100%;background:none;border:none;border-bottom:1px solid va
   /* The wordmark is the way back to the marketing site, so it is a target and not decoration. */
   .app-brand{display:inline-flex;align-items:center;min-height:44px}
   .app-locale{padding:13px 14px}
-  .post-share,.app-cta,.app-ghost,.home-side-cta{min-height:44px}
+  .post-share,.app-cta,.app-ghost,.home-side-cta,.follow-btn{min-height:44px}
   .home-side-cta{padding:13px 18px}
   .msg-mandate-link{min-height:44px;display:inline-flex;align-items:center}
   .app-field input,.app-field select,.app-field textarea,
   .msg-compose input,.ws-add input,.prj-rename input,
-  .wk-add input,.wk-add textarea{min-height:44px}
+  .wk-add input,.wk-add textarea,.set-link-row input{min-height:44px}
   /* 16px stops iOS zooming the page on focus, which then leaves it zoomed. */
   .app-field input,.app-field textarea,.msg-compose input,.ws-add input{font-size:16px}
 }

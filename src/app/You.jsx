@@ -91,7 +91,14 @@ export default function You() {
           </span>
         </div>
 
-        <Link to="/app/settings" className="you-settings">Settings and activity →</Link>
+        <nav className="you-actions">
+          <Link to="/app/settings" className="you-settings">Settings and activity →</Link>
+          {p.agent?.name && (
+            <Link to={`/app/u/${encodeURIComponent(p.agent.name)}`} className="you-settings">
+              View public profile →
+            </Link>
+          )}
+        </nav>
       </header>
 
       <div className="you-stats">

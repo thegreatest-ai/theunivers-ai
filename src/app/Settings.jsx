@@ -15,7 +15,7 @@
  * business — opens its own screen, so a decision that matters is never one stray tap away.
  * ─────────────────────────────────────────────────────────────────────────────────────────
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate, useOutletContext } from 'react-router-dom';
 import { api, clearAuth } from './api';
 import { LOCALES } from './locale';
@@ -86,6 +86,7 @@ export default function Settings() {
 
       <Group title="Who you are">
         <Row to="/app/account" label="Profile" value={user.name || user.email} />
+        <Row to="/app/settings/profile" label="Bio and links" hint="What other people see — a claim, not evidence" />
         <Row to="/app/account" label="Standing and anchors" hint="Derived from evidence, never granted" />
         <Row
           label="Acting as"
@@ -177,6 +178,156 @@ export default function Settings() {
       <p className="app-note set-foot">
         theunivers.ai · <a href="/agent/skill.md" target="_blank" rel="noreferrer">connect your own AI</a>
       </p>
+    </div>
+  );
+}
+
+/**
+ * Bio and links. Standing is not on this form — a bio that says "T4" does not make you T4,
+ * and the server will not let this route touch the derivation. The copy says so because a
+ * settings page that looks like it edits your badge is how a directory of badges starts.
+ */
+export function ProfileEdit() {
+  const { me } = useOutletContext();
+  const user = me?.user;
+  const [bio, setBio] = useState('');
+  const [links, setLinks] = useState([{ label: '', url: '' }]);
+  const [loaded, setLoaded] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [done, setDone] = useState('');
+
+  useEffect(() => {
+    if (!user?.id) return;
+    api.person(user.id)
+      .then((d) => {
+        setBio(d.person.bio || '');
+        const existing = d.person.links?.length
+          ? d.person.links.map((l) => ({ label: l.label || '', url: l.url || '' }))
+          : [{ label: '', url: '' }];
+        setLinks(existing);
+        setLoaded(true);
+      })
+      .catch((e) => setError(e.message));
+  }, [user?.id]);
+
+  function setLink(i, k, v) {
+    setLinks((rows) => rows.map((r, n) => n === i ? { ...r, [k]: v } : r));
+    setDone('');
+  }
+
+  async function save(e) {
+    e.preventDefault();
+    if (busy) return;
+    setBusy(true); setError(''); setDone('');
+    try {
+      const r = await api.editProfile({
+        bio,
+        links: links.filter((l) => l.url.trim()),
+      });
+      setBio(r.person.bio || '');
+      setLinks(r.person.links?.length
+        ? r.person.links.map((l) => ({ label: l.label || '', url: l.url || '' }))
+        : [{ label: '', url: '' }]);
+      setDone('Saved. This is what other people see — it does not change your standing.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!user) return <p className="app-note you-pad">Loading…</p>;
+  if (!loaded && !error) return <p className="app-note you-pad">Loading…</p>;
+
+  const handle = me?.agent?.name;
+
+  return (
+    <div className="settings">
+      <h1 className="set-title">Bio and links</h1>
+      <p className="app-note" style={{ margin: 0 }}>
+        A claim about yourself, not evidence. Standing is derived from anchors and receipts —
+        writing a tier into a bio does not grant it.
+      </p>
+
+      <form onSubmit={save} className="set-profile">
+        <div className="app-field">
+          <label htmlFor="bio">Bio</label>
+          <textarea
+            id="bio"
+            rows={5}
+            maxLength={600}
+            value={bio}
+            onChange={(e) => { setBio(e.target.value); setDone(''); }}
+            placeholder="Who you are here, in a few sentences."
+          />
+          <span className="app-note">{bio.length}/600</span>
+        </div>
+
+        <div className="app-field">
+          <label>Links</label>
+          <p className="app-note" style={{ margin: 0 }}>
+            Web addresses only — http or https. At most eight.
+          </p>
+          {links.map((l, i) => (
+            <div key={i} className="set-link-row">
+              <input
+                aria-label={`Link ${i + 1} label`}
+                placeholder="Label"
+                value={l.label}
+                maxLength={40}
+                onChange={(e) => setLink(i, 'label', e.target.value)}
+              />
+              <input
+                aria-label={`Link ${i + 1} address`}
+                placeholder="https://"
+                value={l.url}
+                inputMode="url"
+                autoComplete="url"
+                onChange={(e) => setLink(i, 'url', e.target.value)}
+              />
+              <button
+                type="button"
+                className="app-link"
+                onClick={() => setLinks((rows) => {
+                  const next = rows.filter((_, n) => n !== i);
+                  return next.length ? next : [{ label: '', url: '' }];
+                })}
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+          {links.length < 8 && (
+            <button
+              type="button"
+              className="app-link"
+              onClick={() => setLinks((rows) => [...rows, { label: '', url: '' }])}
+            >
+              Add a link
+            </button>
+          )}
+        </div>
+
+        {error && <p className="app-error">{error}</p>}
+        {done && <p className="app-ok" style={{ textTransform: 'none', letterSpacing: 0 }}>{done}</p>}
+
+        <button className="app-cta" disabled={busy} type="submit">
+          {busy ? 'Saving…' : 'Save'}
+        </button>
+      </form>
+
+      {handle && (
+        <Link className="app-link" to={`/app/u/${encodeURIComponent(handle)}`}>
+          View public profile
+        </Link>
+      )}
+      {!handle && user?.id && (
+        <Link className="app-link" to={`/app/u/${encodeURIComponent(user.id)}`}>
+          View public profile
+        </Link>
+      )}
+      <Link className="app-link" to="/app/settings">← Settings and activity</Link>
     </div>
   );
 }

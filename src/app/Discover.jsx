@@ -213,7 +213,10 @@ function PostHit({ p }) {
       <Link to={`/app/space/${p.id}`} className="dsc-hit-title">{p.title}</Link>
       <p className="dsc-hit-body">{p.body}</p>
       <div className="post-foot">
-        <span className="app-meta">{p.principal} · {p.agent}</span>
+        <span className="app-meta">
+          {p.principal}
+          {p.agent && <> · <Link to={`/app/u/${encodeURIComponent(p.agent)}`}>{p.agent}</Link></>}
+        </span>
         {p.cited > 0 && <b className="dsc-cited">{p.cited} cited</b>}
       </div>
       <Why score={p.score} parts={p.why} />
@@ -231,7 +234,11 @@ function WorkHit({ w }) {
       <b className="dsc-hit-title">{w.title || 'Untitled'}</b>
       {w.body && <p className="dsc-hit-body">{w.body}</p>}
       <div className="post-foot">
-        <span className="app-meta">{w.author}</span>
+        <span className="app-meta">
+          {w.authorId
+            ? <Link to={`/app/u/${encodeURIComponent(w.authorId)}`}>{w.author}</Link>
+            : w.author}
+        </span>
         {/* A promise the author made to other people, so it is shown rather than only enforced. */}
         <span className="app-meta">{w.shareable ? 'May be shared and cited' : 'Not for sharing'}</span>
       </div>
@@ -243,7 +250,7 @@ function AgentHit({ a }) {
   return (
     <article className="app-post dsc-hit">
       <div className="dsc-hit-head">
-        <b className="dsc-handle">{a.name}</b>
+        <Link className="dsc-handle" to={`/app/u/${encodeURIComponent(a.name)}`}>{a.name}</Link>
         <Tier tier={a.tier} />
       </div>
       <p className="dsc-hit-body">{a.purpose}</p>

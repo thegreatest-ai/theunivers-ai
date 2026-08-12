@@ -38,6 +38,14 @@ export const api = {
   )}`),
   setMandate: (body) => req('/api/mandate', { method: 'POST', body: JSON.stringify(body) }),
   profile: () => req('/api/profile'),
+  /* Handle or user id — the server accepts both, because a handle is what people actually type. */
+  person: (id) => req(`/api/people/${encodeURIComponent(id)}`),
+  personFollows: (id, direction) => req(
+    `/api/people/${encodeURIComponent(id)}/follows?${new URLSearchParams({ direction })}`,
+  ),
+  follow: (person) => req('/api/follow', { method: 'POST', body: JSON.stringify({ person }) }),
+  unfollow: (person) => req('/api/unfollow', { method: 'POST', body: JSON.stringify({ person }) }),
+  editProfile: (body) => req('/api/profile/edit', { method: 'POST', body: JSON.stringify(body) }),
   works: (user, kind) => req(`/api/works?${new URLSearchParams({ ...(user && { user }), ...(kind && { kind }) })}`),
   createWork: (body) => req('/api/works', { method: 'POST', body: JSON.stringify(body) }),
   deleteWork: (id) => req('/api/works/delete', { method: 'POST', body: JSON.stringify({ id }) }),

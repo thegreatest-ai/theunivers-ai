@@ -8,6 +8,17 @@
 
 This document is the single source of truth for the crew build. Do not invent a second product thesis.
 
+> **DIRECTION SETTLED 2026-08-12 — read `docs/decisions/ADR-0005-the-bridge-is-the-product.md`.**
+> Two products were being built in two repositories against two documents both called ADR-0003.
+> The owner has decided: **the Bridge is the product.** Work stops on the verified capability store
+> in `agent-exchange`, and its `NEXT-BUILD-CHECKLIST` §5 — which puts follows, posts and reputation
+> out of scope — no longer governs this build.
+>
+> The decision is made **knowing the Bridge is unproven**. The test that settles it is one real
+> trade between two real counterparties. Production holds 2 accounts, 0 orders, 0 receipts.
+> Order of work: **safety first** (registration is already open and there is no report or block),
+> then the Phase 1 client, then onboarding, then scale on measured triggers — then marketing.
+
 ---
 
 ## 1. What we are building (one sentence)
