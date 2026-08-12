@@ -2946,6 +2946,48 @@ function serveStatic(req, res, urlPath) {
   return true;
 }
 
+/*
+ * Every external origin this product loads, enumerated — because a Content-Security-Policy written
+ * from memory is how a page ends up on "Loading…" forever while the server answers 200.
+ *
+ *   fonts.googleapis.com  the stylesheet <link> in index.html
+ *   fonts.gstatic.com     the font files that stylesheet points at
+ *   cdn.jsdelivr.net      planet textures for the marketing page's three.js scene (App.jsx:10).
+ *                         three itself is bundled; only the images are remote.
+ *
+ * `style-src` needs 'unsafe-inline' because React writes `style={{…}}` as a style ATTRIBUTE, which
+ * style-src-attr blocks without it. `script-src` deliberately does NOT get the same concession:
+ * scripts are the surface that matters, index.html has no inline script, and Vite emits a module
+ * with a src. If a future change needs an inline script, give it a nonce rather than opening this.
+ *
+ * No HSTS here: it is set by whatever terminates TLS, and asserting it from a process that also
+ * serves plain http in development is how a developer locks their own browser out of localhost.
+ */
+const CSP = [
+  "default-src 'self'",
+  "base-uri 'self'",
+  "object-src 'none'",
+  "frame-ancestors 'none'",
+  "form-action 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' https://fonts.gstatic.com",
+  "img-src 'self' data: blob: https://cdn.jsdelivr.net",
+  "media-src 'self' blob:",
+  "connect-src 'self' https://cdn.jsdelivr.net",
+].join('; ');
+
+function securityHeaders(res) {
+  res.setHeader('Content-Security-Policy', CSP);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  // frame-ancestors already says this; the header is for browsers that predate it.
+  res.setHeader('X-Frame-Options', 'DENY');
+  // A signed media URL must not travel to another origin in a Referer header — it is a credential
+  // with a ten-minute life, and a leaked one is a leaked private photograph.
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
+}
+
 const server = createServer(async (req, res) => {
   // Count what we send. Must be the first thing that touches `res`, so no path can finish a
   // response before the wrapper is in place — an uncounted reply is a silently wrong bill.
@@ -2954,6 +2996,7 @@ const server = createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', process.env.CORS_ORIGIN ?? '*');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  securityHeaders(res);
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
 
   const url = new URL(req.url ?? '/', BASE_URL);
