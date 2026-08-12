@@ -1745,11 +1745,14 @@ route('GET', '/api/feed', (ctx) => {
   if (!ctx.user && !ctx.agent) return err(401, 'auth required');
   const viewerId = ctx.user?.id ?? ctx.agent?.user_id;
 
+  // ADR-0003: a withdrawn post leaves every surface. Filtered in SQL rather than after scoring,
+  // so a withdrawn post cannot occupy a rank it is no longer entitled to.
   const posts = all(
     `SELECT p.*, a.name AS agent_name, u.name AS principal_name
      FROM post p
      JOIN agent a ON a.id = p.agent_id
-     JOIN user u ON u.id = p.user_id`,
+     JOIN user u ON u.id = p.user_id
+     WHERE p.withdrawn_at IS NULL`,
   );
 
   // A saved search is the ONLY thing that personalises this, and you wrote it. Nothing here reads
@@ -1813,13 +1816,61 @@ route('GET', '/api/posts/:id', (ctx) => {
                  LEFT JOIN user u ON u.id = p.user_id
                  WHERE p.id = ?`, ctx.params.id);
   if (!p) return err(404, 'no such post');
+
+  /*
+   * ADR-0003. A withdrawn post answers with a TOMBSTONE rather than a 404.
+   *
+   * The reader here is usually following a citation, and 404 answers their question wrongly: it
+   * says the source never existed, which turns somebody's honest provenance into an apparent
+   * fabrication. "Withdrawn by the author on <date>" is the fact, and it is the difference between
+   * a broken product and one that tells you what happened.
+   *
+   * Title and body are already empty in the row — withdrawal is real at the API, not hidden by the
+   * client — so this returns no content even if a caller ignores the flag.
+   */
+  if (p.withdrawn_at) {
+    return {
+      post: {
+        id: p.id, withdrawn: true, withdrawnAt: p.withdrawn_at,
+        principal: p.principal_name, agent: p.agent_name, at: p.created_at,
+        cited: citedCount(p.id),
+      },
+    };
+  }
+
   return {
     post: {
       id: p.id, type: p.type, lane: p.lane, title: p.title, body: p.body,
       referent: p.referent, principal: p.principal_name, agent: p.agent_name,
       at: p.created_at, cited: citedCount(p.id), views: viewCounts(p.id),
+      withdrawn: false,
     },
   };
+});
+
+/**
+ * Withdraw a post. ADR-0003: this is what "delete" means here, and no route hard-deletes a post.
+ *
+ * The author's principal only — not their agent. An agent posts in the market under a mandate, but
+ * taking something down is an act about the PERSON's own record, and a mandate does not carry it.
+ *
+ * Title and body are emptied in the same statement that stamps the timestamp, so there is no window
+ * in which the row is marked withdrawn and still serves its content.
+ */
+route('POST', '/api/posts/:id/withdraw', (ctx) => {
+  if (!ctx.user) return err(401, 'sign in required');
+  const p = one('SELECT * FROM post WHERE id = ?', ctx.params.id);
+  if (!p) return err(404, 'no such post');
+  if (p.user_id !== ctx.user.id) return err(403, 'only the author may withdraw a post');
+  if (p.withdrawn_at) return err(409, 'already withdrawn');
+
+  const at = now();
+  run(
+    `UPDATE post SET withdrawn_at = ?, title = '', body = '', referent = NULL WHERE id = ?`,
+    at, p.id,
+  );
+  // Citations of it are deliberately untouched: they are the citer's record, not the author's.
+  return { withdrawn: true, at, citations: citedCount(p.id) };
 });
 
 route('POST', '/api/posts', (ctx) => {
@@ -1911,7 +1962,8 @@ route('GET', '/api/discover', (ctx) => {
     const watches = all('SELECT label, commodity, lane FROM watch WHERE user_id = ?', viewerId);
     rows = all(
       `SELECT p.*, a.name AS agent_name, u.name AS principal_name
-       FROM post p JOIN agent a ON a.id = p.agent_id JOIN user u ON u.id = p.user_id`,
+       FROM post p JOIN agent a ON a.id = p.agent_id JOIN user u ON u.id = p.user_id
+       WHERE p.withdrawn_at IS NULL`,
     )
       .map((p) => shapePost(p, tiers))
       .filter((p) => hits(`${p.title} ${p.body}`))

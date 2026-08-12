@@ -114,7 +114,11 @@ CREATE TABLE IF NOT EXISTS post (
   title TEXT NOT NULL,
   body TEXT NOT NULL,
   referent TEXT,
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  -- ADR-0003: a post is withdrawn, never deleted. Set means the author took it down — title and
+  -- body are emptied at the same moment, so withdrawal is real at the API rather than hidden by
+  -- the client. The row survives so a citation of it still resolves, to a tombstone.
+  withdrawn_at TEXT
 );
 
 -- The feed is ORDER BY created_at DESC LIMIT 50, and without this index SQLite reads EVERY post
@@ -165,6 +169,64 @@ CREATE INDEX IF NOT EXISTS receipt_user_idx ON receipt(user_id);
 CREATE INDEX IF NOT EXISTS anchor_user_idx  ON anchor(user_id);
 
 `);
+
+/**
+ * Adds a foreign key to a table that already exists.
+ *
+ * SQLite has no `ALTER TABLE ADD CONSTRAINT`. The only supported way is the documented table
+ * rebuild: build the new shape, copy the rows, drop the old, rename. That is a destructive
+ * sequence around live data, so the whole thing runs in one transaction and is checked before it
+ * commits.
+ *
+ * `PRAGMA foreign_keys` is a NO-OP inside a transaction, which is the trap in this procedure: set
+ * it after `BEGIN` and it silently does nothing, and the copy is validated against constraints
+ * that are still enforcing the OLD shape. It is therefore toggled outside, and restored in a
+ * `finally` so an exception cannot leave the connection with constraints off.
+ *
+ * `needsIt` decides whether to run at all, by asking the table what it already references. That
+ * makes this idempotent: every boot calls it, and only the first one does any work.
+ */
+function ensureForeignKeys(table, { references, create, indexes }) {
+  // Column list FIRST, and it doubles as the existence check. PRAGMA foreign_key_list on a table
+  // that does not exist returns an empty list rather than throwing, which reads identically to "no
+  // constraints yet" — so an absent table looked like one needing migration, and the rebuild then
+  // generated `INSERT INTO x__new () SELECT FROM x`. Found by running this on a fresh database.
+  const cols = db.prepare(`PRAGMA table_info("${table}")`).all().map((c) => c.name);
+  if (cols.length === 0) return;              // not created yet; the CREATE above carries the keys
+
+  const fks = db.prepare(`PRAGMA foreign_key_list("${table}")`).all();
+  if (references.every((col) => fks.some((f) => f.from === col))) return;
+
+  const list = cols.map((c) => `"${c}"`).join(', ');
+
+  db.exec('PRAGMA foreign_keys = OFF');
+  try {
+    db.exec('BEGIN');
+    db.exec(create.replace(`"${table}"`, `"${table}__new"`));
+    db.exec(`INSERT INTO "${table}__new" (${list}) SELECT ${list} FROM "${table}"`);
+    db.exec(`DROP TABLE "${table}"`);
+    db.exec(`ALTER TABLE "${table}__new" RENAME TO "${table}"`);
+    for (const ix of indexes) db.exec(ix);
+
+    // Check BEFORE committing. A violation here means existing rows point at something that is
+    // gone — exactly the state these constraints exist to prevent — and the right answer is to
+    // roll back and look, not to commit a database the constraint would have refused.
+    const bad = db.prepare('PRAGMA foreign_key_check').all();
+    if (bad.length) {
+      throw new Error(
+        `${table}: ${bad.length} row(s) reference something that does not exist — ` +
+        `${JSON.stringify(bad.slice(0, 3))}. Nothing was changed.`,
+      );
+    }
+    db.exec('COMMIT');
+    console.log(`[db] ${table}: foreign keys declared (${references.join(', ')})`);
+  } catch (e) {
+    try { db.exec('ROLLBACK'); } catch { /* already rolled back */ }
+    throw e;
+  } finally {
+    db.exec('PRAGMA foreign_keys = ON');
+  }
+}
 
 // Migrate older pilot DBs
 function ensureColumn(table, name, ddl) {
@@ -312,8 +374,12 @@ db.exec(`
     id          TEXT PRIMARY KEY,
     note_id     TEXT NOT NULL REFERENCES note(id),
     user_id     TEXT NOT NULL REFERENCES user(id),
-    post_id     TEXT,
-    author_id   TEXT,
+    -- RESTRICT, per ADR-0003. These two carried no constraint at all until 2026-08-12, so
+    -- deleting a post left a citation pointing at content that no longer existed and said
+    -- nothing about it. NULL is allowed and meaningful: a source may be a URL rather than a
+    -- post on this platform.
+    post_id     TEXT REFERENCES post(id) ON DELETE RESTRICT,
+    author_id   TEXT REFERENCES user(id) ON DELETE RESTRICT,
     title       TEXT NOT NULL DEFAULT '',
     excerpt     TEXT NOT NULL DEFAULT '',
     used_for    TEXT NOT NULL DEFAULT '',
@@ -343,8 +409,10 @@ db.exec(`
     note_id    TEXT NOT NULL REFERENCES note(id),
     source_id  TEXT NOT NULL REFERENCES source(id),
     user_id    TEXT NOT NULL REFERENCES user(id),   -- whose agent cited it
-    post_id    TEXT,
-    author_id  TEXT,                                -- who earns the count
+    -- RESTRICT, per ADR-0003: a citation outlives the WITHDRAWAL of the post it cites, and a
+    -- hard delete of a cited post must raise rather than orphan the record silently.
+    post_id    TEXT REFERENCES post(id) ON DELETE RESTRICT,
+    author_id  TEXT REFERENCES user(id) ON DELETE RESTRICT,  -- who earns the count
     used_for   TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL
   );
@@ -602,6 +670,56 @@ db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS agent_name_unique
          ON agent (lower(trim(name)))`);
 ensureColumn('mandate', 'expires_at', `expires_at TEXT DEFAULT '9999-12-31T00:00:00.000Z'`);
 ensureColumn('mandate', 'spec_template_id', `spec_template_id TEXT DEFAULT 'default'`);
+
+// ADR-0003. NULL means live; a timestamp means the author withdrew it. No default — an existing
+// post is not withdrawn, and a DEFAULT here would silently take down every post in the table.
+ensureColumn('post', 'withdrawn_at', 'withdrawn_at TEXT');
+
+/*
+ * ADR-0003. `source` and `citation` referenced `post` and `user` by id and declared neither, so a
+ * deleted post left citations of it pointing at nothing, with no error. Declared RESTRICT: a
+ * citation outlives the WITHDRAWAL of what it cites, and a hard delete of cited content must raise.
+ *
+ * Cheap exactly now — these tables hold no rows in production — and more expensive with every post
+ * filed after it.
+ */
+ensureForeignKeys('source', {
+  references: ['post_id', 'author_id'],
+  create: `CREATE TABLE "source" (
+    id          TEXT PRIMARY KEY,
+    note_id     TEXT NOT NULL REFERENCES note(id),
+    user_id     TEXT NOT NULL REFERENCES user(id),
+    post_id     TEXT REFERENCES post(id) ON DELETE RESTRICT,
+    author_id   TEXT REFERENCES user(id) ON DELETE RESTRICT,
+    title       TEXT NOT NULL DEFAULT '',
+    excerpt     TEXT NOT NULL DEFAULT '',
+    used_for    TEXT NOT NULL DEFAULT '',
+    url         TEXT,
+    created_at  TEXT NOT NULL
+  )`,
+  indexes: [
+    'CREATE INDEX IF NOT EXISTS source_note_idx   ON source(note_id)',
+    'CREATE INDEX IF NOT EXISTS source_author_idx ON source(author_id)',
+  ],
+});
+
+ensureForeignKeys('citation', {
+  references: ['post_id', 'author_id'],
+  create: `CREATE TABLE "citation" (
+    id         TEXT PRIMARY KEY,
+    note_id    TEXT NOT NULL REFERENCES note(id),
+    source_id  TEXT NOT NULL REFERENCES source(id),
+    user_id    TEXT NOT NULL REFERENCES user(id),
+    post_id    TEXT REFERENCES post(id) ON DELETE RESTRICT,
+    author_id  TEXT REFERENCES user(id) ON DELETE RESTRICT,
+    used_for   TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+  )`,
+  indexes: [
+    'CREATE INDEX IF NOT EXISTS citation_post_idx   ON citation(post_id)',
+    'CREATE INDEX IF NOT EXISTS citation_author_idx ON citation(author_id)',
+  ],
+});
 
 export function one(sql, ...params) {
   return db.prepare(sql).get(...params) ?? null;
