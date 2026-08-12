@@ -33,11 +33,12 @@ import { db, one, all, run } from './db.mjs';
 import {
   token, now, requireInvite, consumeInvite, createSession,
   userFromSession, agentFromToken, inviteRequired} from './auth.mjs';
-import { checkMandates, resolveTier } from './guard.mjs';
+import { checkMandates, resolveTier, rowToSnapshot } from './guard.mjs';
 import { hashPassword, verifyPassword } from './passwords.mjs';
 import { passwordError } from '../shared/password-policy.mjs';
 import { handleError } from '../shared/agent-name.mjs';
 import { rank, order, paginate, sideOf, PER_PAGE } from '../shared/ranking.mjs';
+import { review as reviewTerms } from '../shared/terms-diff.mjs';
 import {
   oauthConfigured, googleAuthUrl, githubAuthUrl,
   finishGoogle, finishGithub,
@@ -411,7 +412,40 @@ route('GET', '/api/proposals', (ctx) => {
   const rows = all(
     `SELECT id, kind, intent, summary, status, guard_code, created_at, decided_at
      FROM proposal WHERE user_id = ? ORDER BY created_at DESC LIMIT 50`, user.id);
-  return { proposals: rows.map((r) => ({ ...r, intent: JSON.parse(r.intent) })) };
+
+  /*
+   * Every proposal carries a REVIEW as well as the terms.
+   *
+   * The guard already decided whether these terms are permitted. It cannot say whether they are
+   * what you asked for — a counter-offer may sit comfortably inside the mandate and still contain
+   * a term that moved between the instruction and the signature. Approving without seeing that is
+   * the failure this exists to stop, and it is invisible by construction: allowed looks like fine.
+   *
+   * `ours` is the mandate's own position, because that is the recorded form of what the principal
+   * asked for. Once a negotiation carries earlier offers, the last one we sent is the better
+   * comparison and belongs here instead.
+   */
+  const agent = one('SELECT * FROM agent WHERE user_id = ?', user.id);
+  const mandateRow = agent
+    ? one("SELECT * FROM mandate WHERE agent_id = ? AND status = 'active'", agent.id)
+    : null;
+  const mandate = mandateRow ? rowToSnapshot(mandateRow) : null;
+
+  return {
+    proposals: rows.map((r) => {
+      const intent = JSON.parse(r.intent);
+      const asked = mandate
+        ? { commodity: mandate.commodity, price: mandate.priceFloor, quantity: mandate.maxQuantity }
+        : {};
+      return {
+        ...r,
+        intent,
+        // `side` decides whether a price move reads as better or worse for THIS principal. It is
+        // not sideOf(), which answers a different question about post types.
+        review: reviewTerms({ ours: asked, theirs: intent, mandate, side: intent.kind === 'buy' ? 'buyer' : 'seller' }),
+      };
+    }),
+  };
 });
 
 /**
