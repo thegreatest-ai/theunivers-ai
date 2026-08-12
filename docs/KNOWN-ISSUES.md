@@ -22,6 +22,18 @@ There are now **zero posts** in production, since the only one belonged to that 
 
 ---
 
+## MEDIUM — the front door is a black rectangle without WebGL
+
+`/` is a full-viewport react-three-fiber `<Canvas>` with `Suspense fallback={null}`
+(`src/App.jsx`), and `index.html` has an empty `#root` and no `<noscript>`. A visitor whose
+browser cannot get a WebGL context — locked-down enterprise, some mobile, a GPU-blocklisted
+browser — gets solid navy and zero characters of text. Not a CSP problem: openclaw's headless pass
+confirmed nothing was blocked, the context simply was not available.
+
+Found 2026-08-12 by a real browser load, which is the only thing that could have found it: the
+server answers 200 and the bundle is fine. A `fallback` with the headline and a sign-in link, or
+a `<noscript>`, would make the page degrade instead of vanish.
+
 ## MEDIUM — CORS_ORIGIN is `*` in the deployed configuration, not in the code
 
 The code now defaults to `BASE_URL` and the header is tested to reflect configuration rather than

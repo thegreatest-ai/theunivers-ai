@@ -109,3 +109,19 @@ describe('cross-origin default', () => {
     assert.match(origin, /^https?:\/\//, 'it must still be a usable origin, not empty');
   });
 });
+
+describe('the headers reach the HTML, not only the API', () => {
+  // openclaw's browser pass hit a stale pre-CSP process squatting the port and briefly read it as
+  // a missing policy. The real lesson generalises: the failure mode is never a bad directive, it
+  // is the right policy not reaching the response. A test that only ever asks /api/health cannot
+  // see that — the SPA document and the static assets are the responses a browser actually judges.
+  for (const path of ['/', '/app', '/assets/favicon.png']) {
+    test(`${path} carries the policy`, async () => {
+      const r = await head(path);
+      assert.ok(r.status < 400, `${path} did not serve: ${r.status}`);
+      assert.ok(r.headers['content-security-policy'], `no CSP on ${path}`);
+      assert.equal(r.headers['x-content-type-options'], 'nosniff');
+      assert.equal(r.headers['x-frame-options'], 'DENY');
+    });
+  }
+});
