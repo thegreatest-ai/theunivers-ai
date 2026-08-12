@@ -7,3 +7,11 @@ dist
 data
 *.log
 .DS_Store
+
+# Agent worktrees — three full checkouts of this repo, each with its own node_modules.
+# 576MB of build context that the image has no use for. Gitignored already; Docker needs
+# telling separately, which is not obvious until a deploy dies transferring context.
+.claude
+
+# Mockups and the source PDF: 18MB, never served, referenced only by docs.
+design
