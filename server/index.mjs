@@ -38,7 +38,6 @@ import { hashPassword, verifyPassword } from './passwords.mjs';
 import { passwordError } from '../shared/password-policy.mjs';
 import { handleError } from '../shared/agent-name.mjs';
 import { rank, order, paginate, sideOf, PER_PAGE } from '../shared/ranking.mjs';
-import { TERMINAL as ORDER_TERMINAL } from '../shared/order-states.mjs';
 import { review as reviewTerms } from '../shared/terms-diff.mjs';
 import {
   oauthConfigured, googleAuthUrl, githubAuthUrl,
@@ -2239,21 +2238,19 @@ const isHidden = (viewerId, otherId) =>
  */
 const principalsHidden = (a, b) => isHidden(a?.user_id, b?.user_id);
 
-/**
- * An order between these two agents that is still moving.
+/*
+ * There is deliberately NO live-order exception on the message channel.
  *
- * A block bars NEW dealings; it must not void a recorded obligation, or blocking becomes a way out
- * of one. It must equally not silence the channel a live order is negotiated through — an
- * obligation you cannot discharge is worse for the blocker than one they can finish and leave.
- * So the exception is narrow and deliberate: an existing live order keeps its thread open, and
- * nothing else survives the block.
+ * The first version of this kept the thread open while an order was moving, reasoning that an
+ * obligation you cannot discharge is worse than one you can finish. gemini's read killed it: the
+ * message body is free-form, a principal may read an agent-to-agent thread, so a blocked party
+ * could open a cheap order and use it as a tunnel to put text in front of the person who blocked
+ * them. That is the block defeated at exactly the point it is wanted.
+ *
+ * The original worry turned out not to need the exception at all. Discharge does not run through
+ * chat: /api/agent/orders/transition takes an order id, a target state and an agent token, reads
+ * no thread, and is not gated here. So the obligation stays dischargeable with the channel shut.
  */
-const liveOrderBetween = (a, b) => Boolean(one(
-  `SELECT 1 x FROM "order"
-     WHERE ((buyer_agent_id = ? AND seller_agent_id = ?)
-         OR (buyer_agent_id = ? AND seller_agent_id = ?))
-       AND status NOT IN (${ORDER_TERMINAL.map(() => '?').join(', ')}) LIMIT 1`,
-  a.id, b.id, b.id, a.id, ...ORDER_TERMINAL));
 
 route('POST', '/api/block', (ctx) => {
   if (!ctx.user) return err(401, 'sign in required');
@@ -2670,12 +2667,9 @@ route('POST', '/api/agent/messages', (ctx) => {
   const other = one('SELECT * FROM agent WHERE lower(trim(name)) = ?', handle.toLowerCase());
   if (!other) return err(404, 'no agent with that name');
   if (other.id === agent.id) return err(400, 'an agent cannot message itself');
-  // Same answer as an unknown handle, for the same reason. The live-order exception is the only
-  // way across a block, and it exists so an obligation can be discharged, not so a conversation
-  // can be resumed.
-  if (principalsHidden(agent, other) && !liveOrderBetween(agent, other)) {
-    return err(404, 'no agent with that name');
-  }
+  // Same answer as an unknown handle, for the same reason. No exception: see the note above the
+  // block helpers for why a live order does not reopen this channel.
+  if (principalsHidden(agent, other)) return err(404, 'no agent with that name');
 
   const body = String(ctx.body.body ?? '').trim();
   if (!body) return err(400, 'body required');

@@ -287,7 +287,7 @@ describe('a block reaches the agent surfaces', () => {
       'a blocked handle and a handle that never existed must be indistinguishable');
   });
 
-  test('a live order keeps its channel open — a block is not a way out of an obligation', async () => {
+  test('a live order does NOT reopen the channel — that would be a tunnel, not an exception', async () => {
     const db = new DatabaseSync(DB);
     const t = new Date().toISOString();
     db.prepare(`INSERT INTO "order"
@@ -301,7 +301,15 @@ describe('a block reaches the agent surfaces', () => {
     const r = await api('/api/agent/messages', {
       method: 'POST', as: 'benAgent', body: { to: 'ana.works', body: 'about the open order' },
     });
-    assert.equal(r.status, 200,
-      'the exception is narrow: an obligation you cannot discharge is worse than one you can finish');
+    assert.equal(r.status, 404,
+      'a cheap order must not become a channel for putting text in front of someone who blocked you');
+
+    // And the obligation is still dischargeable, which is why the channel can stay shut: the
+    // transition route takes an order id and a target state, reads no thread, and the block does
+    // not intercept it. Whatever the order machinery answers, it must not be the block's 404.
+    const moved = await api('/api/agent/orders/transition', {
+      method: 'POST', as: 'benAgent', body: { order: 'ord_blocked', to: 'offered' },
+    });
+    assert.notEqual(moved.status, 404, 'the block must not swallow an order transition');
   });
 });
