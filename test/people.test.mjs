@@ -1,13 +1,14 @@
 /**
- * Phase 1 — the parts of a social product that are about PEOPLE: following, person-to-person
- * messaging, and a profile somebody can edit.
+ * Phase 1 — following, and a profile somebody can edit.
  *
- * Tested through HTTP rather than against the database, because the rules that matter here live in
- * the handlers: who may decide a request, how many messages a stranger gets, and what a link is
- * allowed to be. A database-level test would assert the schema and miss all three.
+ * Person-to-person messaging was built here and REMOVED on 2026-08-12: the agent is the interface.
+ * A principal instructs their own agent, and the agents talk to each other, so there is no human
+ * channel through which a deal can be agreed without the record. What survives is the graph and
+ * the profile, which are about who somebody is rather than about talking to them.
  *
- * The exit gate for this phase is at the bottom: two accounts can hold a conversation, follow each
- * other, and NEITHER can write into an agent-to-agent thread.
+ * Tested through HTTP rather than against the database, because the rules that matter live in the
+ * handlers: what a link is allowed to be, and what one person may see of another. A database-level
+ * test would assert the schema and miss both.
  */
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -147,136 +148,6 @@ describe('following', () => {
     const r = await api('/api/people/usr_ben', { as: 'ana' });
     assert.equal(r.json.person.counts.followers, 0);
     assert.equal(r.json.person.youFollow, false);
-    // put it back for the messaging tests below
-  });
-});
-
-describe('messaging a person who does not follow you', () => {
-  test('the first message opens a REQUEST, not an open channel', async () => {
-    const r = await api('/api/people/messages', {
-      method: 'POST', as: 'ana', body: { person: 'ben.works', body: 'Hello — I liked your work.' },
-    });
-    assert.equal(r.status, 200);
-    assert.equal(r.json.thread.state, 'pending');
-  });
-
-  test('a stranger gets exactly ONE message until it is accepted', async () => {
-    const second = await api('/api/people/messages', {
-      method: 'POST', as: 'ana', body: { person: 'ben.works', body: 'And another thing' },
-    });
-    assert.equal(second.status, 429, 'this is what stops a request being a channel for a hundred');
-  });
-
-  test('the recipient sees it as awaiting them; the sender does not', async () => {
-    const bens = await api('/api/people/threads', { as: 'ben' });
-    assert.equal(bens.json.requests, 1);
-    assert.equal(bens.json.threads[0].awaitingYou, true);
-
-    const anas = await api('/api/people/threads', { as: 'ana' });
-    assert.equal(anas.json.requests, 0, 'your own outgoing request is not a request TO you');
-    assert.equal(anas.json.threads[0].canWrite, false, 'and you cannot keep writing into it');
-  });
-
-  test('the sender cannot accept their own request', async () => {
-    const id = (await api('/api/people/threads', { as: 'ana' })).json.threads[0].id;
-    const r = await api('/api/people/threads/decide', {
-      method: 'POST', as: 'ana', body: { thread: id, decision: 'accept' },
-    });
-    assert.equal(r.status, 403);
-  });
-
-  test('a stranger cannot read a thread they are not in', async () => {
-    const id = (await api('/api/people/threads', { as: 'ana' })).json.threads[0].id;
-    // A third party with a valid session but no membership.
-    const db = new DatabaseSync(DB);
-    const t = new Date().toISOString();
-    db.prepare('INSERT INTO user (id,email,name,created_at) VALUES (?,?,?,?)')
-      .run('usr_cee', 'cee@example.test', 'Cee', t);
-    db.prepare('INSERT INTO session (token,user_id,created_at) VALUES (?,?,?)')
-      .run('tok_session_cee', 'usr_cee', t);
-    db.close();
-    TOK.cee = 'tok_session_cee';
-
-    const r = await api(`/api/people/threads/${id}`, { as: 'cee' });
-    assert.equal(r.status, 404, 'membership is read from the row, never parsed out of the id');
-  });
-
-  test('accepting opens it, and then the conversation actually works', async () => {
-    const id = (await api('/api/people/threads', { as: 'ben' })).json.threads[0].id;
-    const decided = await api('/api/people/threads/decide', {
-      method: 'POST', as: 'ben', body: { thread: id, decision: 'accept' },
-    });
-    assert.equal(decided.status, 200);
-    assert.equal(decided.json.thread.state, 'accepted');
-
-    assert.equal((await api('/api/people/messages', {
-      method: 'POST', as: 'ana', body: { person: 'ben.works', body: 'Thank you.' },
-    })).status, 200, 'the sender may write once accepted');
-
-    assert.equal((await api('/api/people/messages', {
-      method: 'POST', as: 'ben', body: { person: 'ana.works', body: 'Of course.' },
-    })).status, 200, 'and so may the recipient');
-
-    const thread = await api(`/api/people/threads/${id}`, { as: 'ana' });
-    assert.equal(thread.json.messages.length, 3);
-    assert.deepEqual(thread.json.messages.map((m) => m.mine), [true, true, false]);
-  });
-
-  test('replying to a request accepts it — you cannot answer and still be deciding', async () => {
-    // A fresh pair, so this is independent of the accept/decline above.
-    const db = new DatabaseSync(DB);
-    const t = new Date().toISOString();
-    db.prepare('INSERT INTO user (id,email,name,created_at) VALUES (?,?,?,?)')
-      .run('usr_dee', 'dee@example.test', 'Dee', t);
-    db.prepare('INSERT INTO session (token,user_id,created_at) VALUES (?,?,?)')
-      .run('tok_session_dee', 'usr_dee', t);
-    db.close();
-    TOK.dee = 'tok_session_dee';
-
-    const opened = await api('/api/people/messages', {
-      method: 'POST', as: 'ana', body: { person: 'usr_dee', body: 'A cold approach.' },
-    });
-    assert.equal(opened.json.thread.state, 'pending');
-
-    // Dee replies WITHOUT calling decide.
-    const reply = await api('/api/people/messages', {
-      method: 'POST', as: 'dee', body: { person: 'ana.works', body: 'Go on then.' },
-    });
-    assert.equal(reply.status, 200);
-    assert.equal(reply.json.thread.state, 'accepted', 'the reply itself is the acceptance');
-
-    // And the original sender is no longer capped — the bug this test exists for was that they were.
-    const second = await api('/api/people/messages', {
-      method: 'POST', as: 'ana', body: { person: 'usr_dee', body: 'Here is the detail.' },
-    });
-    assert.equal(second.status, 200, 'a replied-to thread must not still cap the opener at one');
-
-    const dees = await api('/api/people/threads', { as: 'dee' });
-    assert.equal(dees.json.requests, 0, 'and it must not still show as an undecided request');
-  });
-
-  test('a second decision on a settled thread is refused', async () => {
-    const id = (await api('/api/people/threads', { as: 'ben' })).json.threads[0].id;
-    const r = await api('/api/people/threads/decide', {
-      method: 'POST', as: 'ben', body: { thread: id, decision: 'decline' },
-    });
-    assert.equal(r.status, 409);
-  });
-});
-
-describe('messaging a person who already follows you', () => {
-  test('following is the opt-in: the thread opens accepted, with no request to answer', async () => {
-    // Cee follows Ana, so Ana writing to Cee needs no ceremony.
-    await api('/api/follow', { method: 'POST', as: 'cee', body: { person: 'ana.works' } });
-    const r = await api('/api/people/messages', {
-      method: 'POST', as: 'ana', body: { person: 'usr_cee', body: 'You followed me — hello.' },
-    });
-    assert.equal(r.status, 200);
-    assert.equal(r.json.thread.state, 'accepted');
-
-    assert.equal((await api('/api/people/messages', {
-      method: 'POST', as: 'ana', body: { person: 'usr_cee', body: 'Second message, allowed.' },
-    })).status, 200, 'no one-message cap on an accepted thread');
   });
 });
 
@@ -321,35 +192,24 @@ describe('the profile', () => {
 });
 
 describe('the phase 1 exit gate', () => {
-  test('two accounts hold a conversation, and follow each other', async () => {
+  test('two accounts follow each other, both directions visible', async () => {
     await api('/api/follow', { method: 'POST', as: 'ana', body: { person: 'ben.works' } });
     await api('/api/follow', { method: 'POST', as: 'ben', body: { person: 'ana.works' } });
 
-    const ana = (await api('/api/people/usr_ben', { as: 'ana' })).json.person;
-    assert.equal(ana.youFollow, true);
-    assert.equal(ana.followsYou, true);
-
-    const id = (await api('/api/people/threads', { as: 'ana' })).json.threads
-      .find((t) => t.with.id === ID.ben).id;
-    const thread = await api(`/api/people/threads/${id}`, { as: 'ana' });
-    assert.ok(thread.json.messages.length >= 3, 'a real conversation, both directions');
-    assert.ok(thread.json.messages.some((m) => m.mine) && thread.json.messages.some((m) => !m.mine));
+    const seen = (await api('/api/people/usr_ben', { as: 'ana' })).json.person;
+    assert.equal(seen.youFollow, true);
+    assert.equal(seen.followsYou, true, 'the interface must be able to tell follow from follow back');
   });
 
   test('NEITHER person can write into an agent-to-agent thread', async () => {
     // The a2a thread id for their two agents. There is no route that accepts a person writing here:
     // POST /api/agent/messages is an agent-token route, and person messaging writes a different
     // table entirely. Both facts are asserted rather than assumed.
-    const a2a = `a2a_${['agt_ana', 'agt_ben'].sort().join('_')}`;
-
     const asPerson = await api('/api/agent/messages', {
       method: 'POST', as: 'ana', body: { to: 'ben.works', body: 'let me speak for my agent' },
     });
     assert.ok(asPerson.status === 401 || asPerson.status === 403,
       `a session must not reach the agent channel, got ${asPerson.status}`);
-
-    const readBack = await api(`/api/people/threads/${a2a}`, { as: 'ana' });
-    assert.equal(readBack.status, 404, 'an agent thread id is not a person thread');
 
     const db = new DatabaseSync(DB);
     const n = db.prepare('SELECT COUNT(*) c FROM agent_message').get().c;

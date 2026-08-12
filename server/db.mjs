@@ -607,55 +607,6 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS follow_followee_idx ON follow(followee_id, created_at);
 
-  /*
-   * person_message — a person talking to ANOTHER PERSON. It is a third table on purpose.
-   *
-   * message is you ↔ your own agent. agent_message is your agent ↔ a counterparty's agent.
-   * Neither can carry this, and widening message.from_role to a fourth value would undo the
-   * separation that exists so "who said this" is never a matter of inference. Three parties, three
-   * tables, and no column that means two things.
-   *
-   * thread_id is derived from the two user ids in sorted order, exactly as agent threads are —
-   * one conversation per pair, and no row that can disagree with its own members.
-   *
-   * There is no from_role: the sender is a user id, and there is nothing else it could be.
-   */
-  CREATE TABLE IF NOT EXISTS person_message (
-    id           TEXT PRIMARY KEY,
-    thread_id    TEXT NOT NULL,
-    from_user_id TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
-    to_user_id   TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
-    body         TEXT NOT NULL,
-    created_at   TEXT NOT NULL,
-    CHECK (from_user_id <> to_user_id)
-  );
-  CREATE INDEX IF NOT EXISTS person_message_thread_idx ON person_message(thread_id, created_at);
-  CREATE INDEX IF NOT EXISTS person_message_to_idx     ON person_message(to_user_id, created_at);
-
-  /*
-   * The thread's STATE, which is the safety half and cannot be derived from the messages.
-   *
-   * Registration is open and there is no block until phase 3, so an unrestricted inbox would ship a
-   * harassment surface with nothing to answer it. A message from somebody the recipient does not
-   * follow therefore arrives as a REQUEST: it is delivered, it is visible, and the sender may send
-   * exactly ONE until the recipient accepts. That is the settled pattern everywhere, and the
-   * one-message cap is what stops a request being a channel for a hundred of them.
-   *
-   * If the recipient already follows the sender the thread opens ACCEPTED — following somebody is
-   * the opt-in, and asking twice is ceremony.
-   *
-   * declined is kept rather than deleted, so a re-request can be refused without the recipient
-   * having to decide again. It is not a block: it is one thread, and it says so.
-   */
-  CREATE TABLE IF NOT EXISTS person_thread (
-    thread_id  TEXT PRIMARY KEY,
-    opened_by  TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
-    other_id   TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
-    state      TEXT NOT NULL DEFAULT 'pending'
-               CHECK (state IN ('pending','accepted','declined')),
-    created_at TEXT NOT NULL,
-    decided_at TEXT
-  );
   CREATE INDEX IF NOT EXISTS agent_message_to_idx     ON agent_message(to_agent_id, created_at);
   CREATE INDEX IF NOT EXISTS agent_message_from_idx   ON agent_message(from_agent_id, created_at);
 `);
@@ -751,6 +702,26 @@ ensureColumn('post', 'withdrawn_at', 'withdrawn_at TEXT');
 // where the limits can say why.
 ensureColumn('user', 'bio', 'bio TEXT');
 ensureColumn('user', 'links', `links TEXT NOT NULL DEFAULT '[]'`);
+
+/*
+ * Person-to-person messaging was built on 2026-08-12 and removed the same day: the agent is the
+ * interface, so a principal instructs their own agent and the agents talk to each other. There is
+ * no human channel to route a deal around the record.
+ *
+ * These two tables shipped to production before the decision. They are dropped ONLY if empty —
+ * a guard, not a formality: if a row ever existed, dropping it silently would destroy somebody's
+ * conversation to tidy a schema, and the right answer then is to stop and look.
+ */
+for (const table of ['person_message', 'person_thread']) {
+  try {
+    const exists = db.prepare(
+      "SELECT 1 x FROM sqlite_master WHERE type = 'table' AND name = ?").get(table);
+    if (!exists) continue;
+    const rows = db.prepare(`SELECT COUNT(*) n FROM "${table}"`).get().n;
+    if (rows === 0) db.exec(`DROP TABLE "${table}"`);
+    else console.warn(`[db] ${table} kept: ${rows} row(s) — it was meant to be empty, so look before dropping it`);
+  } catch { /* nothing to drop */ }
+}
 
 /*
  * ADR-0003. `source` and `citation` referenced `post` and `user` by id and declared neither, so a
