@@ -1409,6 +1409,11 @@ route('GET', '/api/works', (ctx) => {
     rows = rows.filter((w) => w.shareable === 1);
   }
 
+  // An operator rung reaches works too. Filtered here rather than in the map, so a limited work
+  // never becomes a row with its media attached and its title blanked by the client.
+  const viewerId = ctx.user?.id ?? ctx.agent?.user_id ?? null;
+  if (viewerId !== userId) rows = rows.filter((w) => !w.limited_at && !w.taken_down_at);
+
   return {
     works: rows.map((w) => ({
       id: w.id, kind: w.kind, title: w.title, body: w.body,
@@ -2528,15 +2533,16 @@ function resolveReport(ctx, action) {
   }
 
   if (action === 'limit') {
-    if (report.subject_kind !== 'post') return err(400, 'only a post can be limited today');
-    const p = one('SELECT * FROM post WHERE id = ?', report.subject_id);
-    if (!p) return err(404, 'no such post');
+    const table = SUBJECT_TABLE[report.subject_kind];
+    if (!table) return err(400, `a ${report.subject_kind} cannot be limited today`);
+    const p = one(`SELECT * FROM ${table} WHERE id = ?`, report.subject_id);
+    if (!p) return err(404, 'no such subject');
     if (p.withdrawn_at) return err(409, 'already gone');
     if (p.limited_at) return err(409, 'already limited');
 
     const receipt = inTransaction(() => {
       // No emptying and no hash: the body is retained, which is what makes this reversible.
-      run(`UPDATE post SET limited_at = ?, limited_report_id = ?
+      run(`UPDATE ${table} SET limited_at = ?, limited_report_id = ?
             WHERE id = ? AND limited_at IS NULL`, at, report.id, p.id);
       run(`UPDATE report SET status = 'actioned', outcome = ?, decided_at = ?
             WHERE id = ? AND status = 'open'`, reason, at, report.id);
@@ -2588,6 +2594,12 @@ function resolveReport(ctx, action) {
  * The report transition lives in one function, so the two paths cannot diverge on how a report is
  * closed — which is the reason the single route existed in the first place.
  */
+/**
+ * Which table a report subject lives in. 'person' and 'message' have no rung yet — a person needs
+ * suspend, which is unbuilt, and a message is already private to two parties.
+ */
+const SUBJECT_TABLE = { post: 'post', work: 'work' };
+
 /*
  * LIMIT — the rung that is reversible because nothing was destroyed.
  *

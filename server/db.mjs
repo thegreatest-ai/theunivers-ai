@@ -274,6 +274,7 @@ ensureColumn('post', 'body_sha256', 'body_sha256 TEXT');
  * shadow copy so that 'undo' can work comes directly from that binary. A rung where nothing is
  * destroyed needs no dark pool to reverse: clear the timestamp and the post is back.
  */
+
 ensureColumn('post', 'limited_at', 'limited_at TEXT');
 ensureColumn('post', 'limited_report_id', 'limited_report_id TEXT');
 
@@ -867,6 +868,21 @@ ensureForeignKeys('citation', {
  * This is also what stops a dependency walk being added to verifyChain later. There is nothing to
  * walk — the fact is already in the row.
  */
+/*
+ * The same two rungs on WORK. A work — photo, video, thread, doc — is what a PERSON publishes, and
+ * report.subject_kind has allowed 'work' since the table was written while the resolver refused
+ * anything that was not a post. So a reported photograph could be reported and never acted on.
+ *
+ * Author erasure of a work stays a real delete, bytes included: nothing references a work except
+ * its own media rows, and a deletion that leaves the file behind is not a deletion. These columns
+ * are for the OPERATOR path, which must leave a record that something was there.
+ */
+ensureColumn('work', 'limited_at', 'limited_at TEXT');
+ensureColumn('work', 'limited_report_id', 'limited_report_id TEXT');
+ensureColumn('work', 'taken_down_at', 'taken_down_at TEXT');
+ensureColumn('work', 'takedown_report_id', 'takedown_report_id TEXT');
+ensureColumn('work', 'body_sha256', 'body_sha256 TEXT');
+
 ensureColumn('citation', 'content_hash', 'content_hash TEXT');
 ensureColumn('citation', 'cited_state', "cited_state TEXT NOT NULL DEFAULT 'live'");
 

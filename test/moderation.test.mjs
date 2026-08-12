@@ -328,3 +328,40 @@ describe('limit is the rung that keeps the body', () => {
     assert.equal(receipt.user_id, 'usr_ana');
   });
 });
+
+describe('a reported work can actually be acted on', () => {
+  test('limiting a work hides it from others and keeps it for its author', async () => {
+    // report.subject_kind has allowed 'work' since the table was written while the resolver
+    // refused anything that was not a post — so a reported photograph could be filed and never
+    // acted on. A work is what a PERSON publishes, which makes it the case that matters most.
+    const db = new DatabaseSync(DB);
+    const t = new Date().toISOString();
+    db.prepare('INSERT INTO work (id,user_id,kind,title,body,created_at) VALUES (?,?,?,?,?,?)')
+      .run('wrk_ana', 'usr_ana', 'photo', 'a photo', 'caption', t);
+    db.close();
+
+    const filed = await api('/api/report', {
+      method: 'POST', as: 'ben',
+      body: { kind: 'work', subject: 'wrk_ana', reason: 'spam', detail: 'not ok' },
+    });
+    assert.equal(filed.status, 200);
+    const reportId = rows("SELECT id FROM report WHERE subject_id = 'wrk_ana'")[0].id;
+
+    const acted = await api('/api/moderation/limit', {
+      method: 'POST', body: { token: TOKEN, report: reportId, reason: 'under review' },
+    });
+    assert.equal(acted.status, 200, 'a work must be actionable, not just reportable');
+
+    const [work] = rows("SELECT body, limited_at FROM work WHERE id = 'wrk_ana'");
+    assert.ok(work.limited_at);
+    assert.equal(work.body, 'caption', 'limit retains — that is what makes it reversible');
+
+    const theirs = await api('/api/works?user=usr_ana', { as: 'ben' });
+    assert.equal(theirs.json.works.filter((w) => w.id === 'wrk_ana').length, 0,
+      'filtered before the row is built, so no media is attached to a hidden work');
+
+    const mine = await api('/api/works?user=usr_ana', { as: 'ana' });
+    assert.equal(mine.json.works.filter((w) => w.id === 'wrk_ana').length, 1,
+      'the author sees their own, or they cannot see what they are appealing');
+  });
+});
