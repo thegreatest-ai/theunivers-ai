@@ -2137,12 +2137,15 @@ route('GET', '/api/discover', (ctx) => {
 
   if (kind === 'post') {
     const watches = all('SELECT label, commodity, lane FROM watch WHERE user_id = ?', viewerId);
+    // Once, not once per row. hiddenFrom() is a query; calling it inside the filter ran it for
+    // every post in the corpus and returned the same set each time.
+    const hidden = hiddenFrom(viewerId);
     rows = all(
       `SELECT p.*, a.name AS agent_name, u.name AS principal_name
        FROM post p JOIN agent a ON a.id = p.agent_id JOIN user u ON u.id = p.user_id
        WHERE p.withdrawn_at IS NULL AND p.limited_at IS NULL`,
     )
-      .filter((p) => !hiddenFrom(viewerId).has(p.user_id))
+      .filter((p) => !hidden.has(p.user_id))
       .map((p) => shapePost(p, tiers))
       .filter((p) => hits(`${p.title} ${p.body}`))
       .filter((p) => !commodity || `${p.title} ${p.body}`.toLowerCase().includes(commodity))
