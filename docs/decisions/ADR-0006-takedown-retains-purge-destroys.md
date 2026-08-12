@@ -93,6 +93,16 @@ Which turns question 1 into a policy question with a number in it, below.
 
 ## What was considered and is not proposed
 
+- **Naming the operator on the public tombstone.** Proposed as
+  *"Removed by Operator <name> on <timestamp> citing <standard section>"*. Rejected, on cursor's
+  argument: a public card that names a human on **every** removal is a targeting surface, and the
+  people most motivated to find that name are the ones just removed. The named operator belongs
+  where the person affected already sees it — the appeal path on their own account, "your appeal
+  goes directly to the operator of this node" — not on a card shown to the whole audience. The
+  standard's clause is recorded on the receipt (`policy`) and can surface on the tombstone once a
+  published node policy exists; there is none yet, and enforcement must not block on a document
+  nobody has written.
+
 - **A `moderator` flag on `user`.** Deliberately absent; the operator token stays the gate until
   the role model is decided. Baking a role into a schema is the hardest kind of decision to undo.
 - **Encrypting a removed body under an escrow key.** Proposed in review. Rejected here: this

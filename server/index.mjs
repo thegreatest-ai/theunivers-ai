@@ -2536,6 +2536,15 @@ function resolveReport(ctx, action) {
   const reason = String(ctx.body.reason ?? '').trim();
   if (!reason) return err(400, 'a reason is required');
 
+  /*
+   * Which clause of the published standard was breached. Optional, because no node policy is
+   * published yet and blocking enforcement on a document nobody has written would mean the queue
+   * cannot be cleared — but recorded now so the receipt shape does not change when one exists.
+   * Recorded, never rendered on the public tombstone: see ADR-0006 on why that card must not name
+   * a clause or a human to the whole audience.
+   */
+  const policy = String(ctx.body.policy ?? '').trim().slice(0, 200) || null;
+
   const at = now();
 
   if (action === 'dismiss') {
@@ -2560,7 +2569,7 @@ function resolveReport(ctx, action) {
       run(`UPDATE report SET status = 'actioned', outcome = ?, decided_at = ?
             WHERE id = ? AND status = 'open'`, reason, at, report.id);
       return appendReceiptIn(p.user_id, MODERATION_ACTIONS.limit.receipt, {
-        post: p.id, report: report.id, reason, source: 'operator-token',
+        post: p.id, report: report.id, reason, policy, source: 'operator-token',
       });
     });
     return { report: report.id, action, post: p.id, at, receipt: receipt?.id ?? null };
@@ -2583,7 +2592,7 @@ function resolveReport(ctx, action) {
     // On the AUTHOR's chain: it is their record that this happened to them. An observation, not a
     // verdict — "a post was taken down under report X for this stated reason", never "guilty".
     return appendReceiptIn(p.user_id, MODERATION_ACTIONS.takedown.receipt, {
-      post: p.id, report: report.id, reason, bodySha256: digest, source: 'operator-token',
+      post: p.id, report: report.id, reason, policy, bodySha256: digest, source: 'operator-token',
     });
   });
 
