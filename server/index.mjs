@@ -1594,6 +1594,55 @@ route('GET', '/api/receipts', (ctx) => {
   return { receipts: chainFor(user.id), verification: verifyChain(user.id) };
 });
 
+/**
+ * The first five minutes, derived — never stored.
+ *
+ * ADR-0005 item 3: a signup becomes a user when they deploy an agent, state a mandate in their own
+ * words, and **see it refuse something**. The refusal is the product. A first run that never shows
+ * one has demonstrated a form, not a guarantee, and the person leaves without having met the only
+ * thing here they cannot get elsewhere.
+ *
+ * Every step is computed from the rows that would exist if it had happened, for the same reason
+ * follower counts and "3 new" are derived: a stored `onboarding_step` disagrees with reality the
+ * first time somebody deletes their agent, and then the interface argues with the database.
+ *
+ * `refusalSeen` reads `mandate_audit` for a recorded refusal — not a flag set when a screen was
+ * shown. The claim is "your agent was actually stopped", and only the guard's own record supports
+ * it.
+ */
+function firstRun(userId) {
+  const agent = one('SELECT * FROM agent WHERE user_id = ?', userId);
+  const mandate = agent
+    ? one("SELECT id FROM mandate WHERE agent_id = ? AND status = 'active'", agent.id)
+    : null;
+  const refusal = agent
+    ? one(`SELECT code, reason, created_at FROM mandate_audit
+           WHERE agent_id = ? AND allowed = 0 ORDER BY created_at DESC LIMIT 1`, agent.id)
+    : null;
+
+  const steps = [
+    { id: 'agent', done: Boolean(agent),
+      title: 'Deploy your agent',
+      why: 'It acts for you, under limits you set. Nothing happens here without one.' },
+    { id: 'mandate', done: Boolean(mandate),
+      title: 'Say what it may do',
+      why: 'In your own words — "sell red onion above 12 AED, up to 40t this month". You confirm what it understood before it counts.' },
+    { id: 'refusal', done: Boolean(refusal),
+      title: 'Watch it refuse something',
+      why: 'Ask it for a deal outside your limits. The refusal is recorded, and it is the thing you can show a counterparty.' },
+  ];
+
+  return {
+    steps,
+    done: steps.every((s) => s.done),
+    // The actual refusal, so the interface can show what was stopped rather than assert that
+    // something was. An empty state that claims a guarantee is the failure this exists to avoid.
+    lastRefusal: refusal
+      ? { code: refusal.code, reason: refusal.reason, at: refusal.created_at }
+      : null,
+  };
+}
+
 route('GET', '/api/me', (ctx) => {
   const user = ctx.user;
   if (!user) return err(401, 'sign in required');
@@ -1606,6 +1655,7 @@ route('GET', '/api/me', (ctx) => {
     agent: agent ? publicAgent(agent, true) : null,
     mandate: mandate ? publicMandate(mandate) : null,
     agentToken: agent?.api_token ?? null,
+    firstRun: firstRun(user.id),
   };
 });
 
