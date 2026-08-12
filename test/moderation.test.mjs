@@ -245,10 +245,9 @@ describe('resolving a report', () => {
 });
 
 test('a rung that is defined but not built is not callable', () => {
-  // limit and suspend exist in the ladder so the ADR and the code use one vocabulary. Neither is
-  // implemented, and a half-wired rung is worse than an absent one.
-  assert.deepEqual(AVAILABLE_ACTIONS.sort(), ['dismiss', 'takedown']);
-  assert.equal(MODERATION_ACTIONS.limit.implemented, false);
+  // suspend exists in the ladder so the ADR and the code use one vocabulary, and is not built. A
+  // half-wired rung is worse than an absent one, so the route enum derives from this flag.
+  assert.deepEqual(AVAILABLE_ACTIONS.sort(), ['dismiss', 'limit', 'takedown']);
   assert.equal(MODERATION_ACTIONS.suspend.implemented, false);
 });
 
@@ -272,5 +271,60 @@ describe('what a removal does to standing', () => {
 
     const raw = rows("SELECT COUNT(*) c FROM citation WHERE author_id = 'usr_ana'");
     assert.equal(raw[0].c, 1, 'and the row is still there — excluded from scoring, not deleted');
+  });
+});
+
+describe('limit is the rung that keeps the body', () => {
+  let reportId;
+
+  test('a second report exists to act on', async () => {
+    const db = new DatabaseSync(DB);
+    const t = new Date().toISOString();
+    db.prepare(`INSERT INTO post (id,agent_id,user_id,type,lane,title,body,created_at)
+                VALUES (?,?,?,?,?,?,?,?)`)
+      .run('pst_quarantine', 'agt_ana', 'usr_ana', 'result', 'produce', 'borderline', 'body kept', t);
+    db.close();
+    const r = await api('/api/report', {
+      method: 'POST', as: 'ben',
+      body: { kind: 'post', subject: 'pst_quarantine', reason: 'spam', detail: 'borderline' },
+    });
+    assert.equal(r.status, 200);
+    reportId = rows("SELECT id FROM report WHERE subject_id = 'pst_quarantine'")[0].id;
+  });
+
+  test('limiting hides the post and does NOT empty it', async () => {
+    const r = await api('/api/moderation/limit', {
+      method: 'POST', body: { token: TOKEN, report: reportId, reason: 'under review' },
+    });
+    assert.equal(r.status, 200);
+
+    const [post] = rows("SELECT title, body, limited_at FROM post WHERE id = 'pst_quarantine'");
+    assert.ok(post.limited_at);
+    assert.equal(post.body, 'body kept',
+      'retaining the body is the whole point — an undo that needs a shadow copy is the thing this avoids');
+  });
+
+  test('but nobody else can read it, and there is no parameter that says otherwise', async () => {
+    const seen = await api('/api/posts/pst_quarantine', { as: 'ben' });
+    assert.equal(seen.json.post.limited, true);
+    assert.equal(seen.json.post.title, undefined, 'quarantined means the body does not leave the row');
+    assert.equal(seen.json.post.body, undefined);
+
+    const forced = await api('/api/posts/pst_quarantine?includeLimited=true', { as: 'ben' });
+    assert.equal(forced.json.post.body, undefined, 'a query parameter must never reveal it');
+
+    const feed = await api('/api/feed', { as: 'ben' });
+    assert.equal(feed.json.posts.filter((p) => p.id === 'pst_quarantine').length, 0);
+  });
+
+  test('the author still sees their own, or they cannot appeal it', async () => {
+    const mine = await api('/api/posts/pst_quarantine', { as: 'ana' });
+    assert.equal(mine.json.post.body, 'body kept');
+  });
+
+  test('and the chain says what happened, in the ladder\'s own words', () => {
+    const [receipt] = rows("SELECT type, user_id FROM receipt WHERE type = 'moderation.limited'");
+    assert.ok(receipt, 'a moderation act with no receipt is not a moderation act');
+    assert.equal(receipt.user_id, 'usr_ana');
   });
 });

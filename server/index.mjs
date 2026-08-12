@@ -1871,7 +1871,7 @@ route('GET', '/api/feed', (ctx) => {
      FROM post p
      JOIN agent a ON a.id = p.agent_id
      JOIN user u ON u.id = p.user_id
-     WHERE p.withdrawn_at IS NULL`,
+     WHERE p.withdrawn_at IS NULL AND p.limited_at IS NULL`,
   ).filter((p) => !hidden.has(p.user_id));   // a block hides in BOTH directions
 
   // A saved search is the ONLY thing that personalises this, and you wrote it. Nothing here reads
@@ -1950,6 +1950,22 @@ route('GET', '/api/posts/:id', (ctx) => {
    */
   const viewerId = ctx.user?.id ?? ctx.agent?.user_id ?? null;
   if (isHidden(viewerId, p.user_id)) return err(404, 'no such post');
+
+  /*
+   * A LIMITED post is quarantined, not destroyed. The body is still in the row — that is the whole
+   * point of the rung — so this is the door that has to hold, and it holds in SQL rather than by
+   * trusting a caller. There is deliberately no ?includeLimited: a query parameter that reveals
+   * quarantined content is a privilege escalation with a friendly name.
+   *
+   * The author still sees their own, or they cannot see what they are appealing about.
+   */
+  if (p.limited_at && viewerId !== p.user_id) {
+    return { post: {
+      id: p.id, limited: true, limitedAt: p.limited_at,
+      principal: p.principal_name, agent: p.agent_name, at: p.created_at,
+      cited: citedCount(p.id),
+    } };
+  }
 
   /*
    * ADR-0003. A withdrawn post answers with a TOMBSTONE rather than a 404.
@@ -2105,7 +2121,7 @@ route('GET', '/api/discover', (ctx) => {
     rows = all(
       `SELECT p.*, a.name AS agent_name, u.name AS principal_name
        FROM post p JOIN agent a ON a.id = p.agent_id JOIN user u ON u.id = p.user_id
-       WHERE p.withdrawn_at IS NULL`,
+       WHERE p.withdrawn_at IS NULL AND p.limited_at IS NULL`,
     )
       .filter((p) => !hiddenFrom(viewerId).has(p.user_id))
       .map((p) => shapePost(p, tiers))
@@ -2511,6 +2527,26 @@ function resolveReport(ctx, action) {
     return { report: report.id, action, at };
   }
 
+  if (action === 'limit') {
+    if (report.subject_kind !== 'post') return err(400, 'only a post can be limited today');
+    const p = one('SELECT * FROM post WHERE id = ?', report.subject_id);
+    if (!p) return err(404, 'no such post');
+    if (p.withdrawn_at) return err(409, 'already gone');
+    if (p.limited_at) return err(409, 'already limited');
+
+    const receipt = inTransaction(() => {
+      // No emptying and no hash: the body is retained, which is what makes this reversible.
+      run(`UPDATE post SET limited_at = ?, limited_report_id = ?
+            WHERE id = ? AND limited_at IS NULL`, at, report.id, p.id);
+      run(`UPDATE report SET status = 'actioned', outcome = ?, decided_at = ?
+            WHERE id = ? AND status = 'open'`, reason, at, report.id);
+      return appendReceiptIn(p.user_id, MODERATION_ACTIONS.limit.receipt, {
+        post: p.id, report: report.id, reason, source: 'operator-token',
+      });
+    });
+    return { report: report.id, action, post: p.id, at, receipt: receipt?.id ?? null };
+  }
+
   if (report.subject_kind !== 'post') {
     return err(400, 'only a post can be taken down today — work, person and message need their own rungs');
   }
@@ -2552,6 +2588,18 @@ function resolveReport(ctx, action) {
  * The report transition lives in one function, so the two paths cannot diverge on how a report is
  * closed — which is the reason the single route existed in the first place.
  */
+/*
+ * LIMIT — the rung that is reversible because nothing was destroyed.
+ *
+ * gemini's argument for keeping it changed my mind: without a non-destructive middle state an
+ * operator faces a binary — tolerate it, or empty it irreversibly — and the pressure to keep a
+ * shadow copy so that "undo" works comes from exactly that binary. Here undo is clearing a
+ * timestamp, so no dark pool is needed and none should ever be built.
+ *
+ * Limit hides and retains. Takedown empties and does not reverse. Keeping those two opposite is
+ * what makes the ladder honest.
+ */
+route('POST', '/api/moderation/limit', (ctx) => resolveReport(ctx, 'limit'));
 route('POST', '/api/moderation/takedown', (ctx) => resolveReport(ctx, 'takedown'));
 route('POST', '/api/moderation/dismiss', (ctx) => resolveReport(ctx, 'dismiss'));
 

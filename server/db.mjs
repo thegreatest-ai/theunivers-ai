@@ -266,6 +266,17 @@ ensureColumn('post', 'taken_down_at', 'taken_down_at TEXT');
 ensureColumn('post', 'takedown_report_id', 'takedown_report_id TEXT');
 ensureColumn('post', 'body_sha256', 'body_sha256 TEXT');
 
+/*
+ * The reversible rung. LIMIT retains the body and hides it; TAKEDOWN empties the body and does not.
+ *
+ * That difference is the whole point of having both. Without a non-destructive middle state an
+ * operator faces a binary — tolerate it, or empty it irreversibly — and the pressure to keep a
+ * shadow copy so that 'undo' can work comes directly from that binary. A rung where nothing is
+ * destroyed needs no dark pool to reverse: clear the timestamp and the post is back.
+ */
+ensureColumn('post', 'limited_at', 'limited_at TEXT');
+ensureColumn('post', 'limited_report_id', 'limited_report_id TEXT');
+
 ensureColumn('user', 'reset_token', 'reset_token TEXT');
 ensureColumn('user', 'reset_expires', 'reset_expires TEXT');
 

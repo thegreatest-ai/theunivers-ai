@@ -17,10 +17,14 @@
  *
  * ─── The rungs ───────────────────────────────────────────────────────────────────────────
  *
- * `limit` is defined here but NOT implemented, deliberately. "Demote ranking" cannot ship in this
- * product: every ranking term appears in `why`, so a silent demotion is the unexplainable score
- * that both docs/specs/KNOWLEDGE-AND-CITATION.md §5 and invariant 07 forbid. Whatever `limit`
- * becomes, it has to be a visible, stated cap — and that is an owner decision, not a route.
+ * `limit` is a QUARANTINE, not a quiet demotion. It hides the post and RETAINS the body; takedown
+ * empties the body and does not reverse. Those two facts being opposite is what makes the ladder
+ * honest — and it is why no shadow backup store is needed to support an undo, which is the thing
+ * that would otherwise get built the first time an operator regretted a takedown.
+ *
+ * It is deliberately not a ranking demotion. Every ranking term appears in `why`, so a silent
+ * downrank is the unexplainable score that KNOWLEDGE-AND-CITATION §5 and invariant 07 both forbid.
+ * Hidden-and-said-so is appealable; quietly-scored-lower is not.
  */
 
 export const MODERATION_ACTIONS = {
@@ -32,8 +36,8 @@ export const MODERATION_ACTIONS = {
   limit: {
     rung: 1,
     receipt: 'moderation.limited',
-    sentence: 'Distribution of this was capped by the operator',
-    implemented: false,
+    sentence: 'This was limited by the operator while a report was reviewed',
+    implemented: true,
   },
   takedown: {
     rung: 2,
