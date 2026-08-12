@@ -129,6 +129,26 @@ describe('resolving a report', () => {
     })).status, 401, 'a signed-in person is not an operator — that is not decided in a schema');
   });
 
+  test('an agent token is not an operator token', async () => {
+    // An agent acts for a person under a mandate. No mandate carries the authority to moderate the
+    // platform, so the agent surface must not reach this route at all — not even to be told why.
+    const r = await new Promise((resolve, reject) => {
+      const payload = JSON.stringify({ report: reportId, action: 'takedown', reason: 'x' });
+      const req = request({
+        host: '127.0.0.1', port: PORT, path: '/api/moderation/resolve', method: 'POST', agent: false,
+        headers: {
+          Authorization: 'Bearer tok_agent_m_ben',
+          'content-type': 'application/json',
+          'content-length': Buffer.byteLength(payload),
+        },
+      }, (res) => { res.resume(); res.on('end', () => resolve({ status: res.statusCode })); });
+      req.on('error', reject);
+      req.write(payload);
+      req.end();
+    });
+    assert.equal(r.status, 401);
+  });
+
   test('a decision without a stated reason is refused', async () => {
     const r = await api('/api/moderation/resolve', {
       method: 'POST', body: { token: TOKEN, report: reportId, action: 'takedown', reason: '  ' },
