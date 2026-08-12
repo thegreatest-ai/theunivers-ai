@@ -46,6 +46,24 @@ const CITATION_WEIGHT = 10;
 const TIER_POINTS = { T0: 0, T1: 2, T2: 4, T3: 6, T4: 8 };
 
 /**
+ * What one citer's voice is worth, 0..1.
+ *
+ * Derived from the same ladder the standing term uses rather than a second table of its own, so
+ * the weight and the explanation of the weight cannot drift apart — the reason `shared/` exists.
+ *
+ * Squared, not linear. Linear made T0 worth a ninth of T4, so nine throwaway accounts bought what
+ * one established citer is worth — a farm that costs nothing beating a record that cost something,
+ * which is the outcome §5 names. Squared, it takes more than eighty.
+ *
+ * T0 is deliberately not zero. A citation from a brand-new account should be worth almost
+ * nothing, not nothing: a real newcomer's first act of citing someone's work would otherwise be
+ * silently discarded, and a term that can only ever be zero is not explainable to the person it
+ * was discarded from.
+ */
+export const citerWeight = (tier) =>
+  Math.round((((TIER_POINTS[tier] ?? 0) + 1) / (TIER_POINTS.T4 + 1)) ** 2 * 10000) / 10000;
+
+/**
  * How fast a claim goes stale, in hours per point.
  *
  * Different by type because the types are different KINDS of claim. An availability and a price
@@ -88,12 +106,25 @@ export function rank(post, viewer = {}) {
   const parts = [];
 
   const citers = Math.max(0, Number(post.cited ?? 0));
+  /*
+   * KNOWLEDGE-AND-CITATION §5: "a citation carries the weight of the citer… this makes a Sybil
+   * farm cost what standing costs". Registration is open, so an unweighted count is a free lever
+   * on standing. `citedWeight` is the sum of citerWeight() over the distinct citers.
+   *
+   * The fallback to the raw count is deliberate rather than defensive: a caller that has not
+   * computed the weight gets the old unweighted number AND a `because` that does not claim
+   * otherwise, because copy asserting a weighting that did not happen is the failure invariant 08
+   * exists to catch.
+   */
+  const weighted = post.citedWeight !== undefined;
+  const weight = weighted ? Math.max(0, Number(post.citedWeight)) : citers;
   parts.push({
     part: 'cited',
-    points: round(CITATION_WEIGHT * Math.log10(1 + citers)),
+    points: round(CITATION_WEIGHT * Math.log10(1 + weight)),
     because: citers === 0
       ? 'No agent has built on this yet'
-      : `${citers} ${citers === 1 ? "person's agent" : "people's agents"} built on this`,
+      : `${citers} ${citers === 1 ? "person's agent" : "people's agents"} built on this`
+        + (weighted ? ', each counted by the standing of whoever cited it' : ''),
   });
 
   const tier = TIER_POINTS[post.tier] === undefined ? 'T0' : post.tier;

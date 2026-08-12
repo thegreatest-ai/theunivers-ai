@@ -19,7 +19,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { rank, order, paginate, sideOf, WEIGHTS, PER_PAGE, MAX_PER_PAGE } from '../shared/ranking.mjs';
+import { rank, order, paginate, sideOf, citerWeight, WEIGHTS, PER_PAGE, MAX_PER_PAGE } from '../shared/ranking.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SERVER = readFileSync(join(ROOT, 'server', 'index.mjs'), 'utf8');
@@ -289,3 +289,45 @@ test('discover echoes the filters it applied', () => {
   // content that was there the whole time.
   assert.match(routeBody('GET', '/api/discover'), /applied: \{/);
 });
+
+/*
+ * KNOWLEDGE-AND-CITATION §5 — a citation carries the weight of the citer.
+ *
+ * Registration is open, so an unweighted count is a free lever on standing: N throwaway accounts
+ * citing each other move the number at no cost. §5's answer is that a Sybil farm should cost what
+ * standing costs, and standing is derived from anchors.
+ */
+test('a citer weight is derived from the tier ladder, and T0 is almost nothing but not nothing', () => {
+  assert.equal(citerWeight('T4'), 1);
+  assert.ok(citerWeight('T0') > 0, 'zero would silently discard a real newcomer\'s first citation');
+  assert.ok(citerWeight('T0') < 0.2, 'a brand-new account\'s voice must be worth almost nothing');
+  for (const [lower, higher] of [['T0', 'T1'], ['T1', 'T2'], ['T2', 'T3'], ['T3', 'T4']]) {
+    assert.ok(citerWeight(higher) > citerWeight(lower), `${higher} must outweigh ${lower}`);
+  }
+  assert.equal(citerWeight(undefined), citerWeight('T0'), 'an unknown tier is treated as the floor');
+});
+
+test('ten T0 citations score below one T4 citation', () => {
+  const farm = rank({ type: 'result', lane: 'produce', cited: 10, citedWeight: 10 * citerWeight('T0'), at: new Date().toISOString(), tier: 'T0' });
+  const real = rank({ type: 'result', lane: 'produce', cited: 1, citedWeight: citerWeight('T4'), at: new Date().toISOString(), tier: 'T0' });
+  const points = (r) => r.parts.find((p) => p.part === 'cited').points;
+  assert.ok(points(farm) < points(real),
+    `a ten-account farm (${points(farm)}) must not outscore one real citer (${points(real)})`);
+});
+
+test('the shown count stays the honest count even when the score is weighted', () => {
+  const r = rank({ type: 'result', lane: 'produce', cited: 4, citedWeight: 0.44, at: new Date().toISOString(), tier: 'T1' });
+  const cited = r.parts.find((p) => p.part === 'cited');
+  assert.match(cited.because, /^4 people's agents built on this/, 'four citers is a fact; do not round it by standing');
+  assert.match(cited.because, /counted by the standing/, 'a weighted score must say it is weighted');
+});
+
+test('an unweighted caller gets the old number and copy that does not claim otherwise', () => {
+  const r = rank({ type: 'result', lane: 'produce', cited: 4, at: new Date().toISOString(), tier: 'T1' });
+  const cited = r.parts.find((p) => p.part === 'cited');
+  assert.equal(cited.points, round2(WEIGHTS.CITATION_WEIGHT * Math.log10(5)));
+  assert.doesNotMatch(cited.because, /standing of whoever/,
+    'copy asserting a weighting that did not happen is exactly what invariant 08 catches');
+});
+
+const round2 = (n) => Math.round(n * 100) / 100 + 0;

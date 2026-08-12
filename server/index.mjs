@@ -18,7 +18,7 @@ import { measure, daily, totals } from './metrics.mjs';
 import { createOrder, transition, ordersFor, orderRow, publicOrder, roleOf } from './orders.mjs';
 import * as inspection from './inspection.mjs';
 import { chainFor, verifyChain } from './receipts.mjs';
-import { trustOf } from './trust.mjs';
+import { trustOf, tierOf } from './trust.mjs';
 import { analyseNote, analysisAvailable } from './analyse.mjs';
 import { draftFromInstruction, draftingAvailable } from './mandate-draft.mjs';
 import * as store from './storage.mjs';
@@ -37,7 +37,7 @@ import { checkMandates, resolveTier, rowToSnapshot } from './guard.mjs';
 import { hashPassword, verifyPassword } from './passwords.mjs';
 import { passwordError } from '../shared/password-policy.mjs';
 import { handleError } from '../shared/agent-name.mjs';
-import { rank, order, paginate, sideOf, PER_PAGE } from '../shared/ranking.mjs';
+import { rank, order, paginate, sideOf, citerWeight, PER_PAGE } from '../shared/ranking.mjs';
 import { review as reviewTerms } from '../shared/terms-diff.mjs';
 import {
   oauthConfigured, googleAuthUrl, githubAuthUrl,
@@ -930,6 +930,33 @@ const viewCounts = (postId) => ({
 /** Everything a creator has been cited for, for their profile. */
 const citedTotal = (authorId) =>
   one('SELECT COUNT(DISTINCT user_id) c FROM citation WHERE author_id = ?', authorId)?.c ?? 0;
+
+/*
+ * The same citations, weighted by who did the citing — KNOWLEDGE-AND-CITATION §5.
+ *
+ * The count above stays exactly as it was and is what the interface SHOWS: "four people's agents
+ * built on this" is a fact, and rounding it by standing would be dishonest. The weight is what
+ * SCORES. Registration is open, so an unweighted count is a free lever on standing, and §5 says
+ * the farm must cost what standing costs.
+ *
+ * One query then a tier lookup per distinct citer. At this scale that is cheaper than the join,
+ * and the ceiling is deliberate: past it the extra citers add nothing to the score, which is the
+ * same shape as the diminishing-returns rule and keeps a bot swarm from costing us a page load.
+ */
+const CITER_CEILING = 200;
+
+const weightedCiters = (rows) => {
+  let sum = 0;
+  for (const r of rows) sum += citerWeight(tierOf(r.user_id));
+  return Math.round(sum * 100) / 100;
+};
+
+const citedWeight = (postId) => weightedCiters(all(
+  `SELECT DISTINCT user_id FROM citation
+    WHERE post_id = ? AND author_id IS NOT NULL LIMIT ${CITER_CEILING}`, postId));
+
+const citedWeightTotal = (authorId) => weightedCiters(all(
+  `SELECT DISTINCT user_id FROM citation WHERE author_id = ? LIMIT ${CITER_CEILING}`, authorId));
 
 /**
  * Share something into a project.
@@ -1866,6 +1893,9 @@ function shapePost(p, tiers = new Map()) {
     // Three different claims, kept apart. Read → shared → cited is a ladder of increasing
     // commitment, and collapsing it into one number would throw away the only interesting part.
     cited: citedCount(p.id),
+    // Shown and scored are different numbers on purpose: the count is the honest fact, the
+    // weight is what rank() turns into points. See citedWeight().
+    citedWeight: citedWeight(p.id),
     views: viewCounts(p.id),
   };
 }
@@ -2060,6 +2090,7 @@ route('GET', '/api/discover', (ctx) => {
         // Sent so the client can disable the share control rather than offer it and then refuse.
         shareable: Boolean(w.shareable),
         cited: citedTotal(w.user_id),
+        citedWeight: citedWeightTotal(w.user_id),
         at: w.created_at,
       }));
   }
@@ -2079,6 +2110,7 @@ route('GET', '/api/discover', (ctx) => {
           commodity: m?.commodity ?? null,
           scope: m?.scope ?? null,
           cited: citedTotal(a.user_id),
+          citedWeight: citedWeightTotal(a.user_id),
           at: a.created_at,
         };
       })
@@ -2113,7 +2145,15 @@ const tierRank = (t) => TIER_ORDER.indexOf(String(t ?? 'T0'));
  * exist. Rather than invent terms to fill the shape, the ones that do not apply are simply absent
  * — a score with a made-up component in it is the thing this whole design refuses.
  */
-const standingScore = (r) => tierRank(r.tier) * 2 + 10 * Math.log10(1 + (r.cited ?? 0));
+/*
+ * Standing = derived tier, plus what others' agents have built on the work — weighted by the
+ * standing of whoever built on it, per KNOWLEDGE-AND-CITATION §5. An unweighted count here was a
+ * free lever: registration is open, so N throwaway accounts citing each other moved this number
+ * at no cost. Falls back to the raw count so a caller that did not compute the weight still
+ * ranks, rather than silently scoring every row at zero.
+ */
+const standingScore = (r) =>
+  tierRank(r.tier) * 2 + 10 * Math.log10(1 + (r.citedWeight ?? r.cited ?? 0));
 
 route('GET', '/api/messages', (ctx) => {
   const user = ctx.user;
