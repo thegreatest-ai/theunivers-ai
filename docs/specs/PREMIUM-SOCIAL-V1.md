@@ -112,17 +112,18 @@ round plan exists to close.
 | Comments, replies, reactions | Nothing accumulates around a work | A counter column on `work` |
 | Notifications | Events are delivered; nothing models what a person has *seen* | Storing "3 new" — derive it, as `watch.last_seen_at` already does |
 | Moderation, reporting, blocking | **Registration is open now.** No report route, no block, no takedown | A manual database edit |
-| Edit / delete / archive | A person cannot remove what they published | A hard delete — see the warning below |
+| Edit / archive | A person cannot amend or shelve what they published | A hard delete — withdrawal is the shape, see below |
 | Search | Discover is a ranked feed, not a search | A `LIKE` bolted onto the feed endpoint |
 | Onboarding, privacy settings | No first run, no per-work audience control | A settings blob |
 | Team / roles | An account may be a business, but there is no second member, no roles, no shared ownership | Two people sharing one login |
 
-**Warning that governs every delete in this build.** `source.post_id` and `source.author_id` carry
-**no foreign key** — only `note_id` and `user_id` do. Deleting a post today does not error; it
-leaves citations pointing at content that no longer exists, silently. This was hit for real on
-2026-08-12 and cleaned by hand. **Decide the rule before shipping user-facing delete:** `CASCADE`
-if a citation of deleted content should vanish, `RESTRICT` if a cited post must not be deletable.
-For an evidence product `RESTRICT` is probably right. Logged in `docs/KNOWN-ISSUES.md`.
+**The delete rule is DECIDED and BUILT.** `source.post_id`, `source.author_id`,
+`citation.post_id` and `citation.author_id` are now declared `ON DELETE RESTRICT`, and the
+user-facing act is **withdrawal**, not deletion — see
+`docs/decisions/ADR-0003-a-post-is-withdrawn-never-deleted.md`. Withdrawal stamps `withdrawn_at`
+and empties title and body in one statement; the row survives so a citation still resolves, to a
+tombstone rather than a 404. `POST /api/posts/:id/withdraw` is author-only, and **no route hard-
+deletes a post**. Edit and archive are still unbuilt; build them on this shape.
 
 ---
 

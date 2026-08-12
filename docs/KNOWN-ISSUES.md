@@ -12,9 +12,11 @@ which was read as "one account" and is how a seeded `@example.com` row went unno
 
 That test account was deleted on 2026-08-12, along with the two rows on the owner's second account
 that referenced its post — a source citing it and a view of it. Deleting the post alone would not
-have errored: `source.post_id` and `source.author_id` carry **no foreign key**, so the citation
-would have been left pointing at content that no longer existed, which is the one failure this
-product cannot afford. `PRAGMA foreign_key_check` is clean and no reference dangles.
+have errored at the time: those columns carried **no foreign key**, so the citation would have been
+left pointing at content that no longer existed. **That hole is now closed** — the references are
+declared `RESTRICT` and the same delete raises, per
+`docs/decisions/ADR-0003-a-post-is-withdrawn-never-deleted.md`. `PRAGMA foreign_key_check` is clean
+and no reference dangles.
 
 There are now **zero posts** in production, since the only one belonged to that account.
 
@@ -91,21 +93,6 @@ nothing else.
 
 ---
 
-## LOW — a citation can outlive the post it cites, and nothing notices
-
-`source.post_id` and `source.author_id` have **no foreign key**; only `note_id` and `user_id` do.
-Deleting a post therefore does not error — it leaves every source and citation of that post
-pointing at content that no longer exists, which on a product whose claim is that a citation is
-evidence is the worst available shape: a reference that looks intact and resolves to nothing.
-
-Found by tracing the 2026-08-12 account deletion rather than by hitting it; the affected rows were
-removed by hand in the same transaction. Nothing prevents the next one.
-
-**Fix:** declare the references and decide the rule — `ON DELETE CASCADE` if a citation of deleted
-content should vanish, `RESTRICT` if a cited post should not be deletable at all. The second is
-probably right for an evidence product, and is the larger conversation.
-
----
 
 
 ## LOW — SSE subscribers are per-process
@@ -141,6 +128,43 @@ removes the worst of the drift risk, but the consolidation decision is still ope
 ---
 
 ## Resolved, kept for the lessons
+
+<details><summary>A citation could outlive the post it cited, and nothing noticed</summary>
+
+`source.post_id`, `source.author_id`, `citation.post_id` and `citation.author_id` referenced rows
+by id and declared **no foreign key** — only `note_id` and `user_id` did. Deleting a post therefore
+did not error; it left every source and citation of that post pointing at content that no longer
+existed. On a product whose claim is that a citation is evidence, that is the worst available
+shape: a reference that looks intact and resolves to nothing.
+
+Found by tracing the 2026-08-12 account deletion rather than by being hit by it. The affected rows
+were removed by hand at the time.
+
+**`CASCADE` or `RESTRICT` turned out to be the wrong question**, and `docs/decisions/ADR-0003-a-post-is-withdrawn-never-deleted.md`
+records why. `CASCADE` lets an author erase other people's evidence — post, get cited widely,
+delete, and every citer's provenance evaporates. `RESTRICT` alone would have made **takedown
+structurally impossible**, since a citation is trivial to obtain and a cited post could then never
+be removed. They only conflict if "delete" is assumed to mean `DELETE`.
+
+Settled as `RESTRICT` at the constraint, with **withdrawal** as the user-facing act: `withdrawn_at`
+is stamped, title and body are emptied in the same statement, the row survives, and a citation of it
+resolves to a tombstone rather than a 404 — because a 404 tells the citer their source never
+existed.
+
+Two lessons worth keeping. **SQLite has no `ALTER TABLE ADD CONSTRAINT`**, so this needed the
+documented table rebuild, and `PRAGMA foreign_keys` is a no-op inside a transaction — set it after
+`BEGIN` and the copy is silently validated against the old shape. And the first version of the
+guard used `PRAGMA foreign_key_list` to decide whether to migrate, which returns an empty list for
+a table that does not exist yet: an absent table read as one needing migration, and the rebuild
+generated `INSERT INTO x__new () SELECT FROM x`. Caught by running it on a fresh database.
+
+`test/withdraw-migration.test.mjs` exists because `test/withdraw.test.mjs` builds a *fresh*
+database, which gets the constraints from the CREATE TABLE and never runs the migration at all.
+The rebuild is the part that can lose rows, so it is tested against an old-shape database with rows
+in it.
+
+</details>
+
 
 <details><summary>`.env` could not set `DB_PATH`, and said nothing about it</summary>
 
