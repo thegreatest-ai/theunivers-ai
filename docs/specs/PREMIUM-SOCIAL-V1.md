@@ -274,7 +274,7 @@ notification delivered to one connection will not reach a tab held by the other.
 
 | Decision | Blocks |
 |---|---|
-| **The delete rule** — `CASCADE` or `RESTRICT` on citations of deleted content | All of phase 3 |
+| ~~**The delete rule**~~ — **DECIDED 2026-08-12, see `docs/decisions/ADR-0003-a-post-is-withdrawn-never-deleted.md`.** `RESTRICT` at the foreign key; the user-facing action is **withdrawal**, not deletion. `CASCADE` would let an author erase other people's evidence; `RESTRICT` alone would have made takedown structurally impossible. **Phase 3 is unblocked.** The FK rebuild is cheapest NOW — `post`, `source`, `citation`, `view` are all 0 rows in production | ~~All of phase 3~~ — unblocked |
 | **Moderation posture** — who reviews a report, against what written standard | Any real audience; registration is already open |
 | **Media at scale** — the 900MB volume is right for photographs, wrong for video | Video as a first-class kind |
 | **Region** — `bom` suits UAE and India and is Fly's most expensive egress band | Cost at growth |
