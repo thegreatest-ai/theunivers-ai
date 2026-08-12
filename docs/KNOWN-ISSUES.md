@@ -3,7 +3,13 @@
 Everything currently wrong or unfinished, worst first. **If you fix one, delete it here in the same
 commit** — a stale known-issues file is worse than none, because people stop trusting it.
 
-Last reviewed: 2026-08-12 · registration is OPEN · 1 real user · nothing HIGH is open
+Last reviewed: 2026-08-12 · registration is OPEN · nothing HIGH is open
+
+Three accounts exist in production: the owner's, **one real signup** (2026-08-10), and one test
+account on `@example.com` created during the 08-11 build session. Counted from `/data/pilot.db` on
+the live machine, not from memory — an earlier note here said "1 real user" and was read as
+"one account", which is how a test row went unnoticed. The test row should be deleted; a seeded
+account in a production database inflates every count taken from it.
 
 ---
 
