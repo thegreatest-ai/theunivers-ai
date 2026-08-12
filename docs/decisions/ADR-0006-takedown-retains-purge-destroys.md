@@ -60,9 +60,28 @@ correct there because at that point the law is not interested in a citer's evide
 - An operator removal stops paying the author (`d4c2f1c`); an author's withdrawal does not.
   Withdrawing your own work does not unmake that somebody built on it.
 
-## The two questions only the owner can answer
+## What changed after the first draft: `limit` shipped
 
-1. **Is an operator-only locker built at all?** Retaining makes an appeal adjudicable and makes
+`fe02419` added the middle rung, and it mostly answers question 1 without a locker. **`limit`
+hides the post and retains the body**; **`takedown` empties it and does not reverse.** Anything an
+operator might reverse is a limit, so there is no reversible-takedown to fake and no shadow store
+needed to support an undo — which was the pressure that would have produced one.
+
+gemini then argued the DSA case: an operator removal must leave the content adjudicable for the
+duration of a dispute window, or an appeal cannot be heard and a rogue removal cannot be traced.
+That argument does not need a schema change — the non-destructive state already exists. It needs a
+**procedure**: an operator limits first, and may only take down once the dispute window has closed.
+Which turns question 1 into a policy question with a number in it, below.
+
+## The questions only the owner can answer
+
+1. **Must a takedown be preceded by a limit, and for how long?** If yes, this is a guard on the
+   takedown route — refuse unless the post has been limited for N days — plus a severity bypass for
+   CSAM and live exploit payloads, which must never sit in the database waiting out a window. Pick
+   N, or say the operator judges it case by case and the ladder is advisory. This has replaced the
+   locker question below, which the `limit` rung largely dissolved.
+
+1b. **Is an operator-only locker built at all?** Retaining makes an appeal adjudicable and makes
    operator abuse visible. It also means a store somewhere holds content removed for being
    abusive, which is a real liability for a subset of cases — and it is a third store to secure,
    back up and eventually purge. The cheaper answer is already shipped and may be enough: the
