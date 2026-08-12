@@ -222,6 +222,39 @@ describe('messaging a person who does not follow you', () => {
     assert.deepEqual(thread.json.messages.map((m) => m.mine), [true, true, false]);
   });
 
+  test('replying to a request accepts it — you cannot answer and still be deciding', async () => {
+    // A fresh pair, so this is independent of the accept/decline above.
+    const db = new DatabaseSync(DB);
+    const t = new Date().toISOString();
+    db.prepare('INSERT INTO user (id,email,name,created_at) VALUES (?,?,?,?)')
+      .run('usr_dee', 'dee@example.test', 'Dee', t);
+    db.prepare('INSERT INTO session (token,user_id,created_at) VALUES (?,?,?)')
+      .run('tok_session_dee', 'usr_dee', t);
+    db.close();
+    TOK.dee = 'tok_session_dee';
+
+    const opened = await api('/api/people/messages', {
+      method: 'POST', as: 'ana', body: { person: 'usr_dee', body: 'A cold approach.' },
+    });
+    assert.equal(opened.json.thread.state, 'pending');
+
+    // Dee replies WITHOUT calling decide.
+    const reply = await api('/api/people/messages', {
+      method: 'POST', as: 'dee', body: { person: 'ana.works', body: 'Go on then.' },
+    });
+    assert.equal(reply.status, 200);
+    assert.equal(reply.json.thread.state, 'accepted', 'the reply itself is the acceptance');
+
+    // And the original sender is no longer capped — the bug this test exists for was that they were.
+    const second = await api('/api/people/messages', {
+      method: 'POST', as: 'ana', body: { person: 'usr_dee', body: 'Here is the detail.' },
+    });
+    assert.equal(second.status, 200, 'a replied-to thread must not still cap the opener at one');
+
+    const dees = await api('/api/people/threads', { as: 'dee' });
+    assert.equal(dees.json.requests, 0, 'and it must not still show as an undecided request');
+  });
+
   test('a second decision on a settled thread is refused', async () => {
     const id = (await api('/api/people/threads', { as: 'ben' })).json.threads[0].id;
     const r = await api('/api/people/threads/decide', {

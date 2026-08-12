@@ -2310,6 +2310,18 @@ route('POST', '/api/people/messages', (ctx) => {
     if (already >= 1) return err(429, 'one message until they accept your request');
   }
 
+  /*
+   * REPLYING IS ACCEPTING. You cannot have answered somebody and still be deciding whether to hear
+   * from them.
+   *
+   * Without this the recipient could reply and the thread stayed `pending`: their own inbox went on
+   * showing an undecided request they had already answered, and the sender stayed capped at one
+   * message forever — a conversation that reads as open to both people and is silently one-way.
+   */
+  if (thread.state === 'pending' && thread.opened_by !== ctx.user.id) {
+    run("UPDATE person_thread SET state = 'accepted', decided_at = ? WHERE thread_id = ?", now(), id);
+  }
+
   const mid = `pmsg_${randomUUID().slice(0, 8)}`;
   run(`INSERT INTO person_message (id, thread_id, from_user_id, to_user_id, body, created_at)
        VALUES (?,?,?,?,?,?)`, mid, id, ctx.user.id, target.id, body, now());
