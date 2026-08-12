@@ -2525,6 +2525,20 @@ route('GET', '/api/moderation/queue', (ctx) => {
  * is the honest provenance; inventing a signer to satisfy the phrase "reviewer as signer" would
  * put a name in the record that nothing backs.
  */
+/*
+ * A lost compare-and-swap is a 409, not a 500.
+ *
+ * Two operators acting on the same report at once is rare and entirely possible. The losing call
+ * changes no row, so it must not append a receipt either — a record of an act that did not happen
+ * is worse than no record in a product whose claim is the record. Throwing inside the transaction
+ * rolls the report transition back with it; this turns that into an honest answer.
+ */
+const RACE = 'RACE_LOST';
+function raced(fn) {
+  try { return { ok: true, value: fn() }; }
+  catch (e) { if (e?.message === RACE) return { ok: false }; throw e; }
+}
+
 function resolveReport(ctx, action) {
   const ok = operatorAuthorised(ctx);
   if (ok === null) return err(404, 'not found');
@@ -2570,17 +2584,22 @@ function resolveReport(ctx, action) {
     if (p.withdrawn_at) return err(409, 'already gone');
     if (p.limited_at) return err(409, 'already limited');
 
-    const receipt = inTransaction(() => {
+    const attempt = raced(() => inTransaction(() => {
       // No emptying and no hash: the body is retained, which is what makes this reversible.
-      run(`UPDATE ${table} SET limited_at = ?, limited_report_id = ?
+      const moved = run(`UPDATE ${table} SET limited_at = ?, limited_report_id = ?
             WHERE id = ? AND limited_at IS NULL`, at, report.id, p.id);
+      // Compare-and-swap against the row we read at the top. If a concurrent call got there first
+      // this changes nothing — and appending a receipt anyway would record an act that did not
+      // happen. Throwing aborts the transaction, so the report transition goes back too.
+      if (moved.changes !== 1) throw new Error('RACE_LOST');
       run(`UPDATE report SET status = 'actioned', outcome = ?, decided_at = ?
             WHERE id = ? AND status = 'open'`, reason, at, report.id);
       return appendReceiptIn(p.user_id, MODERATION_ACTIONS.limit.receipt, {
         post: p.id, report: report.id, reason, policy, source: 'operator-token',
       });
-    });
-    return { report: report.id, action, post: p.id, at, receipt: receipt?.id ?? null };
+    }));
+    if (!attempt.ok) return err(409, 'already limited');
+    return { report: report.id, action, post: p.id, at, receipt: attempt.value?.id ?? null };
   }
 
   if (report.subject_kind !== 'post') {
@@ -2604,13 +2623,16 @@ function resolveReport(ctx, action) {
    */
   const alreadyWithdrawn = Boolean(p.withdrawn_at);
   const digest = alreadyWithdrawn ? (p.body_sha256 ?? null) : postDigest(p);
-  const receipt = inTransaction(() => {
+  const attempt = raced(() => inTransaction(() => {
     // COALESCE keeps the author's own withdrawal timestamp when there is one: they did withdraw
     // it, and overwriting that would rewrite their act as ours.
-    run(`UPDATE post SET withdrawn_at = COALESCE(withdrawn_at, ?), taken_down_at = ?,
+    const moved = run(`UPDATE post SET withdrawn_at = COALESCE(withdrawn_at, ?), taken_down_at = ?,
                          takedown_report_id = ?, body_sha256 = COALESCE(body_sha256, ?),
                          title = '', body = '', referent = NULL
           WHERE id = ? AND taken_down_at IS NULL`, at, at, report.id, digest, p.id);
+    // Same compare-and-swap, same reason: a receipt for a takedown that changed no row is a
+    // record of something that did not happen, and this chain is the product.
+    if (moved.changes !== 1) throw new Error('RACE_LOST');
     run(`UPDATE report SET status = 'actioned', outcome = ?, decided_at = ?
           WHERE id = ? AND status = 'open'`, reason, at, report.id);
     // On the AUTHOR's chain: it is their record that this happened to them. An observation, not a
@@ -2621,12 +2643,13 @@ function resolveReport(ctx, action) {
       // though the operator removed something that was still up.
       alreadyWithdrawn, source: 'operator-token',
     });
-  });
+  }));
+  if (!attempt.ok) return err(409, 'already taken down');
 
   return {
     report: report.id, action, post: p.id, at,
     bodySha256: digest,
-    receipt: receipt?.id ?? null,
+    receipt: attempt.value?.id ?? null,
     citations: citedCount(p.id),
   };
 }
