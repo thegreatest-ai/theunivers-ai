@@ -103,6 +103,20 @@ before(async () => {
   db.prepare(`INSERT INTO post (id,agent_id,user_id,type,lane,title,body,created_at)
               VALUES (?,?,?,?,?,?,?,?)`)
     .run('pst_target', 'agt_ana', 'usr_ana', 'result', 'produce', TITLE, BODY, t);
+  // A citation of the post that will be removed, so the standing question is testable: ben's
+  // agent built on ana's post. project → note → source → citation, the real chain.
+  db.prepare('INSERT INTO project (id,user_id,name,created_at,updated_at) VALUES (?,?,?,?,?)')
+    .run('prj_ben', 'usr_ben', 'work', t, t);
+  db.prepare('INSERT INTO note (id,project_id,user_id,title,created_at,updated_at) VALUES (?,?,?,?,?,?)')
+    .run('nte_ben', 'prj_ben', 'usr_ben', 'a note', t, t);
+  db.prepare(`INSERT INTO source (id,note_id,user_id,post_id,author_id,title,created_at)
+              VALUES (?,?,?,?,?,?,?)`)
+    .run('src_ben', 'nte_ben', 'usr_ben', 'pst_target', 'usr_ana', 'ana post', t);
+  db.prepare(`INSERT INTO citation (id,note_id,source_id,user_id,post_id,author_id,used_for,
+                                   content_hash,cited_state,created_at)
+              VALUES (?,?,?,?,?,?,?,?,?,?)`)
+    .run('cit_ben', 'nte_ben', 'src_ben', 'usr_ben', 'pst_target', 'usr_ana', 'built on it',
+         'deadbeef', 'live', t);
   db.close();
 });
 
@@ -234,4 +248,27 @@ test('a rung that is defined but not built is not callable', () => {
   assert.deepEqual(AVAILABLE_ACTIONS.sort(), ['dismiss', 'takedown']);
   assert.equal(MODERATION_ACTIONS.limit.implemented, false);
   assert.equal(MODERATION_ACTIONS.suspend.implemented, false);
+});
+
+describe('what a removal does to standing', () => {
+  test('the citing row survives the takedown — it is the citer\'s record, not the author\'s', () => {
+    const [row] = rows("SELECT post_id, content_hash, author_id FROM citation WHERE id = 'cit_ben'");
+    assert.ok(row, 'deleting it would be the CASCADE this schema declared RESTRICT to prevent');
+    assert.equal(row.post_id, 'pst_target', 'still pointing at the tombstone, not orphaned');
+    assert.equal(row.content_hash, 'deadbeef', 'and still saying what was built on');
+  });
+
+  test('but the author keeps no standing from a post the operator removed', () => {
+    // Withdrawal and removal are different facts. Withdrawing your own work does not unmake that
+    // somebody built on it; a post removed for breaching the standard must not keep paying its
+    // author, or removal is a cost-free price for a citation farm.
+    const seen = rows(
+      `SELECT COUNT(DISTINCT c.user_id) c FROM citation c
+         LEFT JOIN post p ON p.id = c.post_id
+        WHERE c.author_id = 'usr_ana' AND p.taken_down_at IS NULL`);
+    assert.equal(seen[0].c, 0, 'the removed post must not count toward ana');
+
+    const raw = rows("SELECT COUNT(*) c FROM citation WHERE author_id = 'usr_ana'");
+    assert.equal(raw[0].c, 1, 'and the row is still there — excluded from scoring, not deleted');
+  });
 });

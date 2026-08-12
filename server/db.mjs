@@ -266,20 +266,6 @@ ensureColumn('post', 'taken_down_at', 'taken_down_at TEXT');
 ensureColumn('post', 'takedown_report_id', 'takedown_report_id TEXT');
 ensureColumn('post', 'body_sha256', 'body_sha256 TEXT');
 
-/*
- * A citation binds WHAT it was built on, not just which row.
- *
- * Without this a citation is a pair of ids, and the thing they point at can change or empty out
- * underneath it — so the citer's own record of what they used becomes unverifiable through no act
- * of theirs. content_hash is the cited body at the moment of citing; cited_state is what it was
- * then. Bound at insert, never recomputed: a later withdrawal or takedown moves the READER's view
- * to 'historically valid, currently unavailable' and must not invalidate anybody downstream.
- *
- * This is also what stops a dependency walk being added to verifyChain later. There is nothing to
- * walk — the fact is already in the row.
- */
-ensureColumn('citation', 'content_hash', 'content_hash TEXT');
-ensureColumn('citation', 'cited_state', "cited_state TEXT NOT NULL DEFAULT 'live'");
 ensureColumn('user', 'reset_token', 'reset_token TEXT');
 ensureColumn('user', 'reset_expires', 'reset_expires TEXT');
 
@@ -857,6 +843,21 @@ ensureForeignKeys('citation', {
     'CREATE INDEX IF NOT EXISTS citation_author_idx ON citation(author_id)',
   ],
 });
+
+/*
+ * A citation binds WHAT it was built on, not just which row.
+ *
+ * Without this a citation is a pair of ids, and the thing they point at can change or empty out
+ * underneath it — so the citer's own record of what they used becomes unverifiable through no act
+ * of theirs. content_hash is the cited body at the moment of citing; cited_state is what it was
+ * then. Bound at insert, never recomputed: a later withdrawal or takedown moves the READER's view
+ * to 'historically valid, currently unavailable' and must not invalidate anybody downstream.
+ *
+ * This is also what stops a dependency walk being added to verifyChain later. There is nothing to
+ * walk — the fact is already in the row.
+ */
+ensureColumn('citation', 'content_hash', 'content_hash TEXT');
+ensureColumn('citation', 'cited_state', "cited_state TEXT NOT NULL DEFAULT 'live'");
 
 export function one(sql, ...params) {
   return db.prepare(sql).get(...params) ?? null;

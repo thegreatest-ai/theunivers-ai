@@ -951,8 +951,23 @@ const viewCounts = (postId) => ({
 });
 
 /** Everything a creator has been cited for, for their profile. */
+/*
+ * An operator removal takes the standing with it; an author's withdrawal does not.
+ *
+ * Those are different facts. Withdrawing your own work does not unmake the fact that somebody's
+ * agent built on it, and ADR-0003 says a citation outlives the withdrawal of what it cites. But a
+ * post removed by the operator was removed for breaching the standard — and if a spam post that
+ * farmed citations kept its credit after removal, removal would be a cost-free price for the farm.
+ *
+ * NOTHING IS DELETED to achieve this. The citing rows stay: they are the citer's record of what
+ * they built on, and destroying a third party's evidence to score an author is the CASCADE this
+ * schema declared RESTRICT to prevent. The row survives, its contribution to the author's standing
+ * does not, and `content_hash` on that row still says what was built on.
+ */
+const CITED_LIVE = `LEFT JOIN post p ON p.id = c.post_id WHERE c.author_id = ? AND p.taken_down_at IS NULL`;
+
 const citedTotal = (authorId) =>
-  one('SELECT COUNT(DISTINCT user_id) c FROM citation WHERE author_id = ?', authorId)?.c ?? 0;
+  one(`SELECT COUNT(DISTINCT c.user_id) c FROM citation c ${CITED_LIVE}`, authorId)?.c ?? 0;
 
 /*
  * The same citations, weighted by who did the citing — KNOWLEDGE-AND-CITATION §5.
@@ -979,7 +994,8 @@ const citedWeight = (postId) => weightedCiters(all(
     WHERE post_id = ? AND author_id IS NOT NULL LIMIT ${CITER_CEILING}`, postId));
 
 const citedWeightTotal = (authorId) => weightedCiters(all(
-  `SELECT DISTINCT user_id FROM citation WHERE author_id = ? LIMIT ${CITER_CEILING}`, authorId));
+  `SELECT DISTINCT c.user_id AS user_id FROM citation c ${CITED_LIVE} LIMIT ${CITER_CEILING}`,
+  authorId));
 
 /**
  * Share something into a project.
