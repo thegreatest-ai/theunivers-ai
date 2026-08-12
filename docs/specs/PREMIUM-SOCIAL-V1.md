@@ -270,15 +270,37 @@ notification delivered to one connection will not reach a tab held by the other.
 
 ---
 
-## 8c. Open decisions — the owner's call, not a seat's
+## 8c. Decisions — delegated to the crew (owner, 2026-08-12)
+
+**The owner has delegated these to the seats.** The instruction was explicit: *the principles of
+social apps already exist and we are not inventing them* — so each of these is **researched against
+established practice, then decided**, not argued from first principles and not escalated back.
+
+**How a decision closes.** A seat owns it, posts a proposal with its basis in the crew thread,
+takes challenge, and records the outcome in `docs/decisions/` as an ADR. **Deciding by the end of
+round 2 is the job; silence by then is consent to the stated default.** A decision that stalls is
+worse than a default that is written down, because the default happens anyway — it just happens
+unrecorded.
+
+| Decision | Owner | Default if the round closes in silence |
+|---|---|---|
+| **Moderation posture** — who reviews a report, against what written standard, and what the enforcement ladder is | gemini | A published standard before any outside user; one named human reviewer; a ladder of limit → remove → suspend; **every enforcement action writes a receipt**, because a record of conduct is what this product claims to be; appeal goes to the same human and the interface says so rather than implying a panel |
+| **Media at scale** — the 900MB volume against object storage | openclaw + claude-code | Stay on the volume for photographs and documents; **video is what breaks it**, so video does not become a first-class kind until object storage is in place. Triggered, not scheduled — `SCALING.md` §2 holds the arithmetic |
+| **Region** — `bom` serves UAE and India and is the most expensive egress band | openclaw | Stay in `bom`, because origin belongs near the users; egress is already cut by compression and caching, and is ~$0.006/mo today. Revisit when egress is material, not before |
+| **May a business publish as itself** | claude-code | Yes — a business publishes as the business, **and the acting member is recorded**. This is the established org-account pattern, and it is the only shape compatible with the phase 4 exit gate that every act stay attributable to a human |
+
+**Not delegated.** Anything that spends money, changes the domain, or accepts legal exposure on the
+owner's behalf stays with the owner.
+
+---
+
+## 8d. Previously open, now settled
 
 | Decision | Blocks |
 |---|---|
-| ~~**The delete rule**~~ — **DECIDED 2026-08-12, see `docs/decisions/ADR-0003-a-post-is-withdrawn-never-deleted.md`.** `RESTRICT` at the foreign key; the user-facing action is **withdrawal**, not deletion. `CASCADE` would let an author erase other people's evidence; `RESTRICT` alone would have made takedown structurally impossible. **Phase 3 is unblocked.** The FK rebuild is cheapest NOW — `post`, `source`, `citation`, `view` are all 0 rows in production | ~~All of phase 3~~ — unblocked |
-| **Moderation posture** — who reviews a report, against what written standard | Any real audience; registration is already open |
-| **Media at scale** — the 900MB volume is right for photographs, wrong for video | Video as a first-class kind |
-| **Region** — `bom` suits UAE and India and is Fly's most expensive egress band | Cost at growth |
-| **May a business publish as itself**, or only through a named person | Whether a work needs an owner separate from its author |
+| Decision | Outcome |
+|---|---|
+| **The delete rule** — `CASCADE` or `RESTRICT` on citations of deleted posts | **`RESTRICT` at the foreign key; the user-facing action is withdrawal, not deletion.** `CASCADE` would let an author erase other people's evidence; `RESTRICT` alone would have made takedown structurally impossible. See `docs/decisions/ADR-0003-a-post-is-withdrawn-never-deleted.md`. **Phase 3 unblocked.** The FK rebuild is cheapest now — `post`, `source`, `citation` and `view` are all 0 rows in production |
 
 ---
 
