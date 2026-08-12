@@ -19,9 +19,23 @@ error — it leaves citations pointing at content that no longer exists, silentl
    withdrawn and when.
 4. A withdrawn post **earns no further standing**. Tier is derived, so derivation excludes it; no
    count is edited, because no count is stored.
-5. A true hard delete exists only as an **operator takedown**, which removes the citing rows
-   deliberately in one transaction. The `RESTRICT` makes a careless one fail loudly instead of
-   orphaning silently.
+5. **AMENDED 2026-08-12 — the original text of this clause was wrong.** It said a true hard delete
+   exists only as an operator takedown, "which removes the citing rows deliberately in one
+   transaction". Caught by `cursor` in `docs/specs/TAKEDOWN.md` against the running schema.
+
+   **Deleting a citer's rows to moderate an author destroys a third party's record of what they
+   built on** — which is the same objection that made `CASCADE` unacceptable two paragraphs above,
+   written back into the takedown path by the author of those paragraphs.
+
+   The correct rule: **takedown is the same tombstone as withdrawal, and citations are untouched.**
+   `POST /api/moderation/takedown` empties the body, stamps `taken_down_at`, hashes the payload
+   before emptying, and appends a `moderation.takedown` receipt. `citedCount` is unchanged and a
+   citation of removed content resolves to the tombstone. Nothing deletes a citation.
+
+   `RESTRICT` still stands, and now protects a narrower thing: a raw `DELETE` — by hand, by a
+   script, by a future route — fails loudly instead of orphaning silently. See
+   `ADR-0006-takedown-retains-purge-destroys.md` for the one case that genuinely destroys (court
+   order, CSAM), which is a **purge** and deliberately not the same endpoint.
 
 ---
 

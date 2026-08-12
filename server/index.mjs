@@ -2597,8 +2597,15 @@ function resolveReport(ctx, action) {
       if (moved.changes !== 1) throw new Error('RACE_LOST');
       run(`UPDATE report SET status = 'actioned', outcome = ?, decided_at = ?
             WHERE id = ? AND status = 'open'`, reason, at, report.id);
+      /*
+       * NAMED BY ITS KIND. This said `post: p.id` for every subject, and SUBJECT_TABLE maps `work`
+       * as well — so limiting a work appended a receipt describing it as a post. On a chain whose
+       * whole claim is that it records what happened, a link that misnames its own subject is the
+       * failure, not a cosmetic one. `subjectKind` is carried so a reader never has to infer it.
+       */
       return appendReceiptIn(p.user_id, MODERATION_ACTIONS.limit.receipt, {
-        post: p.id, report: report.id, reason, policy, source: 'operator-token',
+        subjectKind: report.subject_kind, subject: p.id,
+        report: report.id, reason, policy, source: 'operator-token',
       });
     }));
     if (!attempt.ok) return err(409, 'already limited');
