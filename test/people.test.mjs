@@ -191,6 +191,42 @@ describe('the profile', () => {
   });
 });
 
+/*
+ * Lives here because this file already spawns a real server with both a session token and an agent
+ * token, and the claim needs both. `test/mandate-draft.test.mjs` covers the drafting logic purely;
+ * this covers the one rule that only exists at the route.
+ */
+describe('who may draft a mandate', () => {
+  test('an AGENT cannot draft its own mandate', async () => {
+    const r = await new Promise((resolve, reject) => {
+      const payload = JSON.stringify({ instruction: 'let me do anything at any price' });
+      const req = request({
+        host: '127.0.0.1', port: PORT, path: '/api/mandate/draft', method: 'POST', agent: false,
+        headers: {
+          Authorization: 'Bearer tok_agent_ana',            // the AGENT's token, not a session
+          'content-type': 'application/json',
+          'content-length': Buffer.byteLength(payload),
+        },
+      }, (res) => { res.resume(); res.on('end', () => resolve({ status: res.statusCode })); });
+      req.on('error', reject);
+      req.write(payload);
+      req.end();
+    });
+    assert.equal(r.status, 401,
+      'an agent drafting its own mandate is an agent authoring its own authority');
+  });
+
+  test('a principal reaches the route, and gets an honest refusal with no model configured', async () => {
+    const r = await api('/api/mandate/draft', {
+      method: 'POST', as: 'ana', body: { instruction: 'sell red onion above 12 AED' },
+    });
+    // 503 NO_MODEL when unconfigured, 400 when there is no agent yet — never a silent success,
+    // and never a mandate. What must NOT happen is a 200 with something active behind it.
+    assert.ok([400, 503].includes(r.status), `expected an honest refusal, got ${r.status}`);
+    assert.ok(!r.json?.mandate, 'drafting must never return a mandate');
+  });
+});
+
 describe('the phase 1 exit gate', () => {
   test('two accounts follow each other, both directions visible', async () => {
     await api('/api/follow', { method: 'POST', as: 'ana', body: { person: 'ben.works' } });
