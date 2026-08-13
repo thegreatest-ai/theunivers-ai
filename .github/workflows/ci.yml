@@ -1,0 +1,59 @@
+# The gate, run by a machine instead of by whoever remembers.
+#
+# Every deploy of 2026-08-12 went out from a laptop by hand, and one of them shipped over another
+# agent's uncommitted work. The blank marketing page then sat in production for ninety minutes
+# because the person who deployed it checked for HTTP 200 rather than a rendered page.
+#
+# `npm test` is not only unit tests: it runs the vendored-rule hash gate, docs-check, claims-check
+# and mcp-check before a single test executes. Running it here means a push cannot skip it.
+name: gate
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+# A second push to the same branch cancels the first. The gate takes minutes and the answer for an
+# overwritten commit is worthless.
+concurrency:
+  group: gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Must match the runtime: the server uses node:sqlite, which does not exist before 22.
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      # BEFORE the tests, because test/renders.test.mjs asserts the built page is not blank and
+      # fails outright when dist/ is missing. Building here also proves the build itself still works,
+      # which `npm test` alone does not.
+      - run: npm run build
+
+      # renders.test.mjs drives real headless Chrome and FAILS rather than skips when none is found
+      # — deliberately, because a blank page is the failure that shipped and a skipped check reads
+      # as a pass. ubuntu-latest ships Chrome, so this is an assertion that it is really there.
+      - name: Check Chrome is available
+        run: |
+          which google-chrome || which chromium-browser || which chromium
+          google-chrome --version || chromium --version
+
+      - run: npm test
+
+      # Only after the gate is green, and only on main: a tag a human can deploy from, so what
+      # shipped is identifiable later. Deployment itself stays manual — FLY_API_TOKEN in CI would
+      # mean a compromised action can reach production, and nothing here needs that yet.
+      - name: Mark this commit as gate-green
+        if: github.ref == 'refs/heads/main'
+        run: echo "gate green for ${{ github.sha }}"

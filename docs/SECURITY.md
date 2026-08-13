@@ -109,6 +109,7 @@ address, and offices, cafés, universities and VPNs all look the same.
 | `forgotPerEmail` | 3 / hour | stops one address being mail-bombed |
 | `forgotPerIp` | 30 / hour | flood ceiling |
 | `resetPerIp` | 30 / hour | grinding, not guessing — the token is 24 random bytes |
+| `errorPerIp` | 30 / hour | the only UNAUTHENTICATED write path; a broken page reports once or twice |
 | `reportPerUser` | 20 / hour | already implausible for one genuine reporter |
 | `reportPerIp` | 100 / hour | the Sybil case: throwaway accounts sharing one host |
 
@@ -120,6 +121,13 @@ Reporting is brigade-proof per SUBJECT — one open report per person per thing 
 2026-08-12 nothing bounded how many DIFFERENT things one account could report, and every post and
 work id is a different subject. With registration open that was an unbounded write path behind a
 free signup: rows to store, a queue nobody can clear, and SQLITE_BUSY under enough of it.
+
+**`errorPerIp` guards the one open write path in the product.** `POST /api/telemetry/error` takes
+no session, and it cannot: the failure worth catching is a page that never rendered, for a visitor
+who never signed in. So it is treated as an open door — the tightest per-IP limit here, every field
+truncated at the handler, and **the same `{}` response whether the report was stored, dropped as
+malformed, or refused by the limiter.** A 429 would tell a flooder its exact rate and a validation
+error would tell a prober what shape to send; a browser has nothing useful to do with either.
 
 A **successful login refunds an attempt**, so someone who mistypes twice and then succeeds is not
 left one typo from a lockout. **Rejected attempts still count**, so an attacker cannot idle until a

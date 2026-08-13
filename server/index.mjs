@@ -39,6 +39,7 @@ import { hashPassword, verifyPassword } from './passwords.mjs';
 import { passwordError } from '../shared/password-policy.mjs';
 import { handleError } from '../shared/agent-name.mjs';
 import { rank, order, paginate, sideOf, citerWeight, PER_PAGE } from '../shared/ranking.mjs';
+import { CSP } from '../shared/csp.mjs';
 import { review as reviewTerms } from '../shared/terms-diff.mjs';
 import { isWebAddress } from '../shared/safe-href.mjs';
 import { MODERATION_ACTIONS, AVAILABLE_ACTIONS } from '../shared/moderation-actions.mjs';
@@ -2374,6 +2375,76 @@ function threadId(a, b) {
   return `a2a_${[a, b].sort().join('_')}`;
 }
 
+/* ── Telemetry: what the browser could not do ────────────────────────────────────────────
+ *
+ * The marketing page was blank in production for ninety minutes on 2026-08-12 and nothing told us.
+ * The health check passed — the API was fine. The tests passed — they served no CSP. The deploy
+ * check passed — a blank page answers 200. The owner found it.
+ *
+ * UNAUTHENTICATED BY NECESSITY, which is the whole design problem: the failure worth catching
+ * happens before anyone signs in, on a page that never rendered. So it is an open write path, and
+ * it is treated as one — the tightest per-IP limit in the table, every field truncated, and
+ * nothing echoed back.
+ */
+route('POST', '/api/telemetry/error', (ctx) => {
+  /*
+   * THE SAME ANSWER WHETHER IT WAS STORED, DROPPED OR REFUSED — {} every time.
+   *
+   * A limiter that answers 429 tells a flooder its exact rate, and a validation error tells a
+   * prober what shape to send. A browser reporting an error has nothing useful to do with either,
+   * so it learns nothing. `__status` is not a convention this router has; identical bodies are the
+   * property that matters, not the code.
+   */
+  // take() answers { ok, retryAfter }. Reading a field it does not have — `allowed` — is `undefined`,
+  // which is falsy, which silently dropped EVERY report while still answering 200. Caught by the
+  // tests below, which is the only reason it was caught at all: the endpoint's correct behaviour on
+  // a dropped report is indistinguishable from its correct behaviour on a stored one.
+  const limit = take('client-error', ctx.ip, LIMITS.errorPerIp.max, LIMITS.errorPerIp.windowMs);
+  if (!limit.ok) return {};
+
+  const kind = String(ctx.body.kind ?? '');
+  if (!['error', 'rejection', 'blank'].includes(kind)) return {};
+
+  const clip = (v, n) => String(v ?? '').slice(0, n);
+  run(`INSERT INTO client_error (id, kind, message, source, path, build, agent, user_id, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?)`,
+    `cer_${randomUUID().slice(0, 8)}`, kind,
+    clip(ctx.body.message, 500), clip(ctx.body.source, 300), clip(ctx.body.path, 200),
+    clip(ctx.body.build, 60),
+    // The user agent, not the person. Truncated because a UA string is long and low-value past
+    // the browser and platform.
+    clip(ctx.headers['user-agent'], 200),
+    // Attributed only if a session happens to be present. Never required, and never asked for.
+    ctx.user?.id ?? null,
+    now());
+
+  return {};
+});
+
+/**
+ * What the browser has been unable to do lately. Operator-gated like the moderation queue, and
+ * 404 when no token is configured — off by default.
+ */
+route('GET', '/api/telemetry/errors', (ctx) => {
+  const ok = operatorAuthorised(ctx);
+  if (ok === null) return err(404, 'not found');
+  if (!ok) return err(401, 'bad operator token');
+
+  const rows = all('SELECT * FROM client_error ORDER BY created_at DESC LIMIT 200');
+  const since = new Date(Date.now() - 60 * 60_000).toISOString();
+  return {
+    // The number that matters first: a page reporting itself blank is an outage, not an error.
+    blankLastHour: one(
+      "SELECT COUNT(*) c FROM client_error WHERE kind = 'blank' AND created_at > ?", since).c,
+    errorsLastHour: one(
+      "SELECT COUNT(*) c FROM client_error WHERE kind <> 'blank' AND created_at > ?", since).c,
+    recent: rows.map((r) => ({
+      id: r.id, kind: r.kind, message: r.message, source: r.source,
+      path: r.path, build: r.build, at: r.created_at,
+    })),
+  };
+});
+
 /* ── Safety: block and report ────────────────────────────────────────────────────────────
  *
  * Registration is open, so this is the floor rather than a later phase. Two rules shape all of it:
@@ -3339,42 +3410,7 @@ function serveStatic(req, res, urlPath) {
   return true;
 }
 
-/*
- * Every external origin this product loads, enumerated — because a Content-Security-Policy written
- * from memory is how a page ends up on "Loading…" forever while the server answers 200.
- *
- *   fonts.googleapis.com  the stylesheet <link> in index.html
- *   fonts.gstatic.com     the font files that stylesheet points at
- *   cdn.jsdelivr.net      planet textures for the marketing page's three.js scene (App.jsx:10).
- *                         three itself is bundled; only the images are remote.
- *
- * Do NOT open connect-src for raw.githack.com / raw.githubusercontent.com. `<Environment
- * preset="night" />` used to pull dikhololo_night_1k.hdr from there; that path is now
- * `/assets/hdri/dikhololo_night_1k.hdr` (same file, same-origin). githack also 403s from
- * Cloudflare as of 2026-08-12 — opening CSP to a dead CDN would have "fixed" the refuse and
- * left the marketing page dark for a different reason.
- *
- * `style-src` needs 'unsafe-inline' because React writes `style={{…}}` as a style ATTRIBUTE, which
- * style-src-attr blocks without it. `script-src` deliberately does NOT get the same concession:
- * scripts are the surface that matters, index.html has no inline script, and Vite emits a module
- * with a src. If a future change needs an inline script, give it a nonce rather than opening this.
- *
- * No HSTS here: it is set by whatever terminates TLS, and asserting it from a process that also
- * serves plain http in development is how a developer locks their own browser out of localhost.
- */
-const CSP = [
-  "default-src 'self'",
-  "base-uri 'self'",
-  "object-src 'none'",
-  "frame-ancestors 'none'",
-  "form-action 'self'",
-  "script-src 'self'",
-  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-  "font-src 'self' https://fonts.gstatic.com",
-  "img-src 'self' data: blob: https://cdn.jsdelivr.net",
-  "media-src 'self' blob:",
-  "connect-src 'self' https://cdn.jsdelivr.net",
-].join('; ');
+// The policy itself lives in shared/csp.mjs, so the render test can serve the same one.
 
 function securityHeaders(res) {
   res.setHeader('Content-Security-Policy', CSP);

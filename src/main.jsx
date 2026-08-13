@@ -16,6 +16,11 @@ import React, { Suspense, lazy } from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import './styles.css'
+// Static, and first: a lazy import cannot report an error that happens before it loads, and the
+// outage this exists for was a page that never got as far as rendering a route.
+import { startTelemetry } from './telemetry.js'
+
+startTelemetry()
 
 /*
  * Named exports need unwrapping for lazy(), which expects a module with a default. Two lazy calls

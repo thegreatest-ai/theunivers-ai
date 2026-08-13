@@ -30,6 +30,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert';
+import { CSP } from '../shared/csp.mjs';
 import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
@@ -64,7 +65,15 @@ function serveDist() {
     let file = normalize(join(DIST, url));
     if (!file.startsWith(DIST)) { res.writeHead(403).end(); return; }
     if (!existsSync(file) || statSync(file).isDirectory()) file = join(DIST, 'index.html');
-    res.writeHead(200, { 'content-type': MIME[extname(file)] ?? 'application/octet-stream' });
+    res.writeHead(200, {
+      'content-type': MIME[extname(file)] ?? 'application/octet-stream',
+      // THE SAME POLICY THE SERVER SENDS, imported rather than copied.
+      //
+      // Without this the test served a page with no CSP, so a CSP-blocked fetch — the exact thing
+      // that left production blank for ninety minutes on 2026-08-12 — could not fail here. A test
+      // whose whole job is "the page is not blank" has to load the page the way a visitor does.
+      'content-security-policy': CSP,
+    });
     res.end(readFileSync(file));
   });
   return new Promise((ok) => server.listen(0, '127.0.0.1', () => ok(server)));

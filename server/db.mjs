@@ -689,6 +689,37 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS report_open_idx    ON report(status, created_at);
   CREATE INDEX IF NOT EXISTS report_subject_idx ON report(subject_kind, subject_id);
 
+  /*
+   * ─── CLIENT ERRORS ──────────────────────────────────────────────────────────────────────
+   *
+   * The marketing page was blank in production for ninety minutes on 2026-08-12 and NOTHING TOLD
+   * US. The health check passed, because the API was fine. The tests passed, because they served
+   * no CSP. The deploy verification passed, because a blank page returns 200. The owner found it.
+   *
+   * This is the missing sense: the browser reports what it could not do. An uncaught error, a
+   * rejected promise, or a root element still empty seconds after load — the last one being the
+   * signature of exactly that outage, and the one a generic error tracker would have missed.
+   *
+   * Deliberately first-party rather than a third-party SDK: this product already refuses to depend
+   * on an outside origin for anything load-bearing, and a reporter that needs connect-src opened to
+   * a vendor is a reporter that cannot report a CSP failure.
+   *
+   * kind is CHECKed because the operator reads a queue, and 'blank' is a different emergency from
+   * 'error'.
+   */
+  CREATE TABLE IF NOT EXISTS client_error (
+    id         TEXT PRIMARY KEY,
+    kind       TEXT NOT NULL CHECK (kind IN ('error','rejection','blank')),
+    message    TEXT NOT NULL,
+    source     TEXT NOT NULL DEFAULT '',
+    path       TEXT NOT NULL DEFAULT '',
+    build      TEXT NOT NULL DEFAULT '',
+    agent      TEXT NOT NULL DEFAULT '',
+    user_id    TEXT REFERENCES user(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS client_error_recent_idx ON client_error(created_at DESC);
+
   CREATE INDEX IF NOT EXISTS agent_message_to_idx     ON agent_message(to_agent_id, created_at);
   CREATE INDEX IF NOT EXISTS agent_message_from_idx   ON agent_message(from_agent_id, created_at);
 `);

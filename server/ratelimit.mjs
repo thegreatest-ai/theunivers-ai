@@ -210,6 +210,13 @@ export const LIMITS = {
   // nothing like 20/hour anyway — they look like hundreds per minute.
   registerPerIp:   { max: 20,  windowMs: 60 * 60_000 },
 
+  // Client error reports. UNAUTHENTICATED by necessity — the failure worth catching is the one
+  // that happens before anybody signs in, on a page that never rendered. That makes it an open
+  // write path, so it is the tightest per-IP limit here: a broken page reports once or twice, and
+  // anything sending thirty an hour is either a loop or an attack, and both should be dropped
+  // rather than stored.
+  errorPerIp:      { max: 30,  windowMs: 60 * 60_000 },
+
   // Per-EMAIL is what stops someone being mail-bombed; per-IP is again just a flood ceiling.
   forgotPerEmail:  { max: 3,   windowMs: 60 * 60_000 },
   forgotPerIp:     { max: 30,  windowMs: 60 * 60_000 },
