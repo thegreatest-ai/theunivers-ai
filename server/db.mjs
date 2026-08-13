@@ -816,6 +816,17 @@ ensureColumn('post', 'withdrawn_at', 'withdrawn_at TEXT');
 ensureColumn('user', 'bio', 'bio TEXT');
 ensureColumn('user', 'links', `links TEXT NOT NULL DEFAULT '[]'`);
 
+// The shape of a picture, read from its own bytes at upload (server/image-size.mjs).
+//
+// NULL is a normal value and always will be: video and documents have no size this reads, and
+// every row uploaded before this existed has none either. The interface must treat absent as
+// absent — never as zero, and never as a reason to reserve nothing.
+//
+// The grid does not use these: it is a fixed cell that crops. The DETAIL view does, so it can hold
+// the right shape open while the bytes arrive rather than reflowing the page when they land.
+ensureColumn('media', 'width', 'width INTEGER');
+ensureColumn('media', 'height', 'height INTEGER');
+
 /*
  * Person-to-person messaging was built on 2026-08-12 and removed the same day: the agent is the
  * interface, so a principal instructs their own agent and the agents talk to each other. There is

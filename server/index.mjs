@@ -23,6 +23,7 @@ import { trustOf, tierOf } from './trust.mjs';
 import { analyseNote, analysisAvailable } from './analyse.mjs';
 import { draftFromInstruction, draftingAvailable } from './mandate-draft.mjs';
 import * as store from './storage.mjs';
+import { imageSize } from './image-size.mjs';
 import { subscribe, publish, publishAll, streamStats } from './events.mjs';
 import { take, refund, clientIp, limitStats, LIMITS } from './ratelimit.mjs';
 import { sendMail, resetEmail, mailConfigured } from './mail.mjs';
@@ -1277,8 +1278,24 @@ function mediaUrl(id) {
 
 /** Media rows shaped for a client, with a URL rather than a disk path. */
 const mediaFor = (workId) =>
-  all('SELECT id, mime, kind, bytes, filename, ordinal FROM media WHERE work_id = ? ORDER BY ordinal', workId)
-    .map((m) => ({ ...m, url: mediaUrl(m.id) }));
+  all(`SELECT id, mime, kind, bytes, filename, ordinal, width, height
+       FROM media WHERE work_id = ? ORDER BY ordinal`, workId)
+    .map((m) => ({
+      ...m,
+      url: mediaUrl(m.id),
+      /*
+       * The shape, for the DETAIL view only. The grid is a fixed cell that crops, so it needs
+       * nothing from here.
+       *
+       * Sent as a ratio as well as the raw numbers because that is what the client actually uses —
+       * `aspect-ratio: <r>` holds the right space open while the bytes are still arriving, which is
+       * the difference between a page that settles and one that jumps under a reader's thumb.
+       *
+       * NULL when unknown, and it will be null often: video, documents, and every row uploaded
+       * before dimensions were recorded. Absent must render as absent, never as zero.
+       */
+      ratio: m.width && m.height ? Number((m.width / m.height).toFixed(4)) : null,
+    }));
 
 route('POST', '/api/works', (ctx) => {
   const user = ctx.user;
@@ -1330,12 +1347,24 @@ route('POST', '/api/works/:id/media', async (ctx) => {
   try { put = store.put(buf, mime); } catch (e) { return err(413, e.message); }
 
   const ordinal = one('SELECT COUNT(*) c FROM media WHERE work_id = ?', work.id)?.c ?? 0;
-  run(`INSERT INTO media (id, work_id, user_id, mime, kind, bytes, path, filename, ordinal, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  // Read from the BYTES, never from the client: dimensions decide how much space the detail view
+  // reserves, and a number a caller can assert is a layout it can control. Same argument as
+  // sniffing the MIME rather than believing the filename. Null for video, documents and anything
+  // unrecognised, which the interface has to handle regardless.
+  const size = imageSize(buf, mime);
+  run(`INSERT INTO media (id, work_id, user_id, mime, kind, bytes, path, filename, ordinal,
+         width, height, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       put.id, work.id, user.id, mime, put.kind, put.bytes, put.path,
-      String(ctx.headers['x-filename'] ?? '').slice(0, 160), ordinal, now());
+      String(ctx.headers['x-filename'] ?? '').slice(0, 160), ordinal,
+      size?.width ?? null, size?.height ?? null, now());
 
-  return { media: { id: put.id, url: mediaUrl(put.id), bytes: put.bytes, kind: put.kind } };
+  return {
+    media: {
+      id: put.id, url: mediaUrl(put.id), bytes: put.bytes, kind: put.kind,
+      width: size?.width ?? null, height: size?.height ?? null,
+    },
+  };
 });
 
 /** Somebody's profile content, by kind. Public within the platform — it is a profile. */
