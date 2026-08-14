@@ -101,6 +101,33 @@ const SECRETS = {
       return { ok: true, note: first ? `authenticated · sees ${first}` : 'authenticated' };
     },
   },
+  /*
+   * The three below are GENERATED, not issued by a provider — nothing can verify them, and there
+   * is no console to copy them from. They are here because `server/env.mjs` can now read a
+   * `keychain:NAME` reference out of .env, and its failure message tells you to run this script.
+   * A name that .env may reference and this script rejects is a dead end at the exact moment
+   * somebody is trying to do the right thing.
+   *
+   * REMEMBER WHAT THIS SCRIPT DOES: Keychain **and then Fly**. Entering a new value here does not
+   * just fix your laptop, it REPLACES THE PRODUCTION ONE. That is correct for a rotation and wrong
+   * if you only meant to make local work — in which case store it and expect prod to change too.
+   * Generate one with: openssl rand -hex 24
+   */
+  METRICS_TOKEN: {
+    what: 'Operator credential — gates /api/metrics AND every moderation act (limit, takedown, dismiss)',
+    looksLike: /^[A-Za-z0-9_-]{24,}$/,
+    hint: 'generated, not issued · openssl rand -hex 24 · changing it here rotates production',
+  },
+  OAUTH_STATE_SECRET: {
+    what: 'Signs the OAuth state parameter',
+    looksLike: /^[A-Za-z0-9_-]{24,}$/,
+    hint: 'generated · openssl rand -hex 32 · anyone mid sign-in when this changes has to start again',
+  },
+  INVITE_CODE: {
+    what: 'Registration invite code (gates registration only — never sign-in)',
+    looksLike: /^.{6,}$/,
+    hint: 'inert while INVITE_REQUIRED=false · the live one is also readable from the invite table',
+  },
   GITHUB_CLIENT_ID: { what: 'GitHub OAuth client id', looksLike: /^.{8,}$/, hint: 'github.com → Settings → Developer settings → OAuth Apps' },
   GITHUB_CLIENT_SECRET: { what: 'GitHub OAuth client secret', looksLike: /^.{20,}$/, hint: 'shown once when created' },
   GOOGLE_CLIENT_SECRET: { what: 'Google OAuth client secret (rotate: it was exposed in a transcript)', looksLike: /^GOCSPX-.{10,}$/, hint: 'console.cloud.google.com → Credentials' },

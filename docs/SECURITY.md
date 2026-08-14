@@ -218,9 +218,34 @@ The script closes each route by which a key leaks, because every one of them is 
 | `.env` committed by accident | never written to a file |
 | **pasted into a chat** | the script exists so you never need to |
 
-That last row is not hypothetical: `GOOGLE_CLIENT_SECRET` was pasted into a transcript and **still
-needs rotating**. The key is handed to Fly over **stdin** via `fly secrets import`, not
-`fly secrets set KEY=value`, which would put it in argv.
+That last row is not hypothetical: `GOOGLE_CLIENT_SECRET` was pasted into a transcript. It was
+rotated on 2026-08-11 by creating a new OAuth client and **deleting the old one** — rotating while
+the old client still exists merely stops *using* the leaked value. The key is handed to Fly over
+**stdin** via `fly secrets import`, not `fly secrets set KEY=value`, which would put it in argv.
+
+### Reading them back
+
+The script wrote to the Keychain and nothing could read it, so local development had exactly one
+way to obtain a secret: paste it into `.env`. **A policy with no compliant path gets broken** —
+and it was, for weeks, with a live operator credential in a world-readable file.
+
+`server/env.mjs` therefore resolves a value of the form `keychain:NAME` against the login Keychain
+(account `theunivers-ai`, the account `set-secret.mjs` writes to — a test pins the two constants
+together). So `.env` now names its secrets instead of holding them:
+
+```
+METRICS_TOKEN=keychain:METRICS_TOKEN
+```
+
+**An unresolved reference sets the variable to nothing at all**, and says so on stdout. Assigning
+the literal `keychain:NAME` would hand the app a value that is definitely wrong and fail somewhere
+far away — a rejected token exchange, a signature that never verifies. Unset is a state this
+codebase already reports honestly: the provider shows as off, `/api/metrics` 404s.
+
+Production never touches any of this. There is no `.env` in the image, every variable is a real
+one, and `security` does not exist on Linux — which is why a missing reference warns rather than
+throws. `.gitignore` covers `.env.*` as well as `.env`, because `.env.bak` is what people create
+while migrating secrets and the bare pattern does not match it.
 
 `MAIL_FROM` is deliberately **not** a secret — it is an address printed on every email — so it
 lives in `fly.toml` where it is visible in version control.

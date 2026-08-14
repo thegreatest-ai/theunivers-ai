@@ -3,7 +3,12 @@ dist
 .DS_Store
 *.local
 .vite
+# `.env` alone matches the exact name and nothing else, so `.env.bak`, `.env.old` and
+# `.env.production` — the files people make while migrating secrets — were all committable to a
+# PUBLIC repo. Ignore the whole family and re-admit the one file that is meant to be shared.
 .env
+.env.*
+!.env.example
 data/
 
 # Agent worktrees — separate checkouts of this repo, never part of it.
