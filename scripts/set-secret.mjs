@@ -25,6 +25,7 @@
  */
 import { spawnSync } from 'node:child_process';
 import { createInterface } from 'node:readline';
+import { randomBytes } from 'node:crypto';
 
 const ACCOUNT = 'theunivers-ai';
 
@@ -111,22 +112,32 @@ const SECRETS = {
    * REMEMBER WHAT THIS SCRIPT DOES: Keychain **and then Fly**. Entering a new value here does not
    * just fix your laptop, it REPLACES THE PRODUCTION ONE. That is correct for a rotation and wrong
    * if you only meant to make local work — in which case store it and expect prod to change too.
-   * Generate one with: openssl rand -hex 24
+   *
+   * `generate` is what makes them usable: asking someone to PASTE a value only a random number
+   * generator should ever have chosen invites a typed one, and a human-chosen "random" operator
+   * token is the weakest link in the moderation ladder. `npm run secret METRICS_TOKEN -- --generate`
+   * never shows the value to anybody, including whoever ran it.
    */
   METRICS_TOKEN: {
     what: 'Operator credential — gates /api/metrics AND every moderation act (limit, takedown, dismiss)',
     looksLike: /^[A-Za-z0-9_-]{24,}$/,
-    hint: 'generated, not issued · openssl rand -hex 24 · changing it here rotates production',
+    hint: 'generated, not issued · --generate · changing it here rotates production',
+    generate: () => randomBytes(24).toString('hex'),
   },
   OAUTH_STATE_SECRET: {
     what: 'Signs the OAuth state parameter',
     looksLike: /^[A-Za-z0-9_-]{24,}$/,
-    hint: 'generated · openssl rand -hex 32 · anyone mid sign-in when this changes has to start again',
+    hint: 'generated · --generate · anyone mid sign-in when this changes has to start again',
+    generate: () => randomBytes(32).toString('hex'),
   },
   INVITE_CODE: {
     what: 'Registration invite code (gates registration only — never sign-in)',
     looksLike: /^.{6,}$/,
     hint: 'inert while INVITE_REQUIRED=false · the live one is also readable from the invite table',
+    // Typeable, unlike the others: a person reads this one off a message and types it into a form,
+    // so 48 hex characters would be a usability bug rather than security. The entropy that matters
+    // here is "not guessable in a few tries", and the endpoint is rate-limited.
+    generate: () => `univers-${randomBytes(4).toString('hex')}`,
   },
   GITHUB_CLIENT_ID: { what: 'GitHub OAuth client id', looksLike: /^.{8,}$/, hint: 'github.com → Settings → Developer settings → OAuth Apps' },
   GITHUB_CLIENT_SECRET: { what: 'GitHub OAuth client secret', looksLike: /^.{20,}$/, hint: 'shown once when created' },
@@ -206,6 +217,7 @@ function flyPush(name, value) {
 
 const argv = process.argv.slice(2);
 const pushOnly = argv.includes('--push-only');
+const generate = argv.includes('--generate');
 let name = argv.find((a) => !a.startsWith('--'));
 
 say();
@@ -238,6 +250,22 @@ if (pushOnly) {
   value = keychainGet(name);
   if (!value) { say(`  ${name} is not in the Keychain yet — run without --push-only\n`); process.exit(1); }
   say(`\n  Using the stored ${name} ${mask(value)}\n`);
+} else if (generate) {
+  // Refused rather than approximated: inventing a Resend key produces a plausible string that
+  // authenticates with nothing, and the failure lands later in a feature that quietly does nothing.
+  if (!spec.generate) {
+    say(`\n  ${name} is issued by a provider — it cannot be generated. Copy it from:`);
+    say(`  ${spec.hint}\n`);
+    process.exit(1);
+  }
+  const had = keychainGet(name);
+  value = spec.generate();
+  say(`\n  ${name}`);
+  say(`  ${spec.what}`);
+  say(had ? '  Rotating: a new value replaces the stored one AND the production secret.\n'
+          : '  Generating a new value.\n');
+  keychainSet(name, value);
+  say(`  ✓ Generated and stored in the Keychain  (account "${ACCOUNT}")`);
 } else {
   say(`\n  ${name}`);
   say(`  ${spec.what}`);

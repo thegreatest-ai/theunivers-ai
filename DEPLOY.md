@@ -46,15 +46,24 @@ Redis — this uses SQLite on the volume.
 Nothing secret goes in `fly.toml` or the Dockerfile; both are committed.
 
 ```bash
-fly secrets set \
-  GOOGLE_CLIENT_ID="…apps.googleusercontent.com" \
-  GOOGLE_CLIENT_SECRET="GOCSPX-…" \
-  OAUTH_STATE_SECRET="$(openssl rand -hex 32)" \
-  INVITE_CODE="$(openssl rand -hex 8)"
+npm run secret GOOGLE_CLIENT_SECRET              # hidden input → verify → Keychain → Fly
+npm run secret METRICS_TOKEN -- --generate       # generated ones need no paste
+npm run secret OAUTH_STATE_SECRET -- --generate
+npm run secret INVITE_CODE -- --generate
 ```
 
-Note the invite code is generated, not `univers-pilot`. The old one is in a chat transcript and
-was baked into the Docker image; treat it as public.
+**Not `fly secrets set KEY=value`**, which this file used to recommend: a value passed as an
+argument is readable by any process on the machine through `ps`, and lands in shell history.
+`npm run secret` hands it to Fly over **stdin** instead, and stores the same value in the Keychain
+so `.env` can reference it locally rather than hold a copy — see `docs/SECURITY.md`.
+
+`--generate` exists because pasting a value only a random number generator should have chosen
+invites a typed one, and a human-chosen operator token is the weakest link in the moderation
+ladder. The invite code stays typeable (`univers-xxxxxxxx`) because a person reads it off a message
+and types it into a form.
+
+The invite code must be generated, never `univers-pilot`: that one is in a chat transcript and was
+baked into a Docker image; treat it as public.
 
 Add GitHub's pair too when you have them, and `SMTP_*` when you want real password-reset email.
 
