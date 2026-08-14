@@ -69,7 +69,7 @@ people's words by deleting their own post; `RESTRICT` alone would make an author
 their own work conditional on nobody having commented. So: media bytes are really removed (the
 erasure right is real), title and body are emptied, `withdrawn_at` is stamped, the row survives,
 and the comments still resolve against a tombstone rather than a 404. **A work with no comments
-still hard-deletes as it does today.** Write this up as `docs/decisions/ADR-0007-a-commented-work-is-withdrawn.md`.
+still hard-deletes as it does today.** Write this up as `docs/decisions/ADR-0008-a-commented-work-is-withdrawn.md`.
 
 **Counts are computed server-side and returned with the work.** Views, comments and citations. Do
 not make the client issue three requests per tile.
@@ -118,5 +118,5 @@ box; counts are the numbers the database holds.
 ## 4. Definition of done
 
 `npm run build && npm test` green, every new rule tested, `docs/KNOWN-ISSUES.md` updated for
-anything you find and cannot fix, ADR-0007 written, and the commit message explaining **why** in
+anything you find and cannot fix, ADR-0008 written, and the commit message explaining **why** in
 the style of `git log` on this repo. Do not deploy — the architect seat reviews and ships.
