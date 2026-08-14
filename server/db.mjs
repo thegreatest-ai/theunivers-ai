@@ -848,20 +848,35 @@ for (const table of ['person_message', 'person_thread']) {
 }
 
 /*
+ * Columns the rebuild below has to already know about. SQLite copies by name; a CREATE that
+ * omits a column the live table has will refuse the INSERT, and a CREATE that adds a constraint
+ * the live table lacks is the whole point of the rebuild — so the columns land first.
+ */
+ensureColumn('citation', 'content_hash', 'content_hash TEXT');
+ensureColumn('citation', 'cited_state', "cited_state TEXT NOT NULL DEFAULT 'live'");
+ensureColumn('source', 'work_id', 'work_id TEXT');
+ensureColumn('citation', 'work_id', 'work_id TEXT');
+
+/*
  * ADR-0003. `source` and `citation` referenced `post` and `user` by id and declared neither, so a
  * deleted post left citations of it pointing at nothing, with no error. Declared RESTRICT: a
  * citation outlives the WITHDRAWAL of what it cites, and a hard delete of cited content must raise.
+ *
+ * work_id is the same rule applied to a work: sharing and citing a photograph must not become a
+ * dangling id the moment the author erases it. Commented works withdraw rather than delete, so
+ * the RESTRICT is the loud failure for a raw DELETE, not the user-facing path.
  *
  * Cheap exactly now — these tables hold no rows in production — and more expensive with every post
  * filed after it.
  */
 ensureForeignKeys('source', {
-  references: ['post_id', 'author_id'],
+  references: ['post_id', 'author_id', 'work_id'],
   create: `CREATE TABLE "source" (
     id          TEXT PRIMARY KEY,
     note_id     TEXT NOT NULL REFERENCES note(id),
     user_id     TEXT NOT NULL REFERENCES user(id),
     post_id     TEXT REFERENCES post(id) ON DELETE RESTRICT,
+    work_id     TEXT REFERENCES work(id) ON DELETE RESTRICT,
     author_id   TEXT REFERENCES user(id) ON DELETE RESTRICT,
     title       TEXT NOT NULL DEFAULT '',
     excerpt     TEXT NOT NULL DEFAULT '',
@@ -876,18 +891,16 @@ ensureForeignKeys('source', {
 });
 
 ensureForeignKeys('citation', {
-  references: ['post_id', 'author_id'],
+  references: ['post_id', 'author_id', 'work_id'],
   create: `CREATE TABLE "citation" (
     id           TEXT PRIMARY KEY,
     note_id      TEXT NOT NULL REFERENCES note(id),
     source_id    TEXT NOT NULL REFERENCES source(id),
     user_id      TEXT NOT NULL REFERENCES user(id),
     post_id      TEXT REFERENCES post(id) ON DELETE RESTRICT,
+    work_id     TEXT REFERENCES work(id) ON DELETE RESTRICT,
     author_id    TEXT REFERENCES user(id) ON DELETE RESTRICT,
     used_for     TEXT NOT NULL DEFAULT '',
-    -- What was cited, bound at insert. The rebuild has to carry these or it silently drops the
-    -- binding on every existing row: ensureColumn runs BEFORE this, so the new shape must know
-    -- about them.
     content_hash TEXT,
     cited_state  TEXT NOT NULL DEFAULT 'live',
     created_at   TEXT NOT NULL
@@ -895,6 +908,7 @@ ensureForeignKeys('citation', {
   indexes: [
     'CREATE INDEX IF NOT EXISTS citation_post_idx   ON citation(post_id)',
     'CREATE INDEX IF NOT EXISTS citation_author_idx ON citation(author_id)',
+    'CREATE INDEX IF NOT EXISTS citation_work_idx   ON citation(work_id)',
   ],
 });
 
@@ -915,18 +929,57 @@ ensureForeignKeys('citation', {
  * report.subject_kind has allowed 'work' since the table was written while the resolver refused
  * anything that was not a post. So a reported photograph could be reported and never acted on.
  *
- * Author erasure of a work stays a real delete, bytes included: nothing references a work except
- * its own media rows, and a deletion that leaves the file behind is not a deletion. These columns
- * are for the OPERATOR path, which must leave a record that something was there.
+ * Author erasure of a work is a real delete WHILE NOTHING ELSE REFERENCES IT: media rows and
+ * views are the author's, and a deletion that leaves the file behind is not a deletion.
+ *
+ * A comment is somebody else's words. CASCADE would let an author erase them by deleting the
+ * post; RESTRICT alone would make the right to erase conditional on nobody having spoken.
+ * Commented works are therefore withdrawn (ADR-0008): bytes go, title and body empty, the row
+ * survives so the comments still resolve. Uncommented works still hard-delete.
+ *
+ * These operator columns leave a record that something was there. withdrawn_at is the AUTHOR
+ * path; taken_down_at is ours. edited_at is stamped on a title/body change so silently mutable
+ * content cannot hide on a platform whose claim is provenance.
  */
 ensureColumn('work', 'limited_at', 'limited_at TEXT');
 ensureColumn('work', 'limited_report_id', 'limited_report_id TEXT');
 ensureColumn('work', 'taken_down_at', 'taken_down_at TEXT');
 ensureColumn('work', 'takedown_report_id', 'takedown_report_id TEXT');
 ensureColumn('work', 'body_sha256', 'body_sha256 TEXT');
+ensureColumn('work', 'withdrawn_at', 'withdrawn_at TEXT');
+ensureColumn('work', 'edited_at', 'edited_at TEXT');
 
-ensureColumn('citation', 'content_hash', 'content_hash TEXT');
-ensureColumn('citation', 'cited_state', "cited_state TEXT NOT NULL DEFAULT 'live'");
+/*
+ * A comment is an unstructured human utterance on a work. Person-only at the route; RESTRICT
+ * here so deleting the work cannot quietly drop other people's words, and deleting a person
+ * cannot quietly drop what they said. Index (work_id, created_at) is the list query: oldest
+ * first, paginated, always scoped to one work.
+ */
+db.exec(`
+  CREATE TABLE IF NOT EXISTS comment (
+    id         TEXT PRIMARY KEY,
+    work_id    TEXT NOT NULL REFERENCES work(id) ON DELETE RESTRICT,
+    user_id    TEXT NOT NULL REFERENCES user(id) ON DELETE RESTRICT,
+    body       TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS comment_work_idx ON comment(work_id, created_at);
+
+  /*
+   * Distinct viewers of a WORK, split the same way as post views and for the same reason: a
+   * person looking and an agent machine-reading are not the same claim, and a refresh is not
+   * a second viewer. UNIQUE (work_id, viewer_id, kind) is the whole rule.
+   */
+  CREATE TABLE IF NOT EXISTS work_view (
+    id         TEXT PRIMARY KEY,
+    work_id    TEXT NOT NULL REFERENCES work(id) ON DELETE RESTRICT,
+    viewer_id  TEXT NOT NULL,
+    kind       TEXT NOT NULL CHECK (kind IN ('person','agent')),
+    created_at TEXT NOT NULL,
+    UNIQUE (work_id, viewer_id, kind)
+  );
+  CREATE INDEX IF NOT EXISTS work_view_idx ON work_view(work_id, kind);
+`);
 
 export function one(sql, ...params) {
   return db.prepare(sql).get(...params) ?? null;

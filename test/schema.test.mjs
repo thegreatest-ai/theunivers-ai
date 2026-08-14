@@ -50,6 +50,7 @@ test('every table the app writes to is created somewhere', () => {
     [...SRC.matchAll(/CREATE TABLE IF NOT EXISTS "?(\w+)"?/g)].map((m) => m[1]));
   for (const t of ['user', 'agent', 'mandate', 'receipt', 'order', 'proposal',
                    'project', 'note', 'source', 'citation', 'view', 'work', 'media',
+                   'comment', 'work_view',
                    'message', 'agent_message', 'mandate_audit']) {
     assert.ok(created.has(t), `${t} is written to but never created`);
   }

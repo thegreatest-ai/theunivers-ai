@@ -697,6 +697,52 @@
 .doc-view iframe{flex:1;border:none;background:#fff}
 .doc-text{flex:1;margin:0;padding:18px;overflow:auto;font-family:'Space Grotesk',monospace;
   font-size:.84rem;line-height:1.7;white-space:pre-wrap;color:var(--text)}
+
+/* ══ Work detail ══════════════════════════════════════════════════════════════════════════
+   The original, not the crop. Space is reserved from the server-sent ratio BEFORE the bytes
+   arrive; when there is no ratio (video, documents, older uploads) a min-height box holds
+   the stage open rather than collapsing to zero. */
+.wk-detail-back{align-items:center;z-index:90}
+.wk-detail{width:min(720px,100%);max-height:92vh;overflow:auto;background:var(--bg);
+  border:1px solid var(--line);border-radius:16px;display:flex;flex-direction:column}
+.wk-detail-head{display:flex;align-items:center;gap:10px;padding:12px 16px;
+  border-bottom:1px solid var(--line)}
+.wk-detail-head .app-link{margin-left:auto}
+.wk-detail-stage{position:relative;width:100%;background:#000;min-height:240px;
+  display:flex;align-items:center;justify-content:center}
+.wk-detail-stage.has-ratio{min-height:0}
+.wk-detail-stage img,.wk-detail-stage video{width:100%;height:100%;object-fit:contain;display:block;
+  max-height:min(70vh,720px)}
+.wk-detail-slides{position:absolute;left:0;right:0;bottom:8px;display:flex;justify-content:center;
+  align-items:center;gap:12px}
+.wk-detail-thread{padding:18px 16px}
+.wk-detail-cap{padding:12px 16px}
+.wk-detail-cap h4,.wk-detail-thread h4{margin:0 0 6px;font-size:1rem}
+.wk-detail-cap p,.wk-detail-thread p{margin:0;line-height:1.55;white-space:pre-wrap}
+.wk-detail-doc{display:flex;flex-direction:column;min-height:50vh}
+.wk-detail-doc iframe{flex:1;border:none;background:#fff;min-height:50vh}
+.wk-tomb{padding:22px 16px}
+.wk-tomb h2{margin:0 0 8px;font-size:1.1rem}
+.wk-actions{display:flex;align-items:center;flex-wrap:wrap;gap:10px;padding:10px 16px;
+  border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.wk-cite-note{font-size:.78rem;color:var(--muted)}
+.wk-cite-note em{font-style:normal;display:block;font-size:.7rem;margin-top:2px}
+.wk-edit{display:flex;flex-direction:column;gap:8px;padding:12px 16px}
+.wk-edit input,.wk-edit textarea,.wk-comments textarea{padding:10px 12px;border-radius:10px;
+  font-family:inherit;font-size:.92rem;color:#fff;background:rgba(255,255,255,.05);
+  border:1px solid var(--line);outline:none;resize:vertical}
+.wk-edit-row{display:flex;gap:12px;align-items:center}
+.wk-comments{padding:12px 16px 18px;display:flex;flex-direction:column;gap:12px}
+.wk-comments ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px}
+.wk-comments li p{margin:4px 0 0;line-height:1.5;white-space:pre-wrap}
+.wk-comments form{display:flex;flex-direction:column;gap:8px}
+.wk-open{display:block;width:100%;margin:0;padding:0;border:none;background:none;
+  font:inherit;color:inherit;text-align:left;cursor:pointer}
+.dsc-work-open{padding:0 0 8px;display:flex;flex-direction:column;gap:8px}
+@media (prefers-reduced-motion:reduce){
+  .wk-detail,.sheet-back{transition:none}
+}
+
 /* ══ Pages ════════════════════════════════════════════════════════════════════════════════
    The stopping cue, drawn. A page has a number, a total and a last one — there is no scroll
    listener anywhere in this app that fetches more, and there must not be. */

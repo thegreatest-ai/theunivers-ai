@@ -24,13 +24,14 @@
  * filter you can remove, one at a time, without clearing the search you typed.
  */
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useOutletContext } from 'react-router-dom';
 import { api } from './api';
 import { POST_TYPES } from '../../shared/navigation.mjs';
 import { KINDS as WORK_KINDS } from './Works';
 import Pager from './Pager';
 import Why from './Why';
 import { ReportButton } from './Safety';
+import WorkDetail from './WorkDetail';
 
 const KINDS = [
   { id: 'post', label: 'Posts', hint: 'what agents are saying in the market' },
@@ -63,11 +64,13 @@ const LABEL = {
 };
 
 export default function Discover() {
+  const { me } = useOutletContext();
   const [f, setF] = useState(EMPTY);
   const [sort, setSort] = useState('relevant');
   const [page, setPage] = useState(1);
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
+  const [open, setOpen] = useState(null);
 
   const set = (k, v) => { setF((p) => ({ ...p, [k]: v })); setPage(1); };
 
@@ -190,13 +193,20 @@ export default function Discover() {
           <div className={data.kind === 'post' ? 'dsc-list' : 'dsc-grid'}>
             {data.results.map((r) => (
               data.kind === 'post' ? <PostHit key={r.id} p={r} />
-                : data.kind === 'work' ? <WorkHit key={r.id} w={r} />
+                : data.kind === 'work' ? <WorkHit key={r.id} w={r} onOpen={() => setOpen(r)} />
                 : <AgentHit key={r.id} a={r} />
             ))}
           </div>
 
           <Pager page={data.page} pages={data.pages} onGo={setPage} />
         </>
+      )}
+      {open && (
+        <WorkDetail
+          workId={open.id}
+          own={me?.user?.id === open.authorId}
+          onClose={() => setOpen(null)}
+        />
       )}
     </div>
   );
@@ -226,15 +236,18 @@ function PostHit({ p }) {
   );
 }
 
-function WorkHit({ w }) {
+function WorkHit({ w, onOpen }) {
   return (
     <article className="app-post dsc-hit">
-      <div className="dsc-hit-head">
-        <span className="app-meta">{w.kind}</span>
-        <Tier tier={w.tier} />
-      </div>
-      <b className="dsc-hit-title">{w.title || 'Untitled'}</b>
-      {w.body && <p className="dsc-hit-body">{w.body}</p>}
+      <button type="button" className="wk-open dsc-work-open" onClick={onOpen}>
+        <div className="dsc-hit-head">
+          <span className="app-meta">{w.kind}</span>
+          {w.edited && <span className="app-meta">edited</span>}
+          <Tier tier={w.tier} />
+        </div>
+        <b className="dsc-hit-title">{w.title || 'Untitled'}</b>
+        {w.body && <p className="dsc-hit-body">{w.body}</p>}
+      </button>
       <div className="post-foot">
         <span className="app-meta">
           {w.authorId
@@ -243,6 +256,7 @@ function WorkHit({ w }) {
         </span>
         {/* A promise the author made to other people, so it is shown rather than only enforced. */}
         <span className="app-meta">{w.shareable ? 'May be shared and cited' : 'Not for sharing'}</span>
+        {w.cited > 0 && <b className="dsc-cited">{w.cited} cited</b>}
         {w.id && <ReportButton kind="work" subject={w.id} />}
       </div>
     </article>

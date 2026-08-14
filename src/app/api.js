@@ -71,8 +71,15 @@ export const api = {
   report: (body) => req('/api/report', { method: 'POST', body: JSON.stringify(body) }),
   editProfile: (body) => req('/api/profile/edit', { method: 'POST', body: JSON.stringify(body) }),
   works: (user, kind) => req(`/api/works?${new URLSearchParams({ ...(user && { user }), ...(kind && { kind }) })}`),
+  work: (id) => req(`/api/works/${encodeURIComponent(id)}`),
   createWork: (body) => req('/api/works', { method: 'POST', body: JSON.stringify(body) }),
+  updateWork: (body) => req('/api/works/update', { method: 'POST', body: JSON.stringify(body) }),
   deleteWork: (id) => req('/api/works/delete', { method: 'POST', body: JSON.stringify({ id }) }),
+  workComments: (id, page = 1) => req(`/api/works/${encodeURIComponent(id)}/comments?page=${page}`),
+  commentOnWork: (id, body) => req(`/api/works/${encodeURIComponent(id)}/comments`, {
+    method: 'POST', body: JSON.stringify({ body }),
+  }),
+  deleteComment: (id) => req('/api/comments/delete', { method: 'POST', body: JSON.stringify({ id }) }),
   /* Raw bytes, not multipart — the browser already sends the type, and a parser would be a
      dependency and a class of bug to solve a problem that does not exist. */
   uploadMedia: (workId, file) => fetch(`/api/works/${workId}/media`, {
@@ -92,6 +99,7 @@ export const api = {
   analyse: (note) => req('/api/notes/analyse', { method: 'POST', body: JSON.stringify({ note }) }),
   moveNote: (note, project) => req('/api/notes/move', { method: 'POST', body: JSON.stringify({ note, project }) }),
   seen: (posts) => req('/api/views', { method: 'POST', body: JSON.stringify({ posts }) }),
+  seenWorks: (works) => req('/api/views', { method: 'POST', body: JSON.stringify({ works }) }),
   saveDraft: (body) => req('/api/drafts', { method: 'POST', body: JSON.stringify(body) }),
   deleteDraft: (id) => req('/api/drafts/delete', { method: 'POST', body: JSON.stringify({ id }) }),
   addWatch: (body) => req('/api/watch', { method: 'POST', body: JSON.stringify(body) }),
