@@ -3,7 +3,7 @@
 Everything currently wrong or unfinished, worst first. **If you fix one, delete it here in the same
 commit** — a stale known-issues file is worse than none, because people stop trusting it.
 
-Last reviewed: 2026-08-12 · registration is OPEN · nothing HIGH is open
+Last reviewed: 2026-08-14 · registration is OPEN · nothing HIGH is open
 
 **Two accounts in production, both the owner's** — the primary and a second address used to see the
 product as another person sees it. There are **no outside users yet**. Counted from
@@ -21,30 +21,6 @@ and no reference dangles.
 There are now **zero posts** in production, since the only one belonged to that account.
 
 ---
-
-## MEDIUM — the front door is a black rectangle without WebGL
-
-`/` is a full-viewport react-three-fiber `<Canvas>` with `Suspense fallback={null}`
-(`src/App.jsx`), and `index.html` has an empty `#root` and no `<noscript>`. A visitor whose
-browser cannot get a WebGL context — locked-down enterprise, some mobile, a GPU-blocklisted
-browser — gets solid navy and zero characters of text. Not a CSP problem: openclaw's headless pass
-confirmed nothing was blocked, the context simply was not available.
-
-Found 2026-08-12 by a real browser load, which is the only thing that could have found it: the
-server answers 200 and the bundle is fine. A `fallback` with the headline and a sign-in link, or
-a `<noscript>`, would make the page degrade instead of vanish.
-
-## MEDIUM — CORS_ORIGIN is `*` in the deployed configuration, not in the code
-
-The code now defaults to `BASE_URL` and the header is tested to reflect configuration rather than
-being hardcoded — but `.env` on this machine carries `CORS_ORIGIN=*`, and `.env.example` shipped
-the same line, so every copy of that file taught the whole internet to be allowed. The example is
-fixed; **the real `.env` and the deploy secret are the owner's to change**, and until they do the
-running app still sends `*`.
-
-Low harm today: auth is a bearer token, not a cookie, so a browser on another origin gains nothing
-by being allowed to read a 401. It stops being harmless the first time a cookie or a same-site
-assumption appears — and nobody re-reads a header they have already seen work.
 
 ## MEDIUM — a shared operator token cannot say WHICH human moderated
 
@@ -173,6 +149,57 @@ removes the worst of the drift risk, but the consolidation decision is still ope
 ---
 
 ## Resolved, kept for the lessons
+
+<details><summary>The front door was a black rectangle without WebGL</summary>
+
+`/` is a full-viewport react-three-fiber `<Canvas>` with `Suspense fallback={null}`, and
+`index.html` had an empty `#root` and no `<noscript>`. A visitor whose browser could not get a
+WebGL context — locked-down enterprise, some mobile, a GPU-blocklisted browser — got solid navy
+and zero characters of text. Not a CSP problem: the headless pass confirmed nothing was blocked,
+the context simply was not available.
+
+Found 2026-08-12 by a real browser load, which is the only thing that could have found it: the
+server answers 200 and the bundle is fine.
+
+**Fixed the same day (`0b2ceba`).** `canWebGL()` probes for a context in an effect and the Canvas
+is not mounted until the answer is known — `glOk === null` renders no Canvas at all, because a
+failed `createContext` during render takes the whole tree down with it, `Overlay` included, before
+`SceneBoundary` can help. `glOk === false` skips the Canvas permanently and passes `forceDone` to
+the preloader, so the text overlay is the page rather than a thing waiting behind a curtain that
+never lifts. `index.html` also carries a real `<noscript>` with the headline and both entry links.
+
+Three states, not two: **not yet probed** is different from **cannot**, and collapsing them is how
+the first attempt still rendered blank.
+
+</details>
+
+<details><summary>CORS_ORIGIN `*` — the entry described production, and had never looked at production</summary>
+
+**What the entry claimed:** `.env` carries `CORS_ORIGIN=*`, `.env.example` shipped the same line,
+and "until the owner changes the real `.env` and the deploy secret, the running app still sends
+`*`."
+
+**What was actually true.** There is no `CORS_ORIGIN` in `fly.toml` `[env]`, and `fly secrets list`
+has never held one — `git log -S CORS_ORIGIN -- fly.toml` returns nothing, so it was never there to
+remove. Production therefore always took the `|| BASE_URL` branch. Verified against the running
+site rather than inferred, on 2026-08-14:
+
+```
+$ curl -sD- -o/dev/null https://theunivers.ai/api/health -H 'Origin: https://evil.example'
+access-control-allow-origin: https://theunivers.ai
+```
+
+The local `.env` really did carry `*`, and it is now `http://localhost:5188`. It never reached the
+deploy: `.env` is gitignored and Fly reads its own environment.
+
+**The lesson is the third instance of one already recorded twice in this file** (the DMARC entry,
+and `busy_timeout` read over `fly ssh`): a conclusion about the running system, drawn from a file
+on this laptop, stated as fact. A response header costs one request to read. **Assert production
+from production.** The wrong direction of error matters too — this one reported a live product as
+less safe than it was, which spends attention rather than risking data, but a known-issues file
+that is wrong in either direction is the thing this file's own header warns about.
+
+</details>
 
 <details><summary>A citation could outlive the post it cited, and nothing noticed</summary>
 
