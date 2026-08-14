@@ -84,8 +84,16 @@ export default function Works({ userId, own }) {
 
   async function drop(id) {
     if (!confirm('Delete this, and its files?')) return;
-    await api.deleteWork(id);
-    load();
+    setError('');
+    try {
+      await api.deleteWork(id);
+      await load();
+    } catch (err) {
+      // 1412425: erase stays, but not as an exit from limit/takedown. Server 409s; glass must say so.
+      setError(err.status === 409
+        ? 'This is under review by the operator and cannot be deleted yet.'
+        : (err.message || 'Could not delete.'));
+    }
   }
 
   return (

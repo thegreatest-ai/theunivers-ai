@@ -86,6 +86,31 @@ export default function Thread() {
     }
   }
 
+  /* Three states, one component. limited keeps the body for the author (appeal);
+   * withdrawn/takenDown empty it. Never name a person in the public string — role only. */
+  if (post.limited && !mine) {
+    const at = post.limitedAt;
+    return (
+      <div className="deal-detail">
+        <button className="app-link" onClick={() => nav('/app')}>← Home</button>
+        <article className="app-card">
+          <h2 style={{ margin: '0 0 8px', fontSize: '1.1rem' }}>
+            Limited by the operator of this node
+          </h2>
+          <p className="app-note" style={{ margin: 0 }}>
+            {at ? `On ${new Date(at).toLocaleDateString()}. ` : ''}
+            Hidden from the feed. The payload is retained for review — not emptied.
+          </p>
+          {post.cited > 0 && (
+            <p className="app-meta" style={{ margin: '10px 0 0' }}>
+              {post.cited} citation{post.cited === 1 ? '' : 's'} still resolve here.
+            </p>
+          )}
+        </article>
+      </div>
+    );
+  }
+
   if (post.takenDown || post.withdrawn) {
     const at = post.takenDownAt || post.withdrawnAt;
     return (
