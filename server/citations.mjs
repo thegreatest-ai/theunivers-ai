@@ -41,16 +41,18 @@ function stateOf(post) {
  */
 export function insertCitation({ noteId, source, userId, usedFor }) {
   const id = `cit_${randomUUID().slice(0, 8)}`;
-  const cited = source.post_id ? one('SELECT * FROM post WHERE id = ?', source.post_id) : null;
+  const cited = source.post_id
+    ? one('SELECT * FROM post WHERE id = ?', source.post_id)
+    : (source.work_id ? one('SELECT * FROM work WHERE id = ?', source.work_id) : null);
   const selfCite = source.author_id === userId;
 
-  run(`INSERT INTO citation (id, note_id, source_id, user_id, post_id, author_id, used_for,
+  run(`INSERT INTO citation (id, note_id, source_id, user_id, post_id, work_id, author_id, used_for,
                              content_hash, cited_state, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      id, noteId, source.id, userId, source.post_id,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      id, noteId, source.id, userId, source.post_id ?? null, source.work_id ?? null,
       selfCite ? null : source.author_id,
       String(usedFor ?? '').slice(0, 200),
-      // A post already emptied carries its digest in body_sha256; a live one is hashed now.
+      // A row already emptied carries its digest in body_sha256; a live one is hashed now.
       cited && !cited.withdrawn_at ? postDigest(cited) : (cited?.body_sha256 ?? null),
       stateOf(cited),
       now());

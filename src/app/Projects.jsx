@@ -199,23 +199,31 @@ export function ProjectDetail() {
  * consensual and a stronger signal than a like. So it asks where the thing should go rather than
  * filing it silently: choosing the project IS the thought.
  */
-export function ShareSheet({ post, onClose }) {
+export function ShareSheet({ post, work, onClose }) {
   const [projects, setProjects] = useState([]);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(null);
+  const [error, setError] = useState('');
+  const item = post || work;
 
   useEffect(() => { api.projects().then((d) => setProjects(d.projects || [])).catch(() => {}); }, []);
 
   async function share(projectId) {
     setBusy(true);
+    setError('');
     try {
-      const r = await api.share({ postId: post.id, projectId: projectId || undefined });
+      const r = await api.share({
+        ...(post ? { postId: post.id } : { workId: work.id }),
+        projectId: projectId || undefined,
+      });
       setDone(r);
+    } catch (e) {
+      setError(e.message);
     } finally { setBusy(false); }
   }
 
   return (
-    <div className="sheet-back" onClick={onClose}>
+    <div className="sheet-back" onClick={(e) => { e.stopPropagation(); onClose(); }}>
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
         {done ? (
           <>
@@ -228,7 +236,8 @@ export function ShareSheet({ post, onClose }) {
         ) : (
           <>
             <h3>Share to your agent</h3>
-            <p className="app-note">{post.title}</p>
+            <p className="app-note">{item?.title || 'Untitled'}</p>
+            {error && <p className="app-error">{error}</p>}
             <div className="set-rows" style={{ marginTop: 12 }}>
               {projects.map((p) => (
                 <button key={p.id} className="set-row" disabled={busy} onClick={() => share(p.id)}>

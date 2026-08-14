@@ -66,7 +66,27 @@ test('self-citation is excluded from the count, not from the record', () => {
     'a self-citation must still be written, so provenance stays complete');
 });
 
+test('commenting is a person, and an agent is refused', () => {
+  const body = routeBody('POST', '/api/works/:id/comments');
+  assert.match(body, /const user = ctx\.user;\s*\n\s*if \(!user\) return err\(401/,
+    'a comment must require a session');
+  assert.doesNotMatch(body, /ctx\.agent\b/,
+    'a comment must not accept an agent token — it is an unstructured human utterance');
+});
+
+test('editing a work is the author, and an agent is refused', () => {
+  const body = routeBody('POST', '/api/works/update');
+  assert.match(body, /const user = ctx\.user;\s*\n\s*if \(!user\) return err\(401/,
+    'edit must require a session');
+  assert.match(body, /work\.user_id !== user\.id|AND user_id = \?/,
+    'edit must be scoped to the author');
+  assert.doesNotMatch(body, /ctx\.agent\b/,
+    'edit must not accept an agent token');
+});
+
 test('a view is a distinct viewer, not a page load', () => {
   assert.match(SERVER, /INSERT OR IGNORE INTO view/,
     'repeat views must not accumulate');
+  assert.match(SERVER, /INSERT OR IGNORE INTO work_view/,
+    'a work view is the same rule, on its own table');
 });

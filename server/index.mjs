@@ -936,13 +936,16 @@ route('POST', '/api/account/kind', (ctx) => {
  * and only the second is evidence the work was useful. Until an agent analyses a note, this is
  * legitimately zero — which is the honest number, not a missing feature.
  */
-const citedCount = (postId) =>
+const citedCount = (id) =>
   // `author_id IS NOT NULL` is what excludes self-citation. A self-cite is still WRITTEN, so a
   // note's provenance stays complete, but its author is nulled — and without this clause the row
   // was counted anyway, because it still carries a post_id. Caught by a test that cited its own
   // post and watched the number go from 1 to 2.
+  //
+  // work_id is the same count for a work. Ids cannot collide (pst_ vs wrk_), so one lookup
+  // answers both surfaces without a second function that would drift.
   one(`SELECT COUNT(DISTINCT user_id) c FROM citation
-       WHERE post_id = ? AND author_id IS NOT NULL`, postId)?.c ?? 0;
+       WHERE author_id IS NOT NULL AND (post_id = ? OR work_id = ?)`, id, id)?.c ?? 0;
 
 /**
  * Distinct viewers, split by what did the viewing. Never summed into one number: an agent
@@ -1027,6 +1030,8 @@ route('POST', '/api/views', (ctx) => {
   const kind = ctx.user ? 'person' : 'agent';
   const ids = (Array.isArray(ctx.body.posts) ? ctx.body.posts : [ctx.body.post])
     .filter(Boolean).map(String).slice(0, 50);
+  const workIds = (Array.isArray(ctx.body.works) ? ctx.body.works : [ctx.body.work])
+    .filter(Boolean).map(String).slice(0, 50);
 
   for (const postId of ids) {
     try {
@@ -1035,7 +1040,14 @@ route('POST', '/api/views', (ctx) => {
           `viw_${randomUUID().slice(0, 8)}`, postId, viewer, kind, now());
     } catch { /* a view is never worth failing a request over */ }
   }
-  return { ok: true, counted: ids.length };
+  for (const workId of workIds) {
+    try {
+      run(`INSERT OR IGNORE INTO work_view (id, work_id, viewer_id, kind, created_at)
+           VALUES (?, ?, ?, ?, ?)`,
+          `wvi_${randomUUID().slice(0, 8)}`, workId, viewer, kind, now());
+    } catch { /* a view is never worth failing a request over */ }
+  }
+  return { ok: true, counted: ids.length + workIds.length };
 });
 
 route('POST', '/api/projects/share', (ctx) => {
@@ -1044,8 +1056,14 @@ route('POST', '/api/projects/share', (ctx) => {
 
   const postId = String(ctx.body.postId ?? '').trim();
   const post = postId ? one('SELECT * FROM post WHERE id = ?', postId) : null;
+  const workId = String(ctx.body.workId ?? '').trim();
+  const work = workId ? one('SELECT * FROM work WHERE id = ?', workId) : null;
   const url = String(ctx.body.url ?? '').trim();
-  if (!post && !url) return err(400, 'nothing to share');
+  if (!post && !work && !url) return err(400, 'nothing to share');
+  if (work && !work.shareable) return err(403, 'the author asked that this not be shared');
+  if (work && (work.withdrawn_at || work.limited_at || work.taken_down_at)) {
+    return err(404, 'no such work');
+  }
 
   // Project: named, chosen, or created.
   let projectId = String(ctx.body.projectId ?? '').trim();
@@ -1066,16 +1084,16 @@ route('POST', '/api/projects/share', (ctx) => {
     run(`INSERT INTO note (id, project_id, user_id, title, body, status, created_at, updated_at)
          VALUES (?, ?, ?, ?, '', 'captured', ?, ?)`,
         noteId, projectId, user.id,
-        String(ctx.body.noteTitle ?? post?.title ?? 'Untitled note').slice(0, 160), now(), now());
+        String(ctx.body.noteTitle ?? post?.title ?? work?.title ?? 'Untitled note').slice(0, 160), now(), now());
     note = one('SELECT * FROM note WHERE id = ?', noteId);
   }
 
-  run(`INSERT INTO source (id, note_id, user_id, post_id, author_id, title, excerpt, used_for, url, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  run(`INSERT INTO source (id, note_id, user_id, post_id, work_id, author_id, title, excerpt, used_for, url, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       `src_${randomUUID().slice(0, 8)}`, noteId, user.id,
-      post?.id ?? null, post?.user_id ?? null,
-      String(post?.title ?? ctx.body.title ?? '').slice(0, 200),
-      String(post?.body ?? '').slice(0, 2000),
+      post?.id ?? null, work?.id ?? null, post?.user_id ?? work?.user_id ?? null,
+      String(post?.title ?? work?.title ?? ctx.body.title ?? '').slice(0, 200),
+      String(post?.body ?? work?.body ?? '').slice(0, 2000),
       String(ctx.body.usedFor ?? '').slice(0, 200),
       url || null, now());
 
@@ -1297,6 +1315,42 @@ const mediaFor = (workId) =>
       ratio: m.width && m.height ? Number((m.width / m.height).toFixed(4)) : null,
     }));
 
+const commentCount = (workId) =>
+  one('SELECT COUNT(*) c FROM comment WHERE work_id = ?', workId)?.c ?? 0;
+
+const workViewCounts = (workId) => ({
+  people: one("SELECT COUNT(*) c FROM work_view WHERE work_id = ? AND kind = 'person'", workId)?.c ?? 0,
+  agents: one("SELECT COUNT(*) c FROM work_view WHERE work_id = ? AND kind = 'agent'", workId)?.c ?? 0,
+});
+
+/** The live shape. Counts are derived here so the client never issues three requests per tile. */
+function liveWork(w) {
+  return {
+    id: w.id, kind: w.kind, title: w.title, body: w.body, authorId: w.user_id,
+    shareable: Boolean(w.shareable), at: w.created_at,
+    edited: Boolean(w.edited_at), editedAt: w.edited_at || null,
+    media: mediaFor(w.id),
+    views: workViewCounts(w.id),
+    comments: commentCount(w.id),
+    cited: citedCount(w.id),
+  };
+}
+
+function eraseWorkMedia(workId) {
+  for (const m of all('SELECT path FROM media WHERE work_id = ?', workId)) store.remove(m.path);
+  run('DELETE FROM media WHERE work_id = ?', workId);
+}
+
+/** Bytes gone, title and body emptied, the row stays so comments still resolve. */
+function withdrawWork(work) {
+  const at = now();
+  const digest = work.body_sha256 || postDigest(work);
+  eraseWorkMedia(work.id);
+  run(`UPDATE work SET withdrawn_at = ?, body_sha256 = ?, title = '', body = '' WHERE id = ?`,
+      at, digest, work.id);
+  return at;
+}
+
 route('POST', '/api/works', (ctx) => {
   const user = ctx.user;
   if (!user) return err(401, 'sign in required');
@@ -1445,12 +1499,132 @@ route('GET', '/api/works', (ctx) => {
   const viewerId = ctx.user?.id ?? ctx.agent?.user_id ?? null;
   if (viewerId !== userId) rows = rows.filter((w) => !w.limited_at && !w.taken_down_at);
 
+  // A withdrawn work left the grid the way a withdrawn post left the feed. The tombstone is
+  // GET /api/works/:id, for a commenter following their own words — not a tile that says nothing.
+  rows = rows.filter((w) => !w.withdrawn_at);
+
+  return { works: rows.map((w) => liveWork(w)) };
+});
+
+route('GET', '/api/works/:id', (ctx) => {
+  if (!ctx.user && !ctx.agent) return err(401, 'auth required');
+  const w = one('SELECT * FROM work WHERE id = ?', ctx.params.id);
+  if (!w) return err(404, 'no such work');
+
+  const viewerId = ctx.user?.id ?? ctx.agent?.user_id ?? null;
+  if (isHidden(viewerId, w.user_id)) return err(404, 'no such work');
+
+  if (ctx.agent && !ctx.user && w.user_id !== ctx.agent.user_id && w.shareable !== 1) {
+    return err(404, 'no such work');
+  }
+
+  if (w.limited_at && viewerId !== w.user_id) {
+    return { work: {
+      id: w.id, limited: true, limitedAt: w.limited_at, authorId: w.user_id,
+      cited: citedCount(w.id), comments: commentCount(w.id), views: workViewCounts(w.id),
+    } };
+  }
+
+  if (w.withdrawn_at || w.taken_down_at) {
+    return { work: {
+      id: w.id, withdrawn: true, withdrawnAt: w.withdrawn_at,
+      takenDown: Boolean(w.taken_down_at),
+      removedBy: w.taken_down_at ? 'operator' : 'author',
+      bodySha256: w.body_sha256 ?? null,
+      authorId: w.user_id, at: w.created_at,
+      cited: citedCount(w.id), comments: commentCount(w.id), views: workViewCounts(w.id),
+    } };
+  }
+
+  return { work: liveWork(w) };
+});
+
+route('POST', '/api/works/:id/comments', (ctx) => {
+  const user = ctx.user;
+  if (!user) return err(401, 'sign in required');
+
+  const byUser = take('comment-user', user.id, LIMITS.commentPerUser.max, LIMITS.commentPerUser.windowMs);
+  if (!byUser.ok) return tooMany(byUser.retryAfter);
+  const byIp = take('comment-ip', ctx.ip, LIMITS.commentPerIp.max, LIMITS.commentPerIp.windowMs);
+  if (!byIp.ok) return tooMany(byIp.retryAfter);
+
+  const work = one('SELECT * FROM work WHERE id = ?', ctx.params.id);
+  if (!work) return err(404, 'no such work');
+  if (isHidden(user.id, work.user_id)) return err(404, 'no such work');
+  if (work.limited_at || work.taken_down_at) {
+    return err(409, 'this is under review by the operator and cannot be commented on');
+  }
+  if (work.withdrawn_at) return err(409, 'this work has been withdrawn');
+
+  const body = String(ctx.body.body ?? '').trim();
+  if (!body) return err(400, 'a comment needs something to say');
+  const text = body.slice(0, 2_000);
+
+  const id = `cmt_${randomUUID().slice(0, 8)}`;
+  const at = now();
+  run(`INSERT INTO comment (id, work_id, user_id, body, created_at) VALUES (?, ?, ?, ?, ?)`,
+      id, work.id, user.id, text, at);
+  // Kind only — the client refetches the list, so there is one code path for "how do I load
+  // comments" instead of two that can disagree.
+  publishAll([work.user_id, user.id], 'comment', { work: work.id });
+  return { comment: { id, workId: work.id, authorId: user.id, author: user.name, body: text, at } };
+});
+
+route('GET', '/api/works/:id/comments', (ctx) => {
+  if (!ctx.user && !ctx.agent) return err(401, 'auth required');
+  const work = one('SELECT * FROM work WHERE id = ?', ctx.params.id);
+  if (!work) return err(404, 'no such work');
+
+  const viewerId = ctx.user?.id ?? ctx.agent?.user_id ?? null;
+  if (isHidden(viewerId, work.user_id)) return err(404, 'no such work');
+  if (work.limited_at && viewerId !== work.user_id) return err(404, 'no such work');
+
+  const rows = all(
+    `SELECT c.id, c.body, c.created_at, c.user_id, u.name AS author
+       FROM comment c JOIN user u ON u.id = c.user_id
+      WHERE c.work_id = ? ORDER BY c.created_at ASC`, work.id);
+  const page = paginate(rows, ctx.query.get('page'), ctx.query.get('per'));
   return {
-    works: rows.map((w) => ({
-      id: w.id, kind: w.kind, title: w.title, body: w.body,
-      shareable: Boolean(w.shareable), at: w.created_at, media: mediaFor(w.id),
+    comments: page.rows.map((c) => ({
+      id: c.id, body: c.body, at: c.created_at, authorId: c.user_id, author: c.author,
     })),
+    page: page.page, pages: page.pages, per: page.per, total: page.total,
   };
+});
+
+route('POST', '/api/comments/delete', (ctx) => {
+  const user = ctx.user;
+  if (!user) return err(401, 'sign in required');
+  const id = String(ctx.body.id ?? '');
+  const comment = one('SELECT * FROM comment WHERE id = ?', id);
+  if (!comment) return err(404, 'no such comment');
+  const work = one('SELECT * FROM work WHERE id = ?', comment.work_id);
+  if (comment.user_id !== user.id && work?.user_id !== user.id) {
+    return err(403, 'only the author or the work\'s owner may delete this');
+  }
+  run('DELETE FROM comment WHERE id = ?', id);
+  publishAll([work?.user_id, comment.user_id].filter(Boolean), 'comment', { work: comment.work_id });
+  return { ok: true };
+});
+
+route('POST', '/api/works/update', (ctx) => {
+  const user = ctx.user;
+  if (!user) return err(401, 'sign in required');
+  const id = String(ctx.body.id ?? '');
+  const work = one('SELECT * FROM work WHERE id = ? AND user_id = ?', id, user.id);
+  if (!work) return err(404, 'no such work');
+  if (work.limited_at || work.taken_down_at) {
+    return err(409, 'this is under review by the operator and cannot be edited yet');
+  }
+  if (work.withdrawn_at) return err(409, 'already withdrawn');
+
+  const title = ctx.body.title != null ? String(ctx.body.title).slice(0, 200) : work.title;
+  const body = ctx.body.body != null ? String(ctx.body.body).slice(0, 10_000) : work.body;
+  if (work.kind === 'thread' && !String(body).trim()) return err(400, 'a thread needs something to say');
+
+  const at = now();
+  run('UPDATE work SET title = ?, body = ?, edited_at = ? WHERE id = ?', title, body, at, work.id);
+  return { work: liveWork(one('SELECT * FROM work WHERE id = ?', work.id)) };
 });
 
 route('POST', '/api/works/delete', (ctx) => {
@@ -1472,10 +1646,22 @@ route('POST', '/api/works/delete', (ctx) => {
   if (work.limited_at || work.taken_down_at) {
     return err(409, 'this is under review by the operator and cannot be deleted yet');
   }
-  // Bytes go too. The spec's erasure constraint is why media never reaches an immutable store:
-  // a deletion that leaves the file behind is not a deletion.
-  for (const m of all('SELECT path FROM media WHERE work_id = ?', id)) store.remove(m.path);
-  run('DELETE FROM media WHERE work_id = ?', id);
+  if (work.withdrawn_at) return err(409, 'already withdrawn');
+
+  /*
+   * A comment is somebody else's words. CASCADE would let the author erase them by deleting the
+   * post; RESTRICT alone would make the right to erase conditional on nobody having spoken. So a
+   * commented work is withdrawn: bytes go, title and body empty, the row survives, and the
+   * comments still resolve against a tombstone rather than a 404. An uncommented work still
+   * hard-deletes, because there is nobody else's record to keep.
+   */
+  if (commentCount(id) > 0) {
+    const at = withdrawWork(work);
+    return { ok: true, withdrawn: true, at };
+  }
+
+  eraseWorkMedia(id);
+  run('DELETE FROM work_view WHERE work_id = ?', id);
   run('DELETE FROM work WHERE id = ?', id);
   return { ok: true };
 });
@@ -2245,6 +2431,7 @@ route('GET', '/api/discover', (ctx) => {
     )
       // THE PERMISSION SCOPE. An agent may not be handed a work whose author withheld it.
       .filter((w) => !asAgent || w.shareable === 1 || w.user_id === viewerId)
+      .filter((w) => !w.withdrawn_at && !w.limited_at && !w.taken_down_at)
       .filter((w) => hits(`${w.title} ${w.body}`))
       .filter((w) => !workKind || w.kind === workKind)
       .filter((w) => {
@@ -2256,8 +2443,10 @@ route('GET', '/api/discover', (ctx) => {
         author: w.author_name, authorId: w.user_id, tier: tiers.get(w.user_id),
         // Sent so the client can disable the share control rather than offer it and then refuse.
         shareable: Boolean(w.shareable),
-        cited: citedTotal(w.user_id),
-        citedWeight: citedWeightTotal(w.user_id),
+        edited: Boolean(w.edited_at),
+        cited: citedCount(w.id),
+        comments: commentCount(w.id),
+        views: workViewCounts(w.id),
         at: w.created_at,
       }));
   }

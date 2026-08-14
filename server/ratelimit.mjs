@@ -233,4 +233,10 @@ export const LIMITS = {
   // enough that a shared office reporting a real incident never meets it.
   reportPerUser:   { max: 20,  windowMs: 60 * 60_000 },
   reportPerIp:     { max: 100, windowMs: 60 * 60_000 },
+
+  // Commenting is the product, so this is looser than reporting — a real conversation on one
+  // photograph can be twenty remarks, and reporting is an exceptional ask. Still bounded: an
+  // unbounded write behind a free signup is rows to store and SQLITE_BUSY under a flood.
+  commentPerUser:  { max: 60,  windowMs: 60 * 60_000 },
+  commentPerIp:    { max: 300, windowMs: 60 * 60_000 },
 };

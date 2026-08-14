@@ -112,6 +112,8 @@ address, and offices, cafés, universities and VPNs all look the same.
 | `errorPerIp` | 30 / hour | the only UNAUTHENTICATED write path; a broken page reports once or twice |
 | `reportPerUser` | 20 / hour | already implausible for one genuine reporter |
 | `reportPerIp` | 100 / hour | the Sybil case: throwaway accounts sharing one host |
+| `commentPerUser` | 60 / hour | a real conversation; tighter than a flood, looser than a report |
+| `commentPerIp` | 300 / hour | flood ceiling behind carrier NAT |
 
 `registerPerIp` was originally **5/hour**, which would have blocked an entire mobile carrier's
 users after five signups. It was found by six test signups locking the tester's own machine out for
