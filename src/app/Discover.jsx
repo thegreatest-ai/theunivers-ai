@@ -262,7 +262,7 @@ function WorkHit({ w, onOpen }) {
         {(w.kind === 'photo' || w.kind === 'video') && first && (
           <div className={`dsc-shot${shot ? ' has-ratio' : ''}`} style={shot}>
             {w.kind === 'photo' ? (
-              <img src={first.url} alt={w.title || ''} loading="lazy" decoding="async"
+              <img src={first.url} alt={w.title || w.body || 'Photograph'} loading="lazy" decoding="async"
                    draggable={false} onContextMenu={(e) => e.preventDefault()}
                    style={cropStyle(first)} />
             ) : (
@@ -281,7 +281,10 @@ function WorkHit({ w, onOpen }) {
           {w.edited && <span className="app-meta">edited</span>}
           <Tier tier={w.tier} />
         </div>
-        <b className="dsc-hit-title">{w.title || 'Untitled'}</b>
+        {/* No "Untitled" filler. A picture posted from the compose window has no title by design —
+            the caption is what it says — so a placeholder here would print the same dead word on
+            every photograph in the feed. Absent renders as absent, the same rule the cells follow. */}
+        {w.title && <b className="dsc-hit-title">{w.title}</b>}
         {w.body && <p className="dsc-hit-body">{w.body}</p>}
         <PlaceLine place={w.place} placeCc={w.place_cc} />
       </button>

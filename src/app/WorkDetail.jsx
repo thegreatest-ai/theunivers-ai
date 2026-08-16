@@ -211,7 +211,7 @@ export default function WorkDetail({ work: initial, workId, own: ownProp, onClos
             {work.kind === 'photo' && current && (
               <div className={`wk-detail-stage${ratio > 0 ? ' has-ratio' : ''}`}
                    style={stageStyle(ratio)}>
-                <img src={current.url} alt={work.title || ''} decoding="async"
+                <img src={current.url} alt={work.title || work.body || 'Photograph'} decoding="async"
                      draggable={false} onContextMenu={(e) => e.preventDefault()} />
                 {media.length > 1 && (
                   <div className="wk-detail-slides">

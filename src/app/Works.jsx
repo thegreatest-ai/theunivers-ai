@@ -144,7 +144,7 @@ export default function Works({ userId, own }) {
                       library and may not gain one, so a full-size photograph is what exists to
                       offer — see docs/design/PERFORMANCE.md for what that costs and what would fix
                       it. `decoding="async"` at least keeps a 3MB decode off the main thread. */}
-                  <img src={w.media[0].url} alt={w.title} loading="lazy" decoding="async"
+                  <img src={w.media[0].url} alt={w.title || w.body || 'Photograph'} loading="lazy" decoding="async"
                        draggable={false} onContextMenu={(e) => e.preventDefault()}
                        style={cropStyle(w.media[0])} />
                   {w.media.length > 1 && <span className="wk-count">{w.media.length}</span>}

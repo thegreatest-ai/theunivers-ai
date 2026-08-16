@@ -28,7 +28,7 @@ export default function CreatePost({ kind, accept, multiple, onClose, onShared }
   const appending = useRef(false);
   const [items, setItems] = useState([]);
   const [ratio, setRatio] = useState('original');
-  const [text, setText] = useState({ title: '', body: '' });
+  const [text, setText] = useState({ body: '' });
   const [place, setPlace] = useState('');
   const [placeCc, setPlaceCc] = useState('');
   const [busy, setBusy] = useState(false);
@@ -72,7 +72,6 @@ export default function CreatePost({ kind, accept, multiple, onClose, onShared }
     const next = [...itemsRef.current, ...added];
     itemsRef.current = next;
     setItems(next);
-    setText((p) => ({ ...p, title: p.title || next[0].file.name }));
     setError(incoming.length > extra.length
       ? `A post can hold ${MEDIA_CAP} pictures.`
       : '');
@@ -117,7 +116,7 @@ export default function CreatePost({ kind, accept, multiple, onClose, onShared }
     setItems([]);
     appending.current = false;
     setRatio('original');
-    setText({ title: '', body: '' });
+    setText({ body: '' });
     setPlace('');
     setPlaceCc('');
     setError('');
@@ -132,7 +131,7 @@ export default function CreatePost({ kind, accept, multiple, onClose, onShared }
     try {
       const w = await api.createWork({
         kind,
-        title: text.title || items[0].file.name,
+        title: '',
         body: text.body,
         ratio,
         place,
@@ -278,11 +277,6 @@ export default function CreatePost({ kind, accept, multiple, onClose, onShared }
               ))}
             </fieldset>
 
-            <input
-              placeholder="Title (optional)"
-              value={text.title}
-              onChange={(e) => setText((p) => ({ ...p, title: e.target.value }))}
-            />
             <textarea
               rows={3}
               placeholder="Caption (optional)"
