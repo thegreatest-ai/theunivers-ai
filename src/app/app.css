@@ -728,7 +728,35 @@
 .cp-form input,.cp-form textarea{padding:10px 12px;border-radius:10px;font-family:inherit;
   font-size:.92rem;color:#fff;background:rgba(255,255,255,.05);border:1px solid var(--line);
   outline:none;resize:vertical}
-.cp-place{display:flex;flex-direction:column;gap:8px}
+/* Own labelled row, distinct from the caption block — a pin, the word Location,
+   and the controls on one line, so it is scannable at a glance rather than
+   discovered by reading downward. The pin is the compose label, never painted
+   on PlaceLine: that line is a caption, and a pin there would look attested. */
+.cp-place{margin:0;padding:10px 12px 8px;border:1px solid var(--line);border-radius:12px;
+  display:flex;flex-direction:column;gap:8px;background:rgba(255,255,255,.03);
+  min-width:0}
+.cp-place-label{display:flex;align-items:center;gap:6px;padding:0;font-size:.78rem;
+  color:var(--muted);float:none;width:auto}
+.cp-place-pin{flex:none;opacity:.7}
+.cp-place-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0}
+.cp-place-use{flex:none;margin:0;padding:8px 14px;border-radius:99px;cursor:pointer;
+  font-family:inherit;font-size:.82rem;font-weight:600;color:var(--text);
+  background:rgba(56,189,248,.12);border:1px solid rgba(56,189,248,.45)}
+.cp-place-use:hover{background:rgba(56,189,248,.2)}
+.cp-place-use:disabled{opacity:.45;cursor:not-allowed}
+.cp-form .cp-place-row input,.wk-edit .cp-place-row input{flex:1 1 140px;min-width:0;
+  padding:8px 12px;border-radius:10px;font-family:inherit;font-size:.86rem;color:#fff;
+  background:rgba(255,255,255,.05);border:1px solid var(--line);outline:none}
+.cp-place-row .app-select{flex:1 1 140px;min-width:0}
+.cp-place-row .app-select-trigger{min-height:38px;padding:8px 12px;font-size:.86rem}
+.cp-place-chip{display:inline-flex;align-items:center;gap:6px;align-self:flex-start;
+  padding:4px 4px 4px 10px;border-radius:99px;font-size:.82rem;color:var(--text);
+  background:rgba(56,189,248,.12);border:1px solid rgba(56,189,248,.35)}
+.cp-place-chip-x{width:22px;height:22px;padding:0;border:none;border-radius:99px;
+  cursor:pointer;font-size:.9rem;line-height:1;color:var(--text);
+  background:rgba(255,255,255,.08)}
+.cp-place-note{margin:0;font-size:.72rem;line-height:1.4;color:var(--muted)}
+.cp-place-err{margin:0;font-size:.78rem;line-height:1.4;color:#f0a8a0}
 .cp-row{display:flex;gap:12px;align-items:center}
 
 /* ══ In-app document reader ═══════════════════════════════════════════════════════════════
