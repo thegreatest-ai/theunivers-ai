@@ -1,11 +1,13 @@
 /**
  * One detail view for the four kinds of work.
  *
- * The grid cell uses the post's presentation ratio. This is the original: it holds the shape
- * the bytes actually have, reserved with the server-sent media `ratio` before they arrive, so
- * the page does not jump under a thumb. Video, threads and documents open here too — they
- * differ only in what is attached, and four overlays would mean four of every fix. Same
- * argument as Works.jsx.
+ * The grid cell is square. This is the original: it holds the shape the bytes actually
+ * have, reserved with the server-sent media `ratio` before they arrive, so the page does
+ * not jump under a thumb. Zoom is a crop of the cell and is NOT applied here — the owner's
+ * instruction is to keep the original detail, and a zoomed detail view would make that
+ * original unreachable. Video, threads and documents open here too — they differ only in
+ * what is attached, and four overlays would mean four of every fix. Same argument as
+ * Works.jsx.
  *
  * Counts are whatever the server last returned. An optimistic comment, an invented view, a
  * "shared!" toast for a request that failed — all the same failure as the fabricated guard

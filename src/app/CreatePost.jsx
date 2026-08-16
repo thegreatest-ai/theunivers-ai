@@ -1,30 +1,37 @@
 /**
  * The room between the picker and the upload.
  *
- * Choosing a file used to BE the commit, so there was nowhere for a ratio decision to live
- * and every image landed at whatever shape it happened to be. This window is that room:
- * drop or select, choose a shape, write a caption, then Share. Cancel discards and
- * uploads nothing.
+ * Choosing a file used to BE the commit, so there was nowhere for a ratio or a zoom decision
+ * to live and every image landed at whatever shape it happened to be. This window is that
+ * room: drop or select, choose a shape, frame each picture, write a caption, then Share.
+ * Cancel discards and uploads nothing.
  *
- * The ratio is a presentation choice for the grid, one per post. The bytes go up untouched —
- * the server has no image library and must not gain one for this. WorkDetail still opens
- * the photograph at its true shape.
+ * The ratio is a presentation choice for the FEED, one per post. Zoom is per image, applied
+ * as CSS on the cropped surfaces. The bytes go up untouched — the server has no image library
+ * and must not gain one for this. WorkDetail still opens the photograph at its true shape,
+ * without zoom, because that is the original.
  */
 import { useEffect, useRef, useState } from 'react';
 import { api } from './api';
 import { trapFocus } from './dialog';
 import { WORK_RATIOS, ratioAspect } from '../../shared/work-ratio.mjs';
+import {
+  MEDIA_CAP, ZOOM_MIN, ZOOM_MAX, ZOOM_DEFAULT, cropStyle,
+} from '../../shared/media-zoom.mjs';
 
 export default function CreatePost({ kind, accept, multiple, onClose, onShared }) {
   const box = useRef(null);
   const fileRef = useRef(null);
   const urls = useRef([]);
-  const [files, setFiles] = useState([]);
-  const [previews, setPreviews] = useState([]);
+  const itemsRef = useRef([]);
+  const appending = useRef(false);
+  const [items, setItems] = useState([]);
   const [ratio, setRatio] = useState('original');
   const [text, setText] = useState({ title: '', body: '' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+
+  const zoomable = kind === 'photo' || kind === 'video';
 
   useEffect(() => {
     const root = box.current;
@@ -36,24 +43,76 @@ export default function CreatePost({ kind, accept, multiple, onClose, onShared }
     for (const u of urls.current) URL.revokeObjectURL(u);
   }, []);
 
-  function take(list) {
-    const next = [...(list || [])].filter(Boolean);
-    if (!next.length) return;
-    const picked = multiple ? next : next.slice(0, 1);
-    for (const u of urls.current) URL.revokeObjectURL(u);
-    urls.current = picked.map((f) => URL.createObjectURL(f));
-    setPreviews(urls.current);
-    setFiles(picked);
-    setText((p) => ({ ...p, title: p.title || picked[0].name }));
-    setError('');
+  function take(list, { append = false } = {}) {
+    const incoming = [...(list || [])].filter(Boolean);
+    if (!incoming.length) return;
+    // Initial pick replaces. Add more concatenates. Replacing from Add more is the bug:
+    // a person who has chosen four and wants a fifth must not lose the four.
+    if (!append) {
+      for (const u of urls.current) URL.revokeObjectURL(u);
+      urls.current = [];
+      itemsRef.current = [];
+    }
+    const cap = multiple ? MEDIA_CAP : 1;
+    const room = cap - itemsRef.current.length;
+    const extra = incoming.slice(0, Math.max(room, 0));
+    if (!extra.length) {
+      setError(`A post can hold ${MEDIA_CAP} pictures.`);
+      if (fileRef.current) fileRef.current.value = '';
+      return;
+    }
+    const added = extra.map((file) => {
+      const url = URL.createObjectURL(file);
+      urls.current.push(url);
+      return { file, url, zoom: ZOOM_DEFAULT };
+    });
+    const next = [...itemsRef.current, ...added];
+    itemsRef.current = next;
+    setItems(next);
+    setText((p) => ({ ...p, title: p.title || next[0].file.name }));
+    setError(incoming.length > extra.length
+      ? `A post can hold ${MEDIA_CAP} pictures.`
+      : '');
     if (fileRef.current) fileRef.current.value = '';
+  }
+
+  function addMore() {
+    appending.current = true;
+    fileRef.current?.click();
+  }
+
+  function onPick(list) {
+    const append = appending.current;
+    appending.current = false;
+    take(list, { append });
+  }
+
+  function removeAt(i) {
+    const doomed = itemsRef.current[i];
+    if (!doomed) return;
+    URL.revokeObjectURL(doomed.url);
+    urls.current = urls.current.filter((u) => u !== doomed.url);
+    const next = itemsRef.current.filter((_, j) => j !== i);
+    itemsRef.current = next;
+    setItems(next);
+    if (!next.length) appending.current = false;
+  }
+
+  function setZoomAt(i, raw) {
+    // The slider's min/max is the courtesy. The server is the gate — it will 400 a value
+    // outside 1–3 rather than clamp it into a framing the author did not choose.
+    const n = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Number(raw)));
+    const next = itemsRef.current.map((item, j) => (j === i ? { ...item, zoom: n } : item));
+    itemsRef.current = next;
+    setItems(next);
   }
 
   function discard() {
     for (const u of urls.current) URL.revokeObjectURL(u);
     urls.current = [];
-    setFiles([]);
-    setPreviews([]);
+    itemsRef.current = [];
+    setItems([]);
+    appending.current = false;
     setRatio('original');
     setText({ title: '', body: '' });
     setError('');
@@ -62,19 +121,21 @@ export default function CreatePost({ kind, accept, multiple, onClose, onShared }
 
   async function share(e) {
     e.preventDefault();
-    if (!files.length || busy) return;
+    if (!items.length || busy) return;
     setBusy(true);
     setError('');
     try {
       const w = await api.createWork({
         kind,
-        title: text.title || files[0].name,
+        title: text.title || items[0].file.name,
         body: text.body,
         ratio,
       });
       // Sequential, not parallel: a carousel has an order, and firing them together would file
       // them in whatever order the network returned.
-      for (const f of files) await api.uploadMedia(w.work.id, f);
+      for (const item of items) {
+        await api.uploadMedia(w.work.id, item.file, { zoom: item.zoom });
+      }
       onShared();
     } catch (err) {
       setError(err.message);
@@ -83,6 +144,19 @@ export default function CreatePost({ kind, accept, multiple, onClose, onShared }
   }
 
   const previewAspect = ratioAspect(ratio);
+  const atCap = items.length >= MEDIA_CAP;
+
+  const picker = (
+    <input
+      ref={fileRef}
+      className="sr-only"
+      type="file"
+      accept={accept}
+      multiple={multiple}
+      onClick={(e) => e.stopPropagation()}
+      onChange={(e) => onPick(e.target.files)}
+    />
+  );
 
   return (
     <div className="sheet-back wk-detail-back" onClick={discard}>
@@ -100,8 +174,9 @@ export default function CreatePost({ kind, accept, multiple, onClose, onShared }
         </header>
 
         {error && <p className="app-error">{error}</p>}
+        {picker}
 
-        {!files.length ? (
+        {!items.length ? (
           <div
             className="cp-drop"
             role="button"
@@ -119,30 +194,67 @@ export default function CreatePost({ kind, accept, multiple, onClose, onShared }
           >
             <p>Drag photos and videos here</p>
             <span className="app-cta">Select from computer</span>
-            <input
-              ref={fileRef}
-              className="sr-only"
-              type="file"
-              accept={accept}
-              multiple={multiple}
-              onClick={(e) => e.stopPropagation()}
-              onChange={(e) => take(e.target.files)}
-            />
           </div>
         ) : (
           <form className="cp-form" onSubmit={share}>
-            <div className="cp-thumbs">
-              {files.map((f, i) => (
-                <div
-                  key={previews[i]}
-                  className={`wk-shot${previewAspect ? ' has-ratio' : ''}`}
-                  style={previewAspect ? { aspectRatio: String(previewAspect) } : undefined}
-                >
-                  {f.type.startsWith('video/')
-                    ? <video src={previews[i]} muted preload="metadata" />
-                    : <img src={previews[i]} alt="" />}
-                </div>
-              ))}
+            <div className="cp-stage">
+              <div className="cp-thumbs">
+                {items.map((item, i) => (
+                  <div
+                    key={item.url}
+                    className={`wk-shot${previewAspect ? ' has-ratio' : ''}`}
+                    style={previewAspect ? { aspectRatio: String(previewAspect) } : undefined}
+                  >
+                    {item.file.type.startsWith('video/')
+                      ? <video src={item.url} muted preload="metadata"
+                               style={cropStyle({ zoom: item.zoom })} />
+                      : <img src={item.url} alt=""
+                             style={cropStyle({ zoom: item.zoom })} />}
+                    <button
+                      type="button"
+                      className="cp-remove"
+                      onClick={() => removeAt(i)}
+                    >
+                      ×<span className="sr-only">Remove this picture</span>
+                    </button>
+                    {zoomable && (
+                      <div className="cp-zoom" role="group" aria-label={`Zoom picture ${i + 1}`}>
+                        <button
+                          type="button"
+                          onClick={() => setZoomAt(i, item.zoom - 0.25)}
+                          disabled={item.zoom <= ZOOM_MIN}
+                        >
+                          −<span className="sr-only">Zoom out</span>
+                        </button>
+                        <input
+                          type="range"
+                          min={ZOOM_MIN}
+                          max={ZOOM_MAX}
+                          step={0.05}
+                          value={item.zoom}
+                          aria-label="Zoom"
+                          onChange={(e) => setZoomAt(i, e.target.value)}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setZoomAt(i, item.zoom + 0.25)}
+                          disabled={item.zoom >= ZOOM_MAX}
+                        >
+                          +<span className="sr-only">Zoom in</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+              {multiple && !atCap && (
+                <button type="button" className="cp-add-more" onClick={addMore}>
+                  Add more
+                </button>
+              )}
+              {multiple && atCap && (
+                <p className="app-note cp-cap">A post can hold {MEDIA_CAP} pictures.</p>
+              )}
             </div>
 
             <fieldset className="cp-ratios">

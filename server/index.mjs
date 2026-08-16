@@ -39,6 +39,7 @@ import { checkMandates, resolveTier, rowToSnapshot } from './guard.mjs';
 import { hashPassword, verifyPassword } from './passwords.mjs';
 import { passwordError } from '../shared/password-policy.mjs';
 import { parseWorkRatio } from '../shared/work-ratio.mjs';
+import { parseZoom, parseFocal, MEDIA_CAP } from '../shared/media-zoom.mjs';
 import { handleError } from '../shared/agent-name.mjs';
 import { rank, order, paginate, sideOf, citerWeight, PER_PAGE } from '../shared/ranking.mjs';
 import { CSP } from '../shared/csp.mjs';
@@ -1297,15 +1298,20 @@ function mediaUrl(id) {
 
 /** Media rows shaped for a client, with a URL rather than a disk path. */
 const mediaFor = (workId) =>
-  all(`SELECT id, mime, kind, bytes, filename, ordinal, width, height
+  all(`SELECT id, mime, kind, bytes, filename, ordinal, width, height, zoom, focal_x, focal_y
        FROM media WHERE work_id = ? ORDER BY ordinal`, workId)
     .map((m) => ({
       ...m,
       url: mediaUrl(m.id),
+      // 1 and 50/50 mean untouched. A row that predates these columns already reads as that,
+      // because the DEFAULT is the honest value; the coalescing is so a NULL can never become 0.
+      zoom: m.zoom ?? 1,
+      focal_x: m.focal_x ?? 50,
+      focal_y: m.focal_y ?? 50,
       /*
-       * The shape of the FILE. The detail view always uses this. The grid uses it only when the
-       * work has no presentation ratio (Original) — a chosen work.ratio is a crop of the cell,
-       * never of these bytes.
+       * The shape of the FILE. The detail view always uses this. Discover uses it when the
+       * work has no presentation ratio (Original). The profile grid is square regardless —
+       * those are two surfaces that deliberately disagree (cdda5cb).
        *
        * Sent as a ratio as well as the raw numbers because that is what the client actually uses —
        * `aspect-ratio: <r>` holds the right space open while the bytes are still arriving, which is
@@ -1408,26 +1414,59 @@ route('POST', '/api/works/:id/media', async (ctx) => {
   const buf = ctx.raw;
   if (!buf?.length) return err(400, 'no file received');
 
+  // The client stops offering Add more at ten. That is a courtesy. Two parallel requests that
+  // both saw nine would still land an eleventh without the check below, so the count is the gate.
+  const already = one('SELECT COUNT(*) c FROM media WHERE work_id = ?', work.id)?.c ?? 0;
+  if (already >= MEDIA_CAP) {
+    return err(409, `A post can hold ${MEDIA_CAP} pictures.`);
+  }
+
+  // Framing rides in headers because the body is the bytes, same as x-filename. Omitted is
+  // untouched. Out of range is a 400, never a clamp — a silently clamped zoom is a framing
+  // the author did not choose, and they cannot tell it happened.
+  const zoomed = parseZoom(ctx.headers['x-zoom']);
+  if (zoomed.error) return err(400, zoomed.error);
+  const focalX = parseFocal(ctx.headers['x-focal-x'], 'focal_x');
+  if (focalX.error) return err(400, focalX.error);
+  const focalY = parseFocal(ctx.headers['x-focal-y'], 'focal_y');
+  if (focalY.error) return err(400, focalY.error);
+
   let put;
   try { put = store.put(buf, mime); } catch (e) { return err(413, e.message); }
 
-  const ordinal = one('SELECT COUNT(*) c FROM media WHERE work_id = ?', work.id)?.c ?? 0;
   // Read from the BYTES, never from the client: dimensions decide how much space the detail view
   // reserves, and a number a caller can assert is a layout it can control. Same argument as
   // sniffing the MIME rather than believing the filename. Null for video, documents and anything
   // unrecognised, which the interface has to handle regardless.
   const size = imageSize(buf, mime);
-  run(`INSERT INTO media (id, work_id, user_id, mime, kind, bytes, path, filename, ordinal,
-         width, height, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      put.id, work.id, user.id, mime, put.kind, put.bytes, put.path,
-      String(ctx.headers['x-filename'] ?? '').slice(0, 160), ordinal,
-      size?.width ?? null, size?.height ?? null, now());
+  const filename = String(ctx.headers['x-filename'] ?? '').slice(0, 160);
+  const at = now();
+
+  // Re-check inside the write so two overlapping uploads cannot both pass the courtesy count.
+  // If we lose the race, the bytes we just wrote are removed — a 409 that leaves a file behind
+  // is not a refusal, it is a leak.
+  const inserted = inTransaction(() => {
+    const ordinal = one('SELECT COUNT(*) c FROM media WHERE work_id = ?', work.id)?.c ?? 0;
+    if (ordinal >= MEDIA_CAP) return null;
+    run(`INSERT INTO media (id, work_id, user_id, mime, kind, bytes, path, filename, ordinal,
+           width, height, zoom, focal_x, focal_y, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        put.id, work.id, user.id, mime, put.kind, put.bytes, put.path,
+        filename, ordinal,
+        size?.width ?? null, size?.height ?? null,
+        zoomed.value, focalX.value, focalY.value, at);
+    return { ordinal };
+  });
+  if (!inserted) {
+    store.remove(put.path);
+    return err(409, `A post can hold ${MEDIA_CAP} pictures.`);
+  }
 
   return {
     media: {
       id: put.id, url: mediaUrl(put.id), bytes: put.bytes, kind: put.kind,
       width: size?.width ?? null, height: size?.height ?? null,
+      zoom: zoomed.value, focal_x: focalX.value, focal_y: focalY.value,
     },
   };
 });

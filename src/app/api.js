@@ -81,13 +81,17 @@ export const api = {
   }),
   deleteComment: (id) => req('/api/comments/delete', { method: 'POST', body: JSON.stringify({ id }) }),
   /* Raw bytes, not multipart — the browser already sends the type, and a parser would be a
-     dependency and a class of bug to solve a problem that does not exist. */
-  uploadMedia: (workId, file) => fetch(`/api/works/${workId}/media`, {
+     dependency and a class of bug to solve a problem that does not exist. Zoom and focal ride
+     in headers for the same reason the filename does: they are metadata, not content. */
+  uploadMedia: (workId, file, framing = {}) => fetch(`/api/works/${workId}/media`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${localStorage.getItem('tu_session')}`,
       'content-type': file.type || 'application/octet-stream',
       'x-filename': encodeURIComponent(file.name || 'file'),
+      ...(framing.zoom != null && { 'x-zoom': String(framing.zoom) }),
+      ...(framing.focalX != null && { 'x-focal-x': String(framing.focalX) }),
+      ...(framing.focalY != null && { 'x-focal-y': String(framing.focalY) }),
     },
     body: file,
   }).then(readBody),
