@@ -25,6 +25,7 @@ import {
   MEDIA_CAP, ZOOM_MIN, ZOOM_MAX, ZOOM_DEFAULT, cropStyle,
 } from '../../shared/media-zoom.mjs';
 import { PlaceFields } from './PlaceFields';
+import { RatioMenu } from './RatioMenu';
 
 function StageMedia({ item }) {
   const style = cropStyle({ zoom: item.zoom });
@@ -281,19 +282,17 @@ export default function CreatePost({ kind, accept, multiple, onClose, onShared }
                     </button>
                   </div>
                 )}
-                <fieldset className="cp-ratios">
-                  <legend>Ratio</legend>
-                  {WORK_RATIOS.map((r) => (
-                    <button
-                      key={r.id}
-                      type="button"
-                      className={ratio === r.id ? 'on' : ''}
-                      onClick={() => setRatio(r.id)}
-                    >
-                      {r.label}
-                    </button>
-                  ))}
-                </fieldset>
+                {/*
+                  * One button that OPENS the choices, rather than four chips holding a row open
+                  * forever. The owner asked for this and it is right: a ratio is decided once and
+                  * then wanted out of the way.
+                  *
+                  * The button NAMES THE CURRENT VALUE. That is the whole condition on collapsing
+                  * it — flat chips at least showed which one was active, and hiding them behind a
+                  * control labelled only "Ratio" would trade clutter for something a person has to
+                  * open before they can understand it.
+                  */}
+                <RatioMenu value={ratio} onChange={setRatio} />
               </div>
 
               {showStrip && (
@@ -345,7 +344,10 @@ export default function CreatePost({ kind, accept, multiple, onClose, onShared }
                 onPlaceCc={setPlaceCc}
               />
 
-              <div className="cp-row">
+              {/* Sticky, not just last. The stage is deliberately large, so on a short window the
+                  form scrolls — and an action row that scrolls with it hides SHARE, the one control
+                  the whole window exists to reach. It stays inside the <form> so it still submits. */}
+              <div className="cp-row cp-actions">
                 <button className="app-cta" disabled={busy}>
                   {busy ? 'Sharing…' : 'Share'}
                 </button>

@@ -22,6 +22,7 @@ import { ReportButton } from './Safety';
 import { trapFocus } from './dialog';
 import { WORK_RATIOS } from '../../shared/work-ratio.mjs';
 import { PlaceFields, PlaceLine } from './PlaceFields';
+import { RatioMenu } from './RatioMenu';
 
 function Text({ url }) {
   const [body, setBody] = useState('Loading…');
@@ -306,19 +307,7 @@ export default function WorkDetail({ work: initial, workId, own: ownProp, onClos
               onPlaceCc={(v) => setEdit((p) => ({ ...p, place_cc: v }))}
             />
             {(work.kind === 'photo' || work.kind === 'video') && (
-              <fieldset className="cp-ratios">
-                <legend>Ratio</legend>
-                {WORK_RATIOS.map((r) => (
-                  <button
-                    key={r.id}
-                    type="button"
-                    className={edit.ratio === r.id ? 'on' : ''}
-                    onClick={() => setEdit((p) => ({ ...p, ratio: r.id }))}
-                  >
-                    {r.label}
-                  </button>
-                ))}
-              </fieldset>
+              <RatioMenu value={edit.ratio} onChange={(id) => setEdit((p) => ({ ...p, ratio: id }))} />
             )}
             <div className="wk-edit-row">
               <button className="app-cta" disabled={busy === 'edit'}>

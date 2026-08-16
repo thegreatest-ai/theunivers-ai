@@ -21,7 +21,11 @@ describe('the picture is the hero, and the controls do not cover it', () => {
     assert.match(src, /className="cp-hero"/);
     assert.match(src, /className="cp-tools"/);
     assert.match(css, /\.cp-hero\{/);
-    assert.match(css, /--cp-stage:min\(420px,46vh\)/);
+    // The stage is BOUNDED, not a fixed number. 420px/46vh was the first guess and it pushed the
+    // location row and the Share button off a 1440x900 screen — found by screenshotting the real
+    // window, which is the only thing that could have found it. Pinning the exact value would make
+    // the next honest adjustment look like a regression.
+    assert.match(css, /--cp-stage:min\(\d+px,\d+vh\)/);
     // The old overlay: position:absolute on .cp-zoom, with a gradient eating the bottom
     // third of an already-small thumbnail. Below the image, never over it.
     const zoomRule = css.match(/\.cp-zoom\{[^}]+\}/)?.[0] || '';
@@ -50,7 +54,9 @@ describe('the picture is the hero, and the controls do not cover it', () => {
     const head = src.slice(src.indexOf('wk-detail-head'), src.indexOf('cp-body'));
     assert.doesNotMatch(head, />Cancel</, 'two identical words in one window is a choice twice');
     assert.match(head, /aria-label="Cancel">\s*×/);
-    const row = src.slice(src.indexOf('className="cp-row"'));
+    // The class gained cp-actions when the row was pinned, so match the prefix rather than the
+    // whole attribute — a test that breaks on an added class is testing the string, not the rule.
+    const row = src.slice(src.indexOf('className="cp-row'));
     assert.match(row, />\s*Cancel\s*</);
   });
 
