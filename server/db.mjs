@@ -826,6 +826,19 @@ ensureColumn('user', 'links', `links TEXT NOT NULL DEFAULT '[]'`);
 // the right shape open while the bytes arrive rather than reflowing the page when they land.
 ensureColumn('media', 'width', 'width INTEGER');
 ensureColumn('media', 'height', 'height INTEGER');
+/*
+ * Zoom is per IMAGE, inside the post's frame. The bytes are never re-encoded; these numbers
+ * are applied as CSS on the cropped surfaces (profile grid, Discover). WorkDetail does not
+ * read them — that view is the original, by instruction.
+ *
+ * focal_x / focal_y are stored now even though nothing writes them yet. Drag-to-reposition
+ * is the obvious next request, and a second migration later is a table rebuild (SQLite has
+ * no ALTER TABLE ADD CONSTRAINT). 1 and 50/50 mean untouched, so every existing row already
+ * has the honest default.
+ */
+ensureColumn('media', 'zoom', 'zoom REAL NOT NULL DEFAULT 1');
+ensureColumn('media', 'focal_x', 'focal_x REAL NOT NULL DEFAULT 50');
+ensureColumn('media', 'focal_y', 'focal_y REAL NOT NULL DEFAULT 50');
 
 /*
  * Person-to-person messaging was built on 2026-08-12 and removed the same day: the agent is the

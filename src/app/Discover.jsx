@@ -34,6 +34,7 @@ import { api } from './api';
 import { POST_TYPES } from '../../shared/navigation.mjs';
 import { KINDS as WORK_KINDS } from './Works';
 import { feedAspect } from '../../shared/work-ratio.mjs';
+import { cropStyle } from '../../shared/media-zoom.mjs';
 import Pager from './Pager';
 import Why from './Why';
 import { ReportButton } from './Safety';
@@ -261,11 +262,13 @@ function WorkHit({ w, onOpen }) {
           <div className={`dsc-shot${shot ? ' has-ratio' : ''}`} style={shot}>
             {w.kind === 'photo' ? (
               <img src={first.url} alt={w.title || ''} loading="lazy" decoding="async"
-                   draggable={false} onContextMenu={(e) => e.preventDefault()} />
+                   draggable={false} onContextMenu={(e) => e.preventDefault()}
+                   style={cropStyle(first)} />
             ) : (
               <video src={first.url} preload="metadata"
                      controlsList="nodownload" disablePictureInPicture
-                     onContextMenu={(e) => e.preventDefault()} />
+                     onContextMenu={(e) => e.preventDefault()}
+                     style={cropStyle(first)} />
             )}
             {w.kind === 'photo' && w.media.length > 1 && (
               <span className="wk-count">{w.media.length}</span>

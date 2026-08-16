@@ -9,10 +9,10 @@
  * One component, four kinds. They differ only in what may be attached, and four components would
  * mean four of every fix.
  *
- * Clicking a tile opens WorkDetail at the original ratio. The grid cell uses the post's
- * presentation ratio (or the photograph's own shape when that is Original). The bytes are
- * never cropped — WorkDetail is the original, with the action row, caption and comments.
- * Same overlay for all four kinds.
+ * Clicking a tile opens WorkDetail at the original ratio, without zoom. The profile grid
+ * is square for every post (cdda5cb) and applies each image's zoom inside that crop. The
+ * bytes are never cropped — WorkDetail is the original, with the action row, caption and
+ * comments. Same overlay for all four kinds.
  *
  * Publishing a photo, video or file opens CreatePost: a room between the picker and the
  * upload, so a ratio can be chosen before any byte is sent. The file input's onChange is
@@ -23,6 +23,7 @@ import { api } from './api';
 import { ReportButton } from './Safety';
 import WorkDetail from './WorkDetail';
 import CreatePost from './CreatePost';
+import { cropStyle } from '../../shared/media-zoom.mjs';
 
 export const KINDS = [
   { id: 'photo', label: 'Photos', accept: 'image/jpeg,image/png,image/webp,image/heic', multiple: true,
@@ -144,7 +145,8 @@ export default function Works({ userId, own }) {
                       offer — see docs/design/PERFORMANCE.md for what that costs and what would fix
                       it. `decoding="async"` at least keeps a 3MB decode off the main thread. */}
                   <img src={w.media[0].url} alt={w.title} loading="lazy" decoding="async"
-                       draggable={false} onContextMenu={(e) => e.preventDefault()} />
+                       draggable={false} onContextMenu={(e) => e.preventDefault()}
+                       style={cropStyle(w.media[0])} />
                   {w.media.length > 1 && <span className="wk-count">{w.media.length}</span>}
                 </div>
               )}
@@ -152,7 +154,8 @@ export default function Works({ userId, own }) {
                 <div className="wk-shot">
                   <video src={w.media[0].url} preload="metadata"
                          controlsList="nodownload" disablePictureInPicture
-                         onContextMenu={(e) => e.preventDefault()} />
+                         onContextMenu={(e) => e.preventDefault()}
+                         style={cropStyle(w.media[0])} />
                 </div>
               )}
               {w.kind === 'thread' && (
