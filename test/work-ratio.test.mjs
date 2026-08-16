@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseWorkRatio, ratioAspect, cellAspect, WORK_RATIOS } from '../shared/work-ratio.mjs';
+import { parseWorkRatio, ratioAspect, cellAspect, feedAspect, WORK_RATIOS } from '../shared/work-ratio.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
@@ -82,8 +82,8 @@ describe('the profile grid is square, whatever the post says', () => {
   });
 
   test('the ratio a post carries is still available for the FEED', () => {
-    // Not dead code: Discover will reserve cells with this once it shows images. The grid
-    // deliberately ignores it; the feed deliberately will not.
+    // The grid deliberately ignores this; the feed deliberately does not. ratioAspect is the
+    // mapping; feedAspect is the cell that uses it.
     assert.equal(ratioAspect('4:5'), 4 / 5);
     assert.equal(ratioAspect('16:9'), 16 / 9);
   });
@@ -91,6 +91,59 @@ describe('the profile grid is square, whatever the post says', () => {
   test('Original has no aspect of its own', () => {
     assert.equal(ratioAspect('original'), null);
     assert.equal(ratioAspect(null), null);
+  });
+});
+
+describe('the feed cell follows the author\'s chosen ratio', () => {
+  test('a 4:5 post reserves 4/5; 16:9 reserves 16/9', () => {
+    // Chosen wins even when the file itself disagrees — that is the composition, shown.
+    assert.equal(feedAspect({ ratio: '4:5', media: [{ ratio: 1.5 }] }), 4 / 5);
+    assert.equal(feedAspect({ ratio: '16:9', media: [{ ratio: 0.5 }] }), 16 / 9);
+    assert.equal(feedAspect({ ratio: '1:1', media: [{ ratio: 1.3333 }] }), 1);
+  });
+
+  test('an Original post falls back to the photograph\'s own ratio', () => {
+    assert.equal(feedAspect({ ratio: null, media: [{ ratio: 1.3333 }] }), 1.3333);
+    assert.equal(feedAspect({ ratio: 'original', media: [{ ratio: 0.66 }] }), 0.66);
+  });
+
+  test('a post with no dimensions at all renders without a zero-height cell', () => {
+    for (const w of [
+      { ratio: null, media: [] },
+      { ratio: null, media: [{ ratio: null }] },
+      { ratio: 'original', media: [{ ratio: 0 }] },
+      { ratio: null },
+      {},
+      undefined,
+    ]) {
+      const a = feedAspect(w);
+      assert.equal(a, null, `must reserve nothing, not ${a}`);
+    }
+  });
+
+  test('Discover shows the first media and opens the existing detail view', () => {
+    const src = read('src/app/Discover.jsx');
+    assert.match(src, /feedAspect/, 'the cell must read the shared mapping, not a local copy');
+    assert.match(src, /from '\.\.\/\.\.\/shared\/work-ratio\.mjs'/);
+    assert.match(src, /<img /, 'a photograph found by search is no longer a line of text');
+    assert.match(src, /WorkDetail/, 'clicking opens the view that already exists');
+    assert.doesNotMatch(src, /WORK_RATIOS/, 'a reader does not edit the author\'s ratio');
+  });
+
+  test('the feed cell is not the profile cell — .wk-shot stays square', () => {
+    // Sharing .wk-shot would square every Discover cell, which is the regression the other
+    // way: the author's composition would vanish into the index shape.
+    const css = read('src/app/app.css');
+    assert.match(css, /\.wk-shot\{[^}]*aspect-ratio:1/s);
+    assert.match(css, /\.dsc-shot\{/);
+    assert.match(css, /\.dsc-shot\.has-ratio img,\.dsc-shot\.has-ratio video\{[^}]*object-fit:cover/s);
+    const src = read('src/app/Discover.jsx');
+    assert.doesNotMatch(src, /wk-shot/, 'the profile class must not leak onto the feed');
+    assert.match(src, /wk-count/, 'a carousel still uses the existing count marker');
+    const works = read('src/app/Works.jsx');
+    assert.doesNotMatch(works, /cellAspect/, 'the grid must not consult a per-post ratio');
+    assert.doesNotMatch(works, /aspectRatio/, 'no inline per-cell shape');
+    assert.doesNotMatch(works, /feedAspect/, 'the grid must not start reading the feed helper');
   });
 });
 

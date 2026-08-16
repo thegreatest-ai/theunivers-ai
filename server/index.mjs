@@ -2445,9 +2445,14 @@ route('GET', '/api/discover', (ctx) => {
   }
 
   if (kind === 'work') {
+    // Once, not once per row — same reason as the post branch above.
+    const hidden = hiddenFrom(viewerId);
     rows = all(
       `SELECT w.*, u.name AS author_name FROM work w JOIN user u ON u.id = w.user_id`,
     )
+      // A photograph in search is still a photograph of the person. A block that hid their
+      // posts and left their works would be a block with a door left open.
+      .filter((w) => !hidden.has(w.user_id))
       // THE PERMISSION SCOPE. An agent may not be handed a work whose author withheld it.
       .filter((w) => !asAgent || w.shareable === 1 || w.user_id === viewerId)
       .filter((w) => !w.withdrawn_at && !w.limited_at && !w.taken_down_at)
@@ -2464,6 +2469,9 @@ route('GET', '/api/discover', (ctx) => {
         shareable: Boolean(w.shareable),
         edited: Boolean(w.edited_at),
         ratio: w.ratio ?? null,
+        // First media is what the feed cell shows; the rest exist so a carousel can mark its
+        // count. Signed URLs, same as the profile — the bytes are not re-encoded.
+        media: mediaFor(w.id),
         cited: citedCount(w.id),
         comments: commentCount(w.id),
         views: workViewCounts(w.id),

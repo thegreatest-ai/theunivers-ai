@@ -6,8 +6,9 @@
  * own shape. Every work that already exists is already NULL, which is the honest default,
  * and for documents and threads it is the only sensible answer.
  *
- * This is not a crop of the file. The bytes stay as they were uploaded; the grid cell uses
- * `aspect-ratio` + `object-fit: cover`. A later change of this value loses nothing, which
+ * This is not a crop of the file. The bytes stay as they were uploaded; the FEED cell uses
+ * `aspect-ratio` + `object-fit: cover`. The profile grid is square regardless — those are
+ * two surfaces that deliberately disagree. A later change of this value loses nothing, which
  * a destructive crop can never offer. The server has no image library and must not gain
  * one for this.
  *
@@ -58,11 +59,31 @@ export function parseWorkRatio(raw) {
  * for every post regardless of the ratio it was published at. The chosen ratio governs the
  * FEED. Those are two different surfaces and conflating them is what produced the bug.
  *
- * A constant rather than a computed value, so there is nothing here to drift. `ratioAspect`
- * is what a feed cell will use when Discover shows images.
+ * A constant rather than a computed value, so there is nothing here to drift. `feedAspect`
+ * is what Discover uses; this function exists so a test can pin the grid without reading CSS.
  */
 export const GRID_ASPECT = 1;
 
 export function cellAspect() {
   return GRID_ASPECT;
+}
+
+/**
+ * The shape a FEED cell reserves, before the bytes arrive.
+ *
+ * A chosen ratio wins — that is the author's composition, shown. Original (NULL) has no
+ * chosen shape, so fall back to the first media's own ratio from the bytes. When that is
+ * null too — video, documents, anything uploaded before dimensions were recorded — return
+ * null so the element sizes itself. Never 0: a zero-height box is the failure this repo
+ * has already shipped once.
+ *
+ * The profile grid does not call this. Conflating the two surfaces is what produced the
+ * ragged-grid regression in cdda5cb.
+ */
+export function feedAspect(work) {
+  const chosen = ratioAspect(work?.ratio);
+  if (typeof chosen === 'number' && chosen > 0) return chosen;
+  const fromBytes = work?.media?.[0]?.ratio;
+  if (typeof fromBytes === 'number' && fromBytes > 0) return fromBytes;
+  return null;
 }

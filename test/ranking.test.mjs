@@ -290,6 +290,17 @@ test('discover echoes the filters it applied', () => {
   assert.match(routeBody('GET', '/api/discover'), /applied: \{/);
 });
 
+test('a Discover work result carries its media, and a blocked person never reaches the viewer', () => {
+  const body = routeBody('GET', '/api/discover');
+  const work = body.slice(body.indexOf("kind === 'work'"), body.indexOf("kind === 'agent'"));
+  assert.match(work, /hiddenFrom\(viewerId\)/,
+    'a photograph in search is still a photograph of the person you blocked');
+  assert.match(work, /!w\.withdrawn_at && !w\.limited_at && !w\.taken_down_at/,
+    'a limited or taken-down work must not become a feed cell');
+  assert.match(work, /media: mediaFor\(w\.id\)/,
+    'without media the client can only render a line of text');
+});
+
 /*
  * KNOWLEDGE-AND-CITATION §5 — a citation carries the weight of the citer.
  *

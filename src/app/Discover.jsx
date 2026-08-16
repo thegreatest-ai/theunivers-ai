@@ -22,12 +22,18 @@
  *
  * The filters mirror the mockup's chips because that part is right: a filter you can see is a
  * filter you can remove, one at a time, without clearing the search you typed.
+ *
+ * Photo and video results render their first media in a cell reserved with the author's
+ * chosen ratio. That is the point of the selector: a feed is the work presented. The
+ * profile grid stays square — two surfaces, on purpose. Clicking opens WorkDetail, which
+ * already exists; this file must not grow a second one.
  */
 import { useEffect, useState } from 'react';
 import { Link, useOutletContext } from 'react-router-dom';
 import { api } from './api';
 import { POST_TYPES } from '../../shared/navigation.mjs';
 import { KINDS as WORK_KINDS } from './Works';
+import { feedAspect } from '../../shared/work-ratio.mjs';
 import Pager from './Pager';
 import Why from './Why';
 import { ReportButton } from './Safety';
@@ -236,10 +242,36 @@ function PostHit({ p }) {
   );
 }
 
+function shotStyle(work) {
+  // Reserve the author's shape before the bytes arrive, so the feed does not jump under a
+  // thumb. Absent must render as absent, never as zero — a 0×n box is the failure this
+  // repo has already shipped once.
+  const r = feedAspect(work);
+  if (typeof r === 'number' && r > 0) return { aspectRatio: String(r) };
+  return undefined;
+}
+
 function WorkHit({ w, onOpen }) {
+  const shot = shotStyle(w);
+  const first = w.media?.[0];
   return (
     <article className="app-post dsc-hit">
       <button type="button" className="wk-open dsc-work-open" onClick={onOpen}>
+        {(w.kind === 'photo' || w.kind === 'video') && first && (
+          <div className={`dsc-shot${shot ? ' has-ratio' : ''}`} style={shot}>
+            {w.kind === 'photo' ? (
+              <img src={first.url} alt={w.title || ''} loading="lazy" decoding="async"
+                   draggable={false} onContextMenu={(e) => e.preventDefault()} />
+            ) : (
+              <video src={first.url} preload="metadata"
+                     controlsList="nodownload" disablePictureInPicture
+                     onContextMenu={(e) => e.preventDefault()} />
+            )}
+            {w.kind === 'photo' && w.media.length > 1 && (
+              <span className="wk-count">{w.media.length}</span>
+            )}
+          </div>
+        )}
         <div className="dsc-hit-head">
           <span className="app-meta">{w.kind}</span>
           {w.edited && <span className="app-meta">edited</span>}
