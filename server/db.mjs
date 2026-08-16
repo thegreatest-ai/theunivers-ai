@@ -948,6 +948,15 @@ ensureColumn('work', 'takedown_report_id', 'takedown_report_id TEXT');
 ensureColumn('work', 'body_sha256', 'body_sha256 TEXT');
 ensureColumn('work', 'withdrawn_at', 'withdrawn_at TEXT');
 ensureColumn('work', 'edited_at', 'edited_at TEXT');
+/*
+ * Presentation ratio for the grid cell. NULL is Original — the photograph's own shape —
+ * and every work that already exists is already NULL, which is the honest default.
+ *
+ * This is not a crop of the file. The bytes stay as they were uploaded; the cell uses
+ * aspect-ratio + object-fit: cover. A later change of this column loses nothing. The
+ * allowed values are gated at the route (unknown is a 400, never a silent default).
+ */
+ensureColumn('work', 'ratio', 'ratio TEXT');
 
 /*
  * A comment is an unstructured human utterance on a work. Person-only at the route; RESTRICT

@@ -38,6 +38,7 @@ import {
 import { checkMandates, resolveTier, rowToSnapshot } from './guard.mjs';
 import { hashPassword, verifyPassword } from './passwords.mjs';
 import { passwordError } from '../shared/password-policy.mjs';
+import { parseWorkRatio } from '../shared/work-ratio.mjs';
 import { handleError } from '../shared/agent-name.mjs';
 import { rank, order, paginate, sideOf, citerWeight, PER_PAGE } from '../shared/ranking.mjs';
 import { CSP } from '../shared/csp.mjs';
@@ -1302,8 +1303,9 @@ const mediaFor = (workId) =>
       ...m,
       url: mediaUrl(m.id),
       /*
-       * The shape, for the DETAIL view only. The grid is a fixed cell that crops, so it needs
-       * nothing from here.
+       * The shape of the FILE. The detail view always uses this. The grid uses it only when the
+       * work has no presentation ratio (Original) — a chosen work.ratio is a crop of the cell,
+       * never of these bytes.
        *
        * Sent as a ratio as well as the raw numbers because that is what the client actually uses —
        * `aspect-ratio: <r>` holds the right space open while the bytes are still arriving, which is
@@ -1329,6 +1331,9 @@ function liveWork(w) {
     id: w.id, kind: w.kind, title: w.title, body: w.body, authorId: w.user_id,
     shareable: Boolean(w.shareable), at: w.created_at,
     edited: Boolean(w.edited_at), editedAt: w.edited_at || null,
+    // NULL is Original. Returned as null, never as a guessed '1:1' — absent must render as
+    // the photograph's own shape, and inventing a square here would crop every older work.
+    ratio: w.ratio ?? null,
     media: mediaFor(w.id),
     views: workViewCounts(w.id),
     comments: commentCount(w.id),
@@ -1361,14 +1366,20 @@ route('POST', '/api/works', (ctx) => {
   const body = String(ctx.body.body ?? '').slice(0, 10_000);
   if (kind === 'thread' && !body.trim()) return err(400, 'a thread needs something to say');
 
+  // Unknown is a 400, never a silent default — a typo'd ratio that quietly becomes 1:1 is a
+  // layout bug nobody can trace. Omitted or 'original' stores NULL, which is Original.
+  const parsed = parseWorkRatio(ctx.body.ratio);
+  if (parsed.error) return err(400, parsed.error);
+  const ratio = parsed.missing ? null : parsed.value;
+
   const id = `wrk_${randomUUID().slice(0, 8)}`;
-  run(`INSERT INTO work (id, user_id, kind, title, body, shareable, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  run(`INSERT INTO work (id, user_id, kind, title, body, shareable, ratio, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       id, user.id, kind, title, body,
       // Default yes, because publishing to a profile in a place built on citation implies it.
       // Per item, because a tutorial and a family photograph are not the same offer.
-      ctx.body.shareable === false ? 0 : 1, now());
-  return { work: { id, kind, title, body } };
+      ctx.body.shareable === false ? 0 : 1, ratio, now());
+  return { work: { id, kind, title, body, ratio } };
 });
 
 /**
@@ -1622,8 +1633,16 @@ route('POST', '/api/works/update', (ctx) => {
   const body = ctx.body.body != null ? String(ctx.body.body).slice(0, 10_000) : work.body;
   if (work.kind === 'thread' && !String(body).trim()) return err(400, 'a thread needs something to say');
 
+  let ratio = work.ratio ?? null;
+  if (ctx.body.ratio !== undefined) {
+    const parsed = parseWorkRatio(ctx.body.ratio);
+    if (parsed.error) return err(400, parsed.error);
+    ratio = parsed.value;
+  }
+
   const at = now();
-  run('UPDATE work SET title = ?, body = ?, edited_at = ? WHERE id = ?', title, body, at, work.id);
+  run('UPDATE work SET title = ?, body = ?, ratio = ?, edited_at = ? WHERE id = ?',
+      title, body, ratio, at, work.id);
   return { work: liveWork(one('SELECT * FROM work WHERE id = ?', work.id)) };
 });
 
@@ -2444,6 +2463,7 @@ route('GET', '/api/discover', (ctx) => {
         // Sent so the client can disable the share control rather than offer it and then refuse.
         shareable: Boolean(w.shareable),
         edited: Boolean(w.edited_at),
+        ratio: w.ratio ?? null,
         cited: citedCount(w.id),
         comments: commentCount(w.id),
         views: workViewCounts(w.id),

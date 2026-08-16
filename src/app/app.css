@@ -669,14 +669,17 @@
 .wk-list{display:flex;flex-direction:column;gap:10px}
 .wk-item{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--glass);
   display:flex;flex-direction:column}
-.wk-shot{position:relative;aspect-ratio:1;background:#000}
-.wk-shot img{width:100%;height:100%;object-fit:cover;display:block}
+.wk-shot{position:relative;background:#000;min-height:120px}
+.wk-shot.has-ratio{min-height:0}
+.wk-shot img,.wk-shot video{width:100%;display:block}
+.wk-shot.has-ratio img,.wk-shot.has-ratio video{height:100%;object-fit:cover}
 /* Instagram's carousel marker: a count, because the second photo is invisible until you open it. */
 .wk-count{position:absolute;top:8px;right:8px;background:rgba(0,0,0,.6);color:#fff;border-radius:99px;
   padding:2px 9px;font-size:.72rem}
-/* aspect-ratio, like .wk-shot above: an empty <video> reports a default 300x150 until metadata
-   arrives, so the whole grid re-flowed the moment the first clip reported its real shape. */
-.wk-item video{width:100%;display:block;background:#000;max-height:320px;aspect-ratio:1;object-fit:cover}
+/* An empty <video> reports a default 300x150 until metadata arrives. The cell's aspect-ratio
+   (from work.ratio, or the file's own shape when Original) holds the space so the grid does
+   not re-flow the moment the first clip reports. */
+.wk-item video{width:100%;display:block;background:#000;max-height:320px;object-fit:cover}
 .wk-thread{padding:14px}
 .wk-thread h4{margin:0 0 6px;font-size:.95rem}
 .wk-thread p{margin:0;font-size:.9rem;line-height:1.6;white-space:pre-wrap}
@@ -686,6 +689,28 @@
 .wk-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 12px;
   border-top:1px solid var(--line)}
 .wk-grid .wk-foot{font-size:.7rem}
+.wk-invite{align-self:flex-start}
+
+/* ══ Create new post ══════════════════════════════════════════════════════════════════════
+   The room between the picker and the upload. Drop zone and "Select from computer" are one
+   control, two ways in. After selection the thumbs preview the CHOSEN ratio, not each
+   file's own shape — that is the whole point of one ratio per post. */
+.cp-title{margin:0;font-size:1rem;font-weight:600}
+.cp-drop{margin:18px 16px 24px;padding:36px 16px;border:1px dashed var(--line);border-radius:14px;
+  display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;cursor:pointer}
+.cp-drop p{margin:0;color:var(--muted)}
+.cp-drop .app-cta{display:inline-block;pointer-events:none}
+.cp-form{display:flex;flex-direction:column;gap:12px;padding:16px}
+.cp-thumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px}
+.cp-ratios{margin:0;padding:0;border:none;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.cp-ratios legend{width:100%;font-size:.78rem;color:var(--muted);margin-bottom:4px}
+.cp-ratios button{padding:6px 12px;border-radius:99px;cursor:pointer;font-family:inherit;
+  font-size:.82rem;color:var(--muted);background:rgba(255,255,255,.05);border:1px solid var(--line)}
+.cp-ratios button.on{color:var(--text);border-color:rgba(56,189,248,.55);background:rgba(56,189,248,.12)}
+.cp-form input,.cp-form textarea{padding:10px 12px;border-radius:10px;font-family:inherit;
+  font-size:.92rem;color:#fff;background:rgba(255,255,255,.05);border:1px solid var(--line);
+  outline:none;resize:vertical}
+.cp-row{display:flex;gap:12px;align-items:center}
 
 /* ══ In-app document reader ═══════════════════════════════════════════════════════════════
    Documents open here rather than in a new tab: a new tab is the browser's own viewer, with its
@@ -815,7 +840,7 @@ a.dsc-hit-title:hover{color:var(--cyan)}
 .dsc-tier span{font-size:.6rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
 
 /* Not a security control — a browser can always show what it renders. It removes the offer. */
-.wk-shot img,.wk-item video{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.wk-shot img,.wk-shot video{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 button.wk-file{width:100%;background:none;border:none;border-bottom:1px solid var(--line);
   font-family:inherit;cursor:pointer;text-align:left}
 /* File rows are the tap target for opening a document, so they carry a target-sized box. */

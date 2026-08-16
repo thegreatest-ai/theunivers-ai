@@ -9,28 +9,41 @@
  * One component, four kinds. They differ only in what may be attached, and four components would
  * mean four of every fix.
  *
- * `accept` on the input is what makes a phone open the camera roll rather than a file browser, so
- * "upload from your phone or your desktop" is one control rather than two.
+ * Clicking a tile opens WorkDetail at the original ratio. The grid cell uses the post's
+ * presentation ratio (or the photograph's own shape when that is Original). The bytes are
+ * never cropped — WorkDetail is the original, with the action row, caption and comments.
+ * Same overlay for all four kinds.
  *
- * Clicking a tile opens WorkDetail at the original ratio. The grid stays a cropped square; the
- * original lives in the overlay, with the action row, caption and comments. Same overlay for
- * all four kinds.
+ * Publishing a photo, video or file opens CreatePost: a room between the picker and the
+ * upload, so a ratio can be chosen before any byte is sent. The file input's onChange is
+ * no longer the commit.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from './api';
 import { ReportButton } from './Safety';
 import WorkDetail from './WorkDetail';
+import CreatePost from './CreatePost';
+import { cellAspect } from '../../shared/work-ratio.mjs';
 
 export const KINDS = [
   { id: 'photo', label: 'Photos', accept: 'image/jpeg,image/png,image/webp,image/heic', multiple: true,
-    empty: 'Photographs and carousels.' },
+    empty: 'Photographs and carousels.', invite: 'Share your first photo' },
   { id: 'video', label: 'Videos', accept: 'video/mp4,video/quicktime', multiple: false,
-    empty: 'Short clips. Large files are capped while storage is on one small volume.' },
+    empty: 'Short clips. Large files are capped while storage is on one small volume.',
+    invite: 'Share your first video' },
   { id: 'thread', label: 'Threads', accept: null, multiple: false,
-    empty: 'Something written. No upload needed.' },
+    empty: 'Something written. No upload needed.', invite: 'Write your first thread' },
   { id: 'doc', label: 'Files', accept: 'application/pdf,text/plain,text/markdown', multiple: true,
-    empty: 'Documents others can read — and, if you allow it, build on.' },
+    empty: 'Documents others can read — and, if you allow it, build on.',
+    invite: 'Share your first file' },
 ];
+
+function shotStyle(work) {
+  // Absent must render as absent, never as zero. A 0×n box is worse than reserving a sensible one.
+  const r = cellAspect(work);
+  if (typeof r === 'number' && r > 0) return { aspectRatio: String(r) };
+  return undefined;
+}
 
 export default function Works({ userId, own }) {
   const [kind, setKind] = useState('photo');
@@ -38,8 +51,8 @@ export default function Works({ userId, own }) {
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [text, setText] = useState({ title: '', body: '' });
-  const fileRef = useRef(null);
   const [open, setOpen] = useState(null);
+  const [creating, setCreating] = useState(false);
 
   const spec = KINDS.find((k) => k.id === kind);
 
@@ -50,24 +63,6 @@ export default function Works({ userId, own }) {
     .then((d) => { setWorks(d.works || []); setLoadError(''); })
     .catch((e) => { setWorks([]); setLoadError(e.message); });
   useEffect(() => { setWorks(null); setLoadError(''); load(); }, [kind, userId]);
-
-  async function addFiles(e) {
-    const files = [...(e.target.files || [])];
-    if (!files.length) return;
-    setBusy('upload'); setError('');
-    try {
-      const w = await api.createWork({ kind, title: files[0].name });
-      // Sequential, not parallel: a carousel has an order, and firing them together would file
-      // them in whatever order the network returned.
-      for (const f of files) await api.uploadMedia(w.work.id, f);
-      await load();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusy('');
-      if (fileRef.current) fileRef.current.value = '';
-    }
-  }
 
   async function addThread(e) {
     e.preventDefault();
@@ -88,6 +83,15 @@ export default function Works({ userId, own }) {
           own={own}
           onClose={() => setOpen(null)}
           onChanged={() => load()}
+        />
+      )}
+      {creating && spec.accept && (
+        <CreatePost
+          kind={kind}
+          accept={spec.accept}
+          multiple={spec.multiple}
+          onClose={() => setCreating(false)}
+          onShared={() => { setCreating(false); load(); }}
         />
       )}
       <nav className="you-tabs" aria-label="What you have published">
@@ -112,8 +116,9 @@ export default function Works({ userId, own }) {
             </form>
           ) : (
             <>
-              <input ref={fileRef} type="file" accept={spec.accept} multiple={spec.multiple}
-                     onChange={addFiles} disabled={Boolean(busy)} />
+              <button type="button" className="app-cta" onClick={() => setCreating(true)}>
+                Create new post
+              </button>
               <p className="app-note">
                 From your phone or your computer. {spec.empty}
               </p>
@@ -125,14 +130,25 @@ export default function Works({ userId, own }) {
 
       {works === null && <p className="app-note">Loading…</p>}
       {loadError && <p className="app-error">{spec.label} could not be loaded — {loadError}</p>}
-      {!loadError && works?.length === 0 && <p className="app-note">Nothing here yet. {spec.empty}</p>}
+      {!loadError && works?.length === 0 && (
+        own && spec.accept ? (
+          <button type="button" className="app-link wk-invite" onClick={() => setCreating(true)}>
+            {spec.invite}
+          </button>
+        ) : (
+          <p className="app-note">{own ? spec.invite : `Nothing here yet. ${spec.empty}`}</p>
+        )
+      )}
 
       <div className={kind === 'photo' || kind === 'video' ? 'wk-grid' : 'wk-list'}>
-        {works?.map((w) => (
+        {works?.map((w) => {
+          const aspect = cellAspect(w);
+          const shot = shotStyle(w);
+          return (
           <article key={w.id} className="wk-item">
             <button type="button" className="wk-open" onClick={() => setOpen(w)}>
               {w.kind === 'photo' && w.media[0] && (
-                <div className="wk-shot">
+                <div className={`wk-shot${aspect ? ' has-ratio' : ''}`} style={shot}>
                   {/* No srcset: there is only ever one size of these bytes. The server has no image
                       library and may not gain one, so a full-size photograph is what exists to
                       offer — see docs/design/PERFORMANCE.md for what that costs and what would fix
@@ -143,9 +159,11 @@ export default function Works({ userId, own }) {
                 </div>
               )}
               {w.kind === 'video' && w.media[0] && (
-                <video src={w.media[0].url} preload="metadata"
-                       controlsList="nodownload" disablePictureInPicture
-                       onContextMenu={(e) => e.preventDefault()} />
+                <div className={`wk-shot${aspect ? ' has-ratio' : ''}`} style={shot}>
+                  <video src={w.media[0].url} preload="metadata"
+                         controlsList="nodownload" disablePictureInPicture
+                         onContextMenu={(e) => e.preventDefault()} />
+                </div>
               )}
               {w.kind === 'thread' && (
                 <div className="wk-thread">
@@ -173,7 +191,8 @@ export default function Works({ userId, own }) {
               {!own && <ReportButton kind="work" subject={w.id} />}
             </div>
           </article>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

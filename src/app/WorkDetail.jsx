@@ -1,10 +1,11 @@
 /**
  * One detail view for the four kinds of work.
  *
- * The grid is a fixed square that crops. This is the original: it holds the shape the bytes
- * actually have, reserved with the server-sent `ratio` before they arrive, so the page does not
- * jump under a thumb. Video, threads and documents open here too — they differ only in what is
- * attached, and four overlays would mean four of every fix. Same argument as Works.jsx.
+ * The grid cell uses the post's presentation ratio. This is the original: it holds the shape
+ * the bytes actually have, reserved with the server-sent media `ratio` before they arrive, so
+ * the page does not jump under a thumb. Video, threads and documents open here too — they
+ * differ only in what is attached, and four overlays would mean four of every fix. Same
+ * argument as Works.jsx.
  *
  * Counts are whatever the server last returned. An optimistic comment, an invented view, a
  * "shared!" toast for a request that failed — all the same failure as the fabricated guard
@@ -16,6 +17,8 @@ import { api } from './api';
 import { subscribe } from './stream';
 import { ShareSheet } from './Projects';
 import { ReportButton } from './Safety';
+import { trapFocus } from './dialog';
+import { WORK_RATIOS } from '../../shared/work-ratio.mjs';
 
 function Text({ url }) {
   const [body, setBody] = useState('Loading…');
@@ -23,35 +26,6 @@ function Text({ url }) {
     fetch(url).then((r) => r.text()).then(setBody).catch(() => setBody('Could not open this.'));
   }, [url]);
   return <pre className="doc-text">{body}</pre>;
-}
-
-function trapFocus(root, onClose) {
-  const prev = document.activeElement;
-  const items = () => [...root.querySelectorAll(
-    'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-  )].filter((el) => !el.disabled && el.offsetParent !== null);
-  items()[0]?.focus();
-
-  function onKey(e) {
-    if (e.key === 'Escape') { e.preventDefault(); onClose(); return; }
-    if (e.key !== 'Tab') return;
-    const list = items();
-    if (!list.length) return;
-    const first = list[0];
-    const last = list[list.length - 1];
-    if (e.shiftKey && document.activeElement === first) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault();
-      first.focus();
-    }
-  }
-  document.addEventListener('keydown', onKey);
-  return () => {
-    document.removeEventListener('keydown', onKey);
-    if (prev && typeof prev.focus === 'function') prev.focus();
-  };
 }
 
 function stageStyle(ratio) {
@@ -72,7 +46,7 @@ export default function WorkDetail({ work: initial, workId, own: ownProp, onClos
   const [error, setError] = useState('');
   const [sharing, setSharing] = useState(false);
   const [editing, setEditing] = useState(false);
-  const [edit, setEdit] = useState({ title: '', body: '' });
+  const [edit, setEdit] = useState({ title: '', body: '', ratio: 'original' });
   const composer = useRef(null);
 
   function loadWork() {
@@ -142,7 +116,7 @@ export default function WorkDetail({ work: initial, workId, own: ownProp, onClos
     setBusy('edit');
     setError('');
     try {
-      const r = await api.updateWork({ id, title: edit.title, body: edit.body });
+      const r = await api.updateWork({ id, title: edit.title, body: edit.body, ratio: edit.ratio });
       setWork(r.work);
       setEditing(false);
       onChanged?.();
@@ -292,7 +266,11 @@ export default function WorkDetail({ work: initial, workId, own: ownProp, onClos
             {own && !work.withdrawn && !work.takenDown && (
               <>
                 <button type="button" className="app-link" onClick={() => {
-                  setEdit({ title: work.title || '', body: work.body || '' });
+                  setEdit({
+                    title: work.title || '',
+                    body: work.body || '',
+                    ratio: work.ratio || 'original',
+                  });
                   setEditing(true);
                 }}>Edit</button>
                 <button type="button" className="app-link" onClick={drop}
@@ -308,6 +286,21 @@ export default function WorkDetail({ work: initial, workId, own: ownProp, onClos
                    onChange={(e) => setEdit((p) => ({ ...p, title: e.target.value }))} />
             <textarea rows={4} value={edit.body} placeholder="Caption"
                       onChange={(e) => setEdit((p) => ({ ...p, body: e.target.value }))} />
+            {(work.kind === 'photo' || work.kind === 'video') && (
+              <fieldset className="cp-ratios">
+                <legend>Ratio</legend>
+                {WORK_RATIOS.map((r) => (
+                  <button
+                    key={r.id}
+                    type="button"
+                    className={edit.ratio === r.id ? 'on' : ''}
+                    onClick={() => setEdit((p) => ({ ...p, ratio: r.id }))}
+                  >
+                    {r.label}
+                  </button>
+                ))}
+              </fieldset>
+            )}
             <div className="wk-edit-row">
               <button className="app-cta" disabled={busy === 'edit'}>
                 {busy === 'edit' ? 'Saving…' : 'Save'}
