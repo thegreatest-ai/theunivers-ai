@@ -40,6 +40,7 @@ import { hashPassword, verifyPassword } from './passwords.mjs';
 import { passwordError } from '../shared/password-policy.mjs';
 import { parseWorkRatio } from '../shared/work-ratio.mjs';
 import { parsePlace, parsePlaceCc } from '../shared/place.mjs';
+import { reverse as reverseGeocode } from './geocode.mjs';
 import { parseZoom, parseFocal, MEDIA_CAP } from '../shared/media-zoom.mjs';
 import { handleError } from '../shared/agent-name.mjs';
 import { rank, order, paginate, sideOf, citerWeight, PER_PAGE } from '../shared/ranking.mjs';
@@ -1365,6 +1366,40 @@ function withdrawWork(work) {
       at, digest, work.id);
   return at;
 }
+
+/**
+ * Turn a device position into a place name. Session required. Coordinates are used
+ * for this request and discarded — the response is `{ place, place_cc }` only, the
+ * same fields the typed path already stores. A geocoder being down is a 200 with
+ * `place: null`, not a 5xx: it is not the author's error, and they can still type.
+ */
+route('POST', '/api/geocode/reverse', async (ctx) => {
+  const user = ctx.user;
+  if (!user) return err(401, 'sign in required');
+
+  const byUser = take('geocode-user', user.id, LIMITS.geocodePerUser.max, LIMITS.geocodePerUser.windowMs);
+  if (!byUser.ok) return tooMany(byUser.retryAfter);
+  const byIp = take('geocode-ip', ctx.ip, LIMITS.geocodePerIp.max, LIMITS.geocodePerIp.windowMs);
+  if (!byIp.ok) return tooMany(byIp.retryAfter);
+
+  const lat = ctx.body?.lat;
+  const lng = ctx.body?.lng;
+  // Numbers in range, nothing else. A string, an array, NaN, or a value outside
+  // the globe is a 400 — we do not want to ask a geocoder a question it cannot
+  // mean, and we do not want to cache a key we did not validate.
+  if (typeof lat !== 'number' || !Number.isFinite(lat) || lat < -90 || lat > 90) {
+    return err(400, 'lat must be a number between -90 and 90');
+  }
+  if (typeof lng !== 'number' || !Number.isFinite(lng) || lng < -180 || lng > 180) {
+    return err(400, 'lng must be a number between -180 and 180');
+  }
+
+  const named = await reverseGeocode(lat, lng);
+  if (!named?.place) return { place: null };
+  // Rebuild rather than spreading: the provider payload carries a full address,
+  // and a future swap that forgot to strip it must not reach the client.
+  return { place: named.place, place_cc: named.place_cc ?? null };
+});
 
 route('POST', '/api/works', (ctx) => {
   const user = ctx.user;
@@ -3757,7 +3792,11 @@ function securityHeaders(res) {
   // A signed media URL must not travel to another origin in a Referer header — it is a credential
   // with a ten-minute life, and a leaked one is a leaked private photograph.
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
+  // geolocation=(self): the compose button asks on an explicit click, and the
+  // inspection capture reads a device fix. Forbidding it here would make both
+  // buttons lie. camera / microphone stay off on every page — tightening those
+  // to (self) for the capture screen is a separate change.
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(self), payment=()');
 }
 
 const server = createServer(async (req, res) => {

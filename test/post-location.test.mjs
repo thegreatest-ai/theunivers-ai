@@ -1,10 +1,14 @@
 /**
  * A location on a post is the author's claim, and nothing more.
  *
- * The load-bearing tests here are the absences: no navigator.geolocation on the create
- * path, no geocoding host in the CSP, and no path from this field into trust, ranking
- * or assurance. An unverified string that moved a tier would be standing bought with a
- * sentence, and that is the invariant that would be quietly lost first.
+ * The load-bearing tests here are the absences: no geocoding host in the CSP,
+ * and no path from this field into trust, ranking or assurance. An unverified
+ * string that moved a tier would be standing bought with a sentence, and that
+ * is the invariant that would be quietly lost first.
+ *
+ * Sensing — the button that asks the device, the server-side proxy that names
+ * it — lives in live-location.test.mjs. This file is the caption: how it is
+ * parsed, how it is worded, and what it must never become.
  *
  * The HTTP round-trip, the 400s, and author-only / 409 live in work-actions.test.mjs
  * next to the other work-mutation rules they have to keep obeying.
@@ -87,25 +91,20 @@ describe('the line a reader sees is a claim, and absent is absent', () => {
   });
 });
 
-describe('typed, not sensed — and not a geocoding client', () => {
-  test('CreatePost, PlaceFields, WorkDetail and Discover never call navigator.geolocation', () => {
-    // Inspect.jsx still does: that is the inspection system, and this is not it.
+describe('a caption, not a geocoding client — and not evidence', () => {
+  test('Inspect still reads a device position — that is the other system', () => {
     assert.match(strip(read('src/app/Inspect.jsx')), /navigator\.geolocation/,
       'the inspection path must keep reading a device position — this field is the other thing');
-    for (const f of [
-      'src/app/CreatePost.jsx',
-      'src/app/PlaceFields.jsx',
-      'src/app/WorkDetail.jsx',
-      'src/app/Discover.jsx',
-    ]) {
-      assert.doesNotMatch(strip(read(f)), /navigator\.geolocation/,
-        `${f} must not sense a position; the author types where it is`);
-    }
+  });
+
+  test('Discover never calls navigator.geolocation', () => {
+    assert.doesNotMatch(strip(read('src/app/Discover.jsx')), /navigator\.geolocation/,
+      'a Discover cell rendering a caption must not sense a position');
   });
 
   test('the CSP was not opened for a places API', () => {
     assert.doesNotMatch(CSP, /maps\.google|nominatim|mapbox|openstreetmap|geocode|places\.googleapis/i,
-      'a places API is a key, a running cost, and a hole in connect-src for a decoration');
+      'the geocoder is reached from the server; opening connect-src would be the hole this design exists to avoid');
     assert.match(CSP, /connect-src 'self' https:\/\/cdn\.jsdelivr\.net/,
       'connect-src stays the list it was; this feature adds no host');
   });
@@ -187,14 +186,16 @@ describe('the surfaces: a caption, not a badge, and NULL paints nothing', () => 
 
   test('the wording is the author\'s claim, not an attested position', () => {
     const fields = read('src/app/PlaceFields.jsx');
+    const lineFn = fields.slice(fields.indexOf('export function PlaceLine'));
     assert.match(read('shared/place.mjs'), /added by the author/);
     assert.match(fields, /placeClaim/, 'the surfaces share the helper so the wording cannot drift');
     assert.doesNotMatch(strip(fields), /attested/,
       'that word belongs to the inspection grade, not to a typed caption');
-    assert.doesNotMatch(fields, /<svg/, 'no pin icon borrowed from the inspection screens');
+    assert.doesNotMatch(lineFn, /<svg/,
+      'PlaceLine must not borrow a pin from the compose row — a caption that looks attested is the failure');
     assert.match(read('src/app/PlaceFields.jsx'), /Add a location/);
     assert.match(read('src/app/CreatePost.jsx'), /<PlaceFields/,
-      'the control sits in CreatePost, below the caption');
+      'the control sits in CreatePost');
   });
 
   test('the profile grid is still square and still ignores work.ratio', () => {

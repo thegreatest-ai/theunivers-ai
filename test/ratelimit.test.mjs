@@ -89,6 +89,12 @@ test('login is limited on both IP and account', () => {
     'per-IP must be looser than per-account, or shared networks lock each other out');
 });
 
+test('geocode is limited on both user and IP, and per-IP is the generous one', () => {
+  assert.ok(LIMITS.geocodePerUser.max > 0);
+  assert.ok(LIMITS.geocodePerIp.max > LIMITS.geocodePerUser.max,
+    'per-IP must be looser than per-user, or a shared office tapping the button locks itself out');
+});
+
 /*
  * ── The properties that came with moving off process memory ──────────────────────────────
  */

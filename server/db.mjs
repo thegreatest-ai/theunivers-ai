@@ -972,11 +972,13 @@ ensureColumn('work', 'edited_at', 'edited_at TEXT');
 ensureColumn('work', 'ratio', 'ratio TEXT');
 /*
  * The author's claim of where a work is. NULL is "no location", which every work that
- * already exists already is. This is NOT an inspection position: it is a caption, typed
- * rather than sensed, and it must never feed trust, ranking or assurance. place_cc is
- * the machine-readable half (ISO 3166-1 alpha-2, same list as countries.js) so a later
- * Discover filter has something to match; an unknown code is refused at the route
- * rather than stored as a filter that silently matches nothing.
+ * already exists already is. A device position may FILL the name via POST /api/geocode/reverse,
+ * but the coordinates are discarded — there is no lat/lng column, and there must not be
+ * one. A raw fix on a public post is precise enough to be someone's front door. This is
+ * a caption, not an inspection position, and it must never feed trust, ranking or
+ * assurance. place_cc is the machine-readable half (ISO 3166-1 alpha-2, same list as
+ * countries.js) so a later Discover filter has something to match; an unknown code is
+ * refused at the route rather than stored as a filter that silently matches nothing.
  */
 ensureColumn('work', 'place', 'place TEXT');
 ensureColumn('work', 'place_cc', 'place_cc TEXT');

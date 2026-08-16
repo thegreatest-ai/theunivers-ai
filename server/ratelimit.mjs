@@ -239,4 +239,12 @@ export const LIMITS = {
   // unbounded write behind a free signup is rows to store and SQLITE_BUSY under a flood.
   commentPerUser:  { max: 60,  windowMs: 60 * 60_000 },
   commentPerIp:    { max: 300, windowMs: 60 * 60_000 },
+
+  // Reverse geocode. The third party is Nominatim, unmetered use gets the whole origin blocked,
+  // and a process-wide 1/s serialiser is the courtesy to them — these buckets are the courtesy
+  // to everyone else sharing that one slot. Twenty an hour is already more lookups than a
+  // person composing posts will make; the per-IP ceiling is the Sybil case, generous enough
+  // that a shared office tapping the button never meets it.
+  geocodePerUser:  { max: 20,  windowMs: 60 * 60_000 },
+  geocodePerIp:    { max: 100, windowMs: 60 * 60_000 },
 };

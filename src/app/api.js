@@ -73,6 +73,11 @@ export const api = {
   works: (user, kind) => req(`/api/works?${new URLSearchParams({ ...(user && { user }), ...(kind && { kind }) })}`),
   work: (id) => req(`/api/works/${encodeURIComponent(id)}`),
   createWork: (body) => req('/api/works', { method: 'POST', body: JSON.stringify(body) }),
+  /* Coordinates go to our origin; the server names them and discards the fix.
+     The page never talks to a geocoder — that is the whole reason this exists. */
+  reverseGeocode: (lat, lng) => req('/api/geocode/reverse', {
+    method: 'POST', body: JSON.stringify({ lat, lng }),
+  }),
   updateWork: (body) => req('/api/works/update', { method: 'POST', body: JSON.stringify(body) }),
   deleteWork: (id) => req('/api/works/delete', { method: 'POST', body: JSON.stringify({ id }) }),
   workComments: (id, page = 1) => req(`/api/works/${encodeURIComponent(id)}/comments?page=${page}`),
