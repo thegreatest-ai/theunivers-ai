@@ -280,3 +280,145 @@ test('a null ratio does not become a zero-height box', () => {
   assert.doesNotMatch(src, /naturalWidth/,
     'dimensions come from the bytes, already computed; reading naturalWidth is the jump this exists to prevent');
 });
+
+describe('one ratio per post, and it never touches the bytes', () => {
+  test('an unknown ratio is a 400, never a silent default', async () => {
+    const r = await api('/api/works', {
+      method: 'POST', as: 'ana',
+      body: { kind: 'photo', title: 'typo', ratio: '2:3' },
+    });
+    assert.equal(r.status, 400, r.text);
+    assert.match(r.text, /unknown ratio/);
+    assert.equal(rows("SELECT id FROM work WHERE title = 'typo'").length, 0,
+      'a refused ratio must not have created the row');
+  });
+
+  test('each of the four allowed values round-trips', async () => {
+    for (const ratio of ['original', '1:1', '4:5', '16:9']) {
+      const r = await api('/api/works', {
+        method: 'POST', as: 'ana',
+        body: { kind: 'photo', title: `shape ${ratio}`, ratio },
+      });
+      assert.equal(r.status, 200, r.text);
+      const expected = ratio === 'original' ? null : ratio;
+      assert.equal(r.json.work.ratio, expected, `${ratio} on create`);
+      const got = await api(`/api/works/${r.json.work.id}`, { as: 'ana' });
+      assert.equal(got.status, 200, got.text);
+      assert.equal(got.json.work.ratio, expected, `${ratio} on read`);
+    }
+  });
+
+  test('a work created before this change has ratio NULL', async () => {
+    const t = new Date().toISOString();
+    const db = new DatabaseSync(DB);
+    db.prepare(`INSERT INTO work (id, user_id, kind, title, body, shareable, created_at)
+                VALUES (?,?,?,?,?,?,?)`)
+      .run('wrk_legacy', 'usr_ana', 'photo', 'older than the column', '', 1, t);
+    db.close();
+    const [row] = rows('SELECT ratio FROM work WHERE id = ?', 'wrk_legacy');
+    assert.equal(row.ratio, null);
+    const got = await api('/api/works/wrk_legacy', { as: 'ana' });
+    assert.equal(got.status, 200, got.text);
+    assert.equal(got.json.work.ratio, null);
+  });
+
+  test('omitting ratio on create is Original, and a title-only update leaves it', async () => {
+    const made = await api('/api/works', {
+      method: 'POST', as: 'ana', body: { kind: 'photo', title: 'no ratio sent' },
+    });
+    assert.equal(made.status, 200, made.text);
+    assert.equal(made.json.work.ratio, null);
+
+    const cropped = await api('/api/works/update', {
+      method: 'POST', as: 'ana', body: { id: made.json.work.id, ratio: '4:5' },
+    });
+    assert.equal(cropped.status, 200, cropped.text);
+    assert.equal(cropped.json.work.ratio, '4:5');
+
+    const renamed = await api('/api/works/update', {
+      method: 'POST', as: 'ana',
+      body: { id: made.json.work.id, title: 'still 4:5' },
+    });
+    assert.equal(renamed.status, 200, renamed.text);
+    assert.equal(renamed.json.work.ratio, '4:5',
+      'omitting ratio on update must leave the stored value, not reset it to Original');
+  });
+
+  test('every slide of a carousel keeps its own file shape; the post holds the crop', async () => {
+    const png = (w, h) => {
+      const b = Buffer.alloc(24);
+      b.writeUInt32BE(0x89504e47, 0);
+      b.writeUInt32BE(0x0d0a1a0a, 4);
+      b.write('IHDR', 12, 'ascii');
+      b.writeUInt32BE(w, 16);
+      b.writeUInt32BE(h, 20);
+      return b;
+    };
+    const made = await api('/api/works', {
+      method: 'POST', as: 'ana',
+      body: { kind: 'photo', title: 'carousel', ratio: '4:5' },
+    });
+    assert.equal(made.status, 200, made.text);
+    const id = made.json.work.id;
+    assert.equal((await api(`/api/works/${id}/media`, {
+      method: 'POST', as: 'ana', raw: png(1200, 800), type: 'image/png',
+    })).status, 200);
+    assert.equal((await api(`/api/works/${id}/media`, {
+      method: 'POST', as: 'ana', raw: png(800, 1200), type: 'image/png',
+    })).status, 200);
+
+    const got = await api(`/api/works/${id}`, { as: 'ana' });
+    assert.equal(got.json.work.ratio, '4:5');
+    assert.equal(got.json.work.media.length, 2);
+    assert.equal(got.json.work.media[0].width, 1200);
+    assert.equal(got.json.work.media[0].height, 800);
+    assert.equal(got.json.work.media[1].width, 800);
+    assert.equal(got.json.work.media[1].height, 1200);
+    assert.notEqual(got.json.work.media[0].ratio, got.json.work.media[1].ratio,
+      'the files kept their own shapes; the post, not the slide, is 4:5');
+  });
+
+  test('the stored bytes are byte-identical to what was uploaded', async () => {
+    const payload = Buffer.alloc(4096, 7);
+    const made = await api('/api/works', {
+      method: 'POST', as: 'ana',
+      body: { kind: 'photo', title: 'untouched', ratio: '1:1' },
+    });
+    assert.equal(made.status, 200, made.text);
+    const id = made.json.work.id;
+    const up = await api(`/api/works/${id}/media`, {
+      method: 'POST', as: 'ana', raw: payload, type: 'image/jpeg',
+    });
+    assert.equal(up.status, 200, up.text);
+    const [media] = rows('SELECT path, bytes FROM media WHERE work_id = ?', id);
+    assert.equal(media.bytes, payload.length);
+    const stored = readFileSync(join(MEDIA, media.path));
+    assert.equal(stored.equals(payload), true,
+      'choosing a ratio must not re-encode or crop the stored bytes — that is what makes the choice reversible');
+  });
+
+  test('changing ratio via update obeys the author and 409 rules', async () => {
+    const w = await anaWork('photo', { title: 'mine' });
+    const ok = await api('/api/works/update', {
+      method: 'POST', as: 'ana', body: { id: w.id, ratio: '16:9' },
+    });
+    assert.equal(ok.status, 200, ok.text);
+    assert.equal(ok.json.work.ratio, '16:9');
+
+    const stranger = await api('/api/works/update', {
+      method: 'POST', as: 'ben', body: { id: w.id, ratio: '1:1' },
+    });
+    assert.equal(stranger.status, 404, 'a stranger must not be able to change the crop');
+    assert.equal(rows('SELECT ratio FROM work WHERE id = ?', w.id)[0].ratio, '16:9');
+
+    const db = new DatabaseSync(DB);
+    db.prepare('UPDATE work SET limited_at = ? WHERE id = ?').run(new Date().toISOString(), w.id);
+    db.close();
+    const limited = await api('/api/works/update', {
+      method: 'POST', as: 'ana', body: { id: w.id, ratio: '1:1' },
+    });
+    assert.equal(limited.status, 409);
+    assert.equal(rows('SELECT ratio FROM work WHERE id = ?', w.id)[0].ratio, '16:9',
+      'a work under review must not change shape');
+  });
+});
