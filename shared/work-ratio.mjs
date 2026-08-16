@@ -21,6 +21,10 @@ export const WORK_RATIOS = [
   { id: '1:1', label: '1:1' },
   { id: '4:5', label: '4:5' },
   { id: '16:9', label: '16:9' },
+  // 9:16 — the full-height portrait a phone actually shoots, and the shape a reel or story is
+  // published at. Taller than 4:5 by a long way: 4:5 is a portrait that sits IN a feed, 9:16 is a
+  // portrait that IS the screen.
+  { id: '9:16', label: '9:16' },
 ];
 
 /** CSS aspect-ratio number for a chosen presentation id. Original has none of its own. */
@@ -28,6 +32,7 @@ export function ratioAspect(id) {
   if (id === '1:1') return 1;
   if (id === '4:5') return 4 / 5;
   if (id === '16:9') return 16 / 9;
+  if (id === '9:16') return 9 / 16;
   return null;
 }
 
@@ -41,7 +46,7 @@ export function ratioAspect(id) {
 export function parseWorkRatio(raw) {
   if (raw === undefined) return { missing: true };
   if (raw === null || raw === 'original') return { value: null };
-  if (raw === '1:1' || raw === '4:5' || raw === '16:9') return { value: raw };
+  if (raw === '1:1' || raw === '4:5' || raw === '16:9' || raw === '9:16') return { value: raw };
   return { error: 'unknown ratio' };
 }
 

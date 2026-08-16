@@ -294,7 +294,7 @@ describe('one ratio per post, and it never touches the bytes', () => {
   });
 
   test('each of the four allowed values round-trips', async () => {
-    for (const ratio of ['original', '1:1', '4:5', '16:9']) {
+    for (const ratio of ['original', '1:1', '4:5', '16:9', '9:16']) {
       const r = await api('/api/works', {
         method: 'POST', as: 'ana',
         body: { kind: 'photo', title: `shape ${ratio}`, ratio },

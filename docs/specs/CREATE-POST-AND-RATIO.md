@@ -55,7 +55,7 @@ nothing, which a destructive crop can never offer.
 
 ### Options to offer
 
-`Original · 1:1 · 4:5 · 16:9`
+`Original · 1:1 · 4:5 · 16:9 · 9:16`
 
 `4:5` is the tallest worth allowing — beyond that a portrait dominates a feed. `Original` must be
 the default and must be a real option, because it is the honest one: it says "this is the shape the

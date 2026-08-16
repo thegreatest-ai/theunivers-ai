@@ -38,7 +38,8 @@ mechanism already in use). This is where the eye lands. Everything else serves i
 
 **Band 2 — the controls that act on the picture**, directly under the stage, on one line:
 - the **zoom** control (− slider +) — **below the image, never over it**
-- the **ratio** chips (Original · 1:1 · 4:5 · 16:9), which already exist and are fine
+- the **ratio** control (Original · 1:1 · 4:5 · 16:9 · 9:16) — since collapsed to one button that
+  names the current value
 
 **Band 3 — the film strip**, and **only when there is more than one picture, or to add one**:
 a compact horizontal row of ~64px thumbnails under the controls. The current one is marked. **"Add

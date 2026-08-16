@@ -15,8 +15,8 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
 
 describe('the four allowed values, and nothing else', () => {
-  test('Original · 1:1 · 4:5 · 16:9 are the options', () => {
-    assert.deepEqual(WORK_RATIOS.map((r) => r.id), ['original', '1:1', '4:5', '16:9']);
+  test('Original · 1:1 · 4:5 · 16:9 · 9:16 are the options', () => {
+    assert.deepEqual(WORK_RATIOS.map((r) => r.id), ['original', '1:1', '4:5', '16:9', '9:16']);
   });
 
   test('omitted is missing, so CREATE can default and UPDATE can leave it', () => {

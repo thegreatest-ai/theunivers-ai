@@ -731,8 +731,12 @@ body:has(.wk-detail-back) .nav-fab{display:none}
 .cp-hero-frame:not(.has-ratio){width:100%;height:var(--cp-stage)}
 .cp-hero-frame.has-ratio{aspect-ratio:var(--ar);width:100%;
   max-width:calc(var(--cp-stage) * var(--ar));max-height:var(--cp-stage)}
+/* CONTAIN, not cover. The compose stage is where somebody decides what to publish, and deciding
+   requires seeing the whole frame — a preview that crops is asking for approval of something it
+   has not shown. The grid and the feed still use cover; those are presentations of a decision
+   already made, and a uniform grid is the entire point of the square. */
 .cp-hero-frame img,.cp-hero-frame video{position:absolute;inset:0;width:100%;height:100%;
-  display:block;object-fit:cover}
+  display:block;object-fit:contain}
 .cp-tools{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;min-width:0}
 .cp-zoom{display:flex;align-items:center;gap:6px;flex:1 1 160px;min-width:140px;max-width:280px}
 .cp-zoom button{flex:0 0 28px;height:28px;padding:0;border:none;border-radius:8px;cursor:pointer;

@@ -27,11 +27,36 @@ import {
 import { PlaceFields } from './PlaceFields';
 import { RatioMenu } from './RatioMenu';
 
-function StageMedia({ item }) {
+/**
+ * The picture, whole.
+ *
+ * `object-fit: contain` and not `cover`: the owner's complaint was that the preview cut the
+ * photograph off, and they are right that it should not. This window is where you decide what to
+ * publish, and deciding requires seeing the thing — a preview that hides part of the frame is
+ * asking someone to approve what they have not been shown.
+ *
+ * It reports its NATURAL size upward so that Original can shape the frame to the photograph
+ * instead of to a fixed box. Reading naturalWidth is right HERE and wrong everywhere else in this
+ * codebase: elsewhere the server has already measured the bytes and sending a number the client
+ * could assert would be a layout the client controls. This file has no server measurement — the
+ * picture has not been uploaded yet.
+ */
+function StageMedia({ item, onNatural }) {
   const style = cropStyle({ zoom: item.zoom });
-  return item.file.type.startsWith('video/')
-    ? <video src={item.url} muted preload="metadata" style={style} />
-    : <img src={item.url} alt="" style={style} />;
+  if (item.file.type.startsWith('video/')) {
+    return (
+      <video
+        src={item.url} muted preload="metadata" style={style}
+        onLoadedMetadata={(e) => onNatural?.(e.currentTarget.videoWidth, e.currentTarget.videoHeight)}
+      />
+    );
+  }
+  return (
+    <img
+      src={item.url} alt="" style={style}
+      onLoad={(e) => onNatural?.(e.currentTarget.naturalWidth, e.currentTarget.naturalHeight)}
+    />
+  );
 }
 
 export default function CreatePost({ kind, accept, multiple, onClose, onShared }) {
@@ -173,7 +198,16 @@ export default function CreatePost({ kind, accept, multiple, onClose, onShared }
     }
   }
 
-  const previewAspect = ratioAspect(ratio);
+  /*
+   * ORIGINAL MEANS THE PHOTOGRAPH'S OWN SHAPE, and until now it meant "a fixed-height box that
+   * crops". The frame took --cp-stage as a height and the media was object-fit:cover, so a
+   * portrait chose Original and still lost its top and bottom — the fault the owner reported.
+   * With the natural ratio known, Original frames the picture exactly and nothing is cut.
+   */
+  const [natural, setNatural] = useState(null);
+  useEffect(() => { setNatural(null); }, [current, items.length]);
+  const chosenAspect = ratioAspect(ratio);
+  const previewAspect = chosenAspect ?? natural;
   const atCap = items.length >= MEDIA_CAP;
   const currentItem = items[current] || items[0];
   // The strip is how you switch pictures and how you add one. A single video has
@@ -241,7 +275,10 @@ export default function CreatePost({ kind, accept, multiple, onClose, onShared }
                 style={previewAspect ? { '--ar': String(previewAspect) } : undefined}
               >
                 <div className={`cp-hero-frame${previewAspect ? ' has-ratio' : ''}`}>
-                  <StageMedia item={currentItem} />
+                  <StageMedia
+                    item={currentItem}
+                    onNatural={(w, h) => { if (w > 0 && h > 0) setNatural(w / h); }}
+                  />
                   {!showStrip && (
                     <button
                       type="button"
