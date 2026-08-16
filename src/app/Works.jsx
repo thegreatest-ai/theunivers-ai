@@ -17,6 +17,10 @@
  * Publishing a photo, video or file opens CreatePost: a room between the picker and the
  * upload, so a ratio can be chosen before any byte is sent. The file input's onChange is
  * no longer the commit.
+ *
+ * The empty profile is one invitation: the button is the action, the sentence is its
+ * explanation, inside the card. A second "Share your first photo" under the card is the
+ * same choice twice, and it reads as debris.
  */
 import { useEffect, useState } from 'react';
 import { api } from './api';
@@ -106,6 +110,7 @@ export default function Works({ userId, own }) {
               <button className="app-cta" disabled={busy === 'thread' || !text.body.trim()}>
                 {busy === 'thread' ? 'Posting…' : 'Post'}
               </button>
+              {works?.length === 0 && <p className="app-note">{spec.invite}</p>}
             </form>
           ) : (
             <>
@@ -113,7 +118,9 @@ export default function Works({ userId, own }) {
                 Create new post
               </button>
               <p className="app-note">
-                From your phone or your computer. {spec.empty}
+                {works?.length === 0
+                  ? spec.invite
+                  : `From your phone or your computer. ${spec.empty}`}
               </p>
             </>
           )}
@@ -123,14 +130,8 @@ export default function Works({ userId, own }) {
 
       {works === null && <p className="app-note">Loading…</p>}
       {loadError && <p className="app-error">{spec.label} could not be loaded — {loadError}</p>}
-      {!loadError && works?.length === 0 && (
-        own && spec.accept ? (
-          <button type="button" className="app-link wk-invite" onClick={() => setCreating(true)}>
-            {spec.invite}
-          </button>
-        ) : (
-          <p className="app-note">{own ? spec.invite : `Nothing here yet. ${spec.empty}`}</p>
-        )
+      {!loadError && works?.length === 0 && !own && (
+        <p className="app-note">{`Nothing here yet. ${spec.empty}`}</p>
       )}
 
       <div className={kind === 'photo' || kind === 'video' ? 'wk-grid' : 'wk-list'}>
