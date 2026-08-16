@@ -193,7 +193,10 @@ describe('the surfaces: a caption, not a badge, and NULL paints nothing', () => 
       'that word belongs to the inspection grade, not to a typed caption');
     assert.doesNotMatch(lineFn, /<svg/,
       'PlaceLine must not borrow a pin from the compose row — a caption that looks attested is the failure');
-    assert.match(read('src/app/PlaceFields.jsx'), /Add a location/);
+    // The typed field and the country select were removed by the owner: adding a location is a
+    // button press, not a form. So this asserts the CONTROL exists, not a placeholder that no
+    // longer does — pinning removed copy is how a test outlives the thing it was testing.
+    assert.match(read('src/app/PlaceFields.jsx'), /Use my location/);
     assert.match(read('src/app/CreatePost.jsx'), /<PlaceFields/,
       'the control sits in CreatePost');
   });

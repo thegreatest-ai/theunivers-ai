@@ -1,33 +1,31 @@
 /**
- * The author's claim of where a work is.
+ * The author's claim of where a work is. ONE BUTTON, and nothing to type.
  *
- * The inspection screens grade a captured position; this is a caption. Sharing
- * their visual language is how a string starts looking like evidence — the
- * mock.js failure in a new costume. So the published line is still
- * `<where> · added by the author`, via `placeClaim()`, whether the name was
- * typed or resolved from a sensor. A device position is trivially spoofable
- * (`shared/assurance.mjs`); a resolved name is no better.
+ * It began as a typed field plus a country select, with "Use my location" added beside them.
+ * The owner removed both: a person adding a location wants to press a button, not fill in a
+ * form, and a country dropdown next to a resolved place name is a second way to say the same
+ * thing — which is a second way to disagree with it. The geocoder still returns the country
+ * code, so `place_cc` is still stored; it is simply no longer something to argue with.
  *
- * "Use my location" asks the browser on an explicit click, never on opening
- * the form. The coordinates go to OUR origin; the server names them and
- * discards the fix. What lands here is the editable text field, so the author
- * confirms before Share — a geocoder that returns the wrong suburb is common,
- * and a location they never read is one they never agreed to publish.
+ * The inspection screens grade a captured position; this is a caption. Sharing their visual
+ * language is how a string starts looking like evidence — the mock.js failure in a new costume.
+ * So the published line is still `<where> · added by the author`, via `placeClaim()`. A device
+ * position is trivially spoofable (`shared/assurance.mjs`); a resolved name is no better.
  *
- * Both halves optional, both clearable, never pre-filled from a previous post
- * or from the author's profile country. A location that reappears by itself
- * is how someone publishes a place they did not mean to.
+ * The browser is asked on an explicit click, never on opening the form. Coordinates go to OUR
+ * origin, the server names them and discards the fix.
+ *
+ * WITH NOTHING TO TYPE, EVERY FAILURE IS TERMINAL — there is no "you can type it instead" to
+ * fall back on, so the messages say what happened and nothing more. A refusal must not re-prompt
+ * in a loop: the browser will not ask again until the site setting changes, and pretending
+ * otherwise is how a button becomes a thing people press repeatedly for no result.
+ *
+ * Never pre-filled from a previous post or the profile country. A location that reappears by
+ * itself is how someone publishes a place they did not mean to. The chip is the way back out.
  */
 import { useState } from 'react';
-import Select from './Select';
 import { api } from './api';
-import { COUNTRIES } from './countries';
-import { PLACE_MAX, placeClaim } from '../../shared/place.mjs';
-
-const COUNTRY_OPTIONS = [
-  { value: '', label: 'No country' },
-  ...COUNTRIES.filter((c) => !c.disabled).map((c) => ({ value: c.code, label: c.name })),
-];
+import { placeClaim } from '../../shared/place.mjs';
 
 function chipLabel(place, placeCc) {
   const name = place == null ? '' : String(place).trim();
@@ -48,7 +46,7 @@ export function PlaceFields({ place, placeCc, onPlace, onPlaceCc }) {
     if (locating) return;
     setLocateError('');
     if (!navigator.geolocation) {
-      setLocateError('Location is unavailable. You can type it instead.');
+      setLocateError('Location is unavailable.');
       return;
     }
     setLocating(true);
@@ -57,13 +55,13 @@ export function PlaceFields({ place, placeCc, onPlace, onPlaceCc }) {
         try {
           const data = await api.reverseGeocode(pos.coords.latitude, pos.coords.longitude);
           if (!data?.place) {
-            setLocateError('Could not find a place name for this location. You can type it instead.');
+            setLocateError('Could not find a place name for where you are.');
             return;
           }
           onPlace(data.place);
           onPlaceCc(data.place_cc ?? '');
         } catch (err) {
-          setLocateError(err.message || 'Could not look up this location. You can type it instead.');
+          setLocateError(err.message || 'Could not look up this location.');
         } finally {
           setLocating(false);
         }
@@ -74,14 +72,14 @@ export function PlaceFields({ place, placeCc, onPlace, onPlaceCc }) {
           // PERMISSION_DENIED. Never re-prompt in a loop — the browser will
           // not ask again until the user changes the site setting, and we
           // must not pretend otherwise.
-          setLocateError('Location is off for this site. You can type it instead.');
+          setLocateError('Location is off for this site.');
           return;
         }
         if (err?.code === 3) {
-          setLocateError('Location timed out. You can type it instead.');
+          setLocateError('Location timed out.');
           return;
         }
-        setLocateError('Location is unavailable. You can type it instead.');
+        setLocateError('Location is unavailable.');
       },
       // A suburb name needs no GPS fix. High accuracy costs battery and time
       // for precision the server is about to throw away.
@@ -113,20 +111,6 @@ export function PlaceFields({ place, placeCc, onPlace, onPlaceCc }) {
         >
           {locating ? 'Looking up…' : 'Use my location'}
         </button>
-        <input
-          placeholder="Add a location"
-          aria-label="Location name"
-          maxLength={PLACE_MAX}
-          value={place}
-          autoComplete="off"
-          onChange={(e) => onPlace(e.target.value)}
-        />
-        <Select
-          value={placeCc}
-          onChange={onPlaceCc}
-          placeholder="Country (optional)"
-          options={COUNTRY_OPTIONS}
-        />
       </div>
       {chip ? (
         <span className="cp-place-chip">

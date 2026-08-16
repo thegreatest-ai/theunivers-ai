@@ -103,10 +103,20 @@ describe('the surfaces: click only, labelled, privacy copy, caption unchanged', 
     assert.doesNotMatch(code, /useEffect/,
       'a mount effect that asked for permission would be the prompt nobody clicked');
     assert.match(raw, /Looking up/, 'GPS can take several seconds; the button must say so');
-    assert.match(raw, /Location is off for this site\. You can type it instead\./);
-    assert.match(raw, /Location timed out\. You can type it instead\./);
-    assert.match(raw, /Location is unavailable\. You can type it instead\./);
-    assert.match(raw, /Could not find a place name for this location/);
+    /*
+     * WITH NOTHING TO TYPE, EVERY FAILURE IS TERMINAL. These messages used to end "You can type
+     * it instead", which was true while a text field sat beside the button. The owner removed
+     * it, so that sentence became an instruction to use a control that is not there — worse than
+     * no advice at all. The messages now state what happened and stop.
+     */
+    assert.match(raw, /Location is off for this site\./);
+    assert.match(raw, /Location timed out\./);
+    assert.match(raw, /Location is unavailable\./);
+    assert.match(raw, /Could not find a place name for where you are/);
+    // `code`, not `raw`: the file's own comment explains WHY that sentence was removed, and a
+    // test that cannot tell a comment from a string would forbid explaining its own rule.
+    assert.doesNotMatch(strip(raw), /type it instead/,
+      'there is no field to type in — this copy must not come back with the field still gone');
   });
 
   test('CreatePost and WorkDetail do not call geolocation themselves — PlaceFields does', () => {
@@ -123,10 +133,11 @@ describe('the surfaces: click only, labelled, privacy copy, caption unchanged', 
     assert.match(code, /cp-place-use/);
     assert.match(code, /cp-place-chip/);
     assert.match(code, /Remove location/);
-    const useAt = code.indexOf('Use my location');
-    const typedAt = code.indexOf('Add a location');
-    assert.ok(useAt >= 0 && typedAt > useAt,
-      'Use my location sits first; the free-text field is the fallback beside it');
+    assert.ok(code.indexOf('Use my location') >= 0, 'the button IS the control');
+    assert.doesNotMatch(code, /Add a location/,
+      'the typed field was removed — one button, nothing to fill in');
+    assert.doesNotMatch(code, /COUNTRY_OPTIONS|from '\.\/countries'/,
+      'the country select was removed too; the geocoder still supplies place_cc');
   });
 
   test('the privacy copy is present, and it stays true only while there is no lat/lng column', () => {
