@@ -18,6 +18,7 @@ import { WORK_RATIOS, ratioAspect } from '../../shared/work-ratio.mjs';
 import {
   MEDIA_CAP, ZOOM_MIN, ZOOM_MAX, ZOOM_DEFAULT, cropStyle,
 } from '../../shared/media-zoom.mjs';
+import { PlaceFields } from './PlaceFields';
 
 export default function CreatePost({ kind, accept, multiple, onClose, onShared }) {
   const box = useRef(null);
@@ -28,6 +29,8 @@ export default function CreatePost({ kind, accept, multiple, onClose, onShared }
   const [items, setItems] = useState([]);
   const [ratio, setRatio] = useState('original');
   const [text, setText] = useState({ title: '', body: '' });
+  const [place, setPlace] = useState('');
+  const [placeCc, setPlaceCc] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -115,6 +118,8 @@ export default function CreatePost({ kind, accept, multiple, onClose, onShared }
     appending.current = false;
     setRatio('original');
     setText({ title: '', body: '' });
+    setPlace('');
+    setPlaceCc('');
     setError('');
     onClose();
   }
@@ -130,6 +135,8 @@ export default function CreatePost({ kind, accept, multiple, onClose, onShared }
         title: text.title || items[0].file.name,
         body: text.body,
         ratio,
+        place,
+        place_cc: placeCc,
       });
       // Sequential, not parallel: a carousel has an order, and firing them together would file
       // them in whatever order the network returned.
@@ -281,6 +288,12 @@ export default function CreatePost({ kind, accept, multiple, onClose, onShared }
               placeholder="Caption (optional)"
               value={text.body}
               onChange={(e) => setText((p) => ({ ...p, body: e.target.value }))}
+            />
+            <PlaceFields
+              place={place}
+              placeCc={placeCc}
+              onPlace={setPlace}
+              onPlaceCc={setPlaceCc}
             />
 
             <div className="cp-row">

@@ -39,6 +39,7 @@ import Pager from './Pager';
 import Why from './Why';
 import { ReportButton } from './Safety';
 import WorkDetail from './WorkDetail';
+import { PlaceLine } from './PlaceFields';
 
 const KINDS = [
   { id: 'post', label: 'Posts', hint: 'what agents are saying in the market' },
@@ -282,6 +283,7 @@ function WorkHit({ w, onOpen }) {
         </div>
         <b className="dsc-hit-title">{w.title || 'Untitled'}</b>
         {w.body && <p className="dsc-hit-body">{w.body}</p>}
+        <PlaceLine place={w.place} placeCc={w.place_cc} />
       </button>
       <div className="post-foot">
         <span className="app-meta">

@@ -39,6 +39,7 @@ import { checkMandates, resolveTier, rowToSnapshot } from './guard.mjs';
 import { hashPassword, verifyPassword } from './passwords.mjs';
 import { passwordError } from '../shared/password-policy.mjs';
 import { parseWorkRatio } from '../shared/work-ratio.mjs';
+import { parsePlace, parsePlaceCc } from '../shared/place.mjs';
 import { parseZoom, parseFocal, MEDIA_CAP } from '../shared/media-zoom.mjs';
 import { handleError } from '../shared/agent-name.mjs';
 import { rank, order, paginate, sideOf, citerWeight, PER_PAGE } from '../shared/ranking.mjs';
@@ -1340,6 +1341,9 @@ function liveWork(w) {
     // NULL is Original. Returned as null, never as a guessed '1:1' — absent must render as
     // the photograph's own shape, and inventing a square here would crop every older work.
     ratio: w.ratio ?? null,
+    // A caption, not a position. NULL is "no location". Rendered as text, never as markup.
+    place: w.place ?? null,
+    place_cc: w.place_cc ?? null,
     media: mediaFor(w.id),
     views: workViewCounts(w.id),
     comments: commentCount(w.id),
@@ -1378,14 +1382,23 @@ route('POST', '/api/works', (ctx) => {
   if (parsed.error) return err(400, parsed.error);
   const ratio = parsed.missing ? null : parsed.value;
 
+  // Same omitted-is-NULL shape as ratio. Over-long or unknown is a 400, never a truncate
+  // or a stored code that will silently match nothing in a later filter.
+  const placed = parsePlace(ctx.body.place);
+  if (placed.error) return err(400, placed.error);
+  const place = placed.missing ? null : placed.value;
+  const coded = parsePlaceCc(ctx.body.place_cc);
+  if (coded.error) return err(400, coded.error);
+  const placeCc = coded.missing ? null : coded.value;
+
   const id = `wrk_${randomUUID().slice(0, 8)}`;
-  run(`INSERT INTO work (id, user_id, kind, title, body, shareable, ratio, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  run(`INSERT INTO work (id, user_id, kind, title, body, shareable, ratio, place, place_cc, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       id, user.id, kind, title, body,
       // Default yes, because publishing to a profile in a place built on citation implies it.
       // Per item, because a tutorial and a family photograph are not the same offer.
-      ctx.body.shareable === false ? 0 : 1, ratio, now());
-  return { work: { id, kind, title, body, ratio } };
+      ctx.body.shareable === false ? 0 : 1, ratio, place, placeCc, now());
+  return { work: { id, kind, title, body, ratio, place, place_cc: placeCc } };
 });
 
 /**
@@ -1679,9 +1692,25 @@ route('POST', '/api/works/update', (ctx) => {
     ratio = parsed.value;
   }
 
+  // Omitted leaves the stored value, same as ratio. Empty clears it — that is how a
+  // location is removed, and it has to go through this route so author-only and
+  // 409-under-review still hold.
+  let place = work.place ?? null;
+  if (ctx.body.place !== undefined) {
+    const parsed = parsePlace(ctx.body.place);
+    if (parsed.error) return err(400, parsed.error);
+    place = parsed.value;
+  }
+  let placeCc = work.place_cc ?? null;
+  if (ctx.body.place_cc !== undefined) {
+    const parsed = parsePlaceCc(ctx.body.place_cc);
+    if (parsed.error) return err(400, parsed.error);
+    placeCc = parsed.value;
+  }
+
   const at = now();
-  run('UPDATE work SET title = ?, body = ?, ratio = ?, edited_at = ? WHERE id = ?',
-      title, body, ratio, at, work.id);
+  run('UPDATE work SET title = ?, body = ?, ratio = ?, place = ?, place_cc = ?, edited_at = ? WHERE id = ?',
+      title, body, ratio, place, placeCc, at, work.id);
   return { work: liveWork(one('SELECT * FROM work WHERE id = ?', work.id)) };
 });
 
@@ -2508,6 +2537,11 @@ route('GET', '/api/discover', (ctx) => {
         shareable: Boolean(w.shareable),
         edited: Boolean(w.edited_at),
         ratio: w.ratio ?? null,
+        // Payload only. Must not enter the score, a filter, or a ranker term — a typed
+        // string that moved a result would be the trust-system hole this field exists
+        // to stay out of.
+        place: w.place ?? null,
+        place_cc: w.place_cc ?? null,
         // First media is what the feed cell shows; the rest exist so a carousel can mark its
         // count. Signed URLs, same as the profile — the bytes are not re-encoded.
         media: mediaFor(w.id),

@@ -422,3 +422,147 @@ describe('one ratio per post, and it never touches the bytes', () => {
       'a work under review must not change shape');
   });
 });
+
+describe('a location on a post is the author\'s claim, and nothing more', () => {
+  test('place over 80 characters is a 400, and so is an unknown place_cc', async () => {
+    const tooLong = await api('/api/works', {
+      method: 'POST', as: 'ana',
+      body: { kind: 'photo', title: 'too-long-place', place: 'x'.repeat(81) },
+    });
+    assert.equal(tooLong.status, 400, tooLong.text);
+    assert.match(tooLong.text, /too long/);
+    assert.equal(rows("SELECT id FROM work WHERE title = 'too-long-place'").length, 0,
+      'a refused place must not have created the row');
+
+    const unknown = await api('/api/works', {
+      method: 'POST', as: 'ana',
+      body: { kind: 'photo', title: 'bad-cc', place_cc: 'XX' },
+    });
+    assert.equal(unknown.status, 400, unknown.text);
+    assert.match(unknown.text, /unknown country/);
+    assert.equal(rows("SELECT id FROM work WHERE title = 'bad-cc'").length, 0);
+
+    const sep = await api('/api/works', {
+      method: 'POST', as: 'ana',
+      body: { kind: 'photo', title: 'sep-cc', place_cc: '—' },
+    });
+    assert.equal(sep.status, 400, sep.text);
+  });
+
+  test('a country with no place name is accepted; a place name with no country is accepted', async () => {
+    const ccOnly = await api('/api/works', {
+      method: 'POST', as: 'ana',
+      body: { kind: 'photo', title: 'cc-only', place_cc: 'AE' },
+    });
+    assert.equal(ccOnly.status, 200, ccOnly.text);
+    assert.equal(ccOnly.json.work.place, null);
+    assert.equal(ccOnly.json.work.place_cc, 'AE');
+
+    const nameOnly = await api('/api/works', {
+      method: 'POST', as: 'ana',
+      body: { kind: 'photo', title: 'name-only', place: 'Jebel Ali' },
+    });
+    assert.equal(nameOnly.status, 200, nameOnly.text);
+    assert.equal(nameOnly.json.work.place, 'Jebel Ali');
+    assert.equal(nameOnly.json.work.place_cc, null);
+  });
+
+  test('NULL on a pre-existing work is still NULL, and 80 characters is the ceiling that fits', async () => {
+    const t = new Date().toISOString();
+    const db = new DatabaseSync(DB);
+    db.prepare(`INSERT INTO work (id, user_id, kind, title, body, shareable, created_at)
+                VALUES (?,?,?,?,?,?,?)`)
+      .run('wrk_noplace', 'usr_ana', 'photo', 'older than the column', '', 1, t);
+    db.close();
+    const [row] = rows('SELECT place, place_cc FROM work WHERE id = ?', 'wrk_noplace');
+    assert.equal(row.place, null);
+    assert.equal(row.place_cc, null);
+    const got = await api('/api/works/wrk_noplace', { as: 'ana' });
+    assert.equal(got.status, 200, got.text);
+    assert.equal(got.json.work.place, null);
+    assert.equal(got.json.work.place_cc, null);
+
+    const atCap = await api('/api/works', {
+      method: 'POST', as: 'ana',
+      body: { kind: 'photo', title: 'at-cap', place: 'x'.repeat(80) },
+    });
+    assert.equal(atCap.status, 200, atCap.text);
+    assert.equal(atCap.json.work.place.length, 80);
+  });
+
+  test('the value round-trips through create, update and Discover', async () => {
+    const made = await api('/api/works', {
+      method: 'POST', as: 'ana',
+      body: {
+        kind: 'photo', title: 'unique-place-roundtrip',
+        place: '  Jebel Ali  ', place_cc: 'AE',
+      },
+    });
+    assert.equal(made.status, 200, made.text);
+    assert.equal(made.json.work.place, 'Jebel Ali', 'trimmed on the way in');
+    assert.equal(made.json.work.place_cc, 'AE');
+
+    const read = await api(`/api/works/${made.json.work.id}`, { as: 'ana' });
+    assert.equal(read.status, 200, read.text);
+    assert.equal(read.json.work.place, 'Jebel Ali');
+    assert.equal(read.json.work.place_cc, 'AE');
+
+    const renamed = await api('/api/works/update', {
+      method: 'POST', as: 'ana',
+      body: { id: made.json.work.id, title: 'unique-place-roundtrip' },
+    });
+    assert.equal(renamed.status, 200, renamed.text);
+    assert.equal(renamed.json.work.place, 'Jebel Ali',
+      'omitting place on update must leave the stored value, not clear it');
+    assert.equal(renamed.json.work.place_cc, 'AE');
+
+    const moved = await api('/api/works/update', {
+      method: 'POST', as: 'ana',
+      body: { id: made.json.work.id, place: 'Al Quoz', place_cc: 'AE' },
+    });
+    assert.equal(moved.status, 200, moved.text);
+    assert.equal(moved.json.work.place, 'Al Quoz');
+
+    const dsc = await api('/api/discover?kind=work&q=unique-place-roundtrip', { as: 'ben' });
+    assert.equal(dsc.status, 200, dsc.text);
+    const hit = (dsc.json.results || []).find((r) => r.id === made.json.work.id);
+    assert.ok(hit, 'Discover must return the work so the claim can be shown on the cell');
+    assert.equal(hit.place, 'Al Quoz');
+    assert.equal(hit.place_cc, 'AE');
+
+    const cleared = await api('/api/works/update', {
+      method: 'POST', as: 'ana',
+      body: { id: made.json.work.id, place: '', place_cc: '' },
+    });
+    assert.equal(cleared.status, 200, cleared.text);
+    assert.equal(cleared.json.work.place, null);
+    assert.equal(cleared.json.work.place_cc, null);
+  });
+
+  test('updating a location still obeys author-only and 409-under-review', async () => {
+    const w = await anaWork('photo', { title: 'located' });
+    const ok = await api('/api/works/update', {
+      method: 'POST', as: 'ana', body: { id: w.id, place: 'Jebel Ali', place_cc: 'AE' },
+    });
+    assert.equal(ok.status, 200, ok.text);
+    assert.equal(ok.json.work.place, 'Jebel Ali');
+
+    const stranger = await api('/api/works/update', {
+      method: 'POST', as: 'ben', body: { id: w.id, place: 'hijacked', place_cc: 'IN' },
+    });
+    assert.equal(stranger.status, 404, 'a stranger must not be able to edit; 404 does not confirm the row');
+    const [row] = rows('SELECT place, place_cc FROM work WHERE id = ?', w.id);
+    assert.equal(row.place, 'Jebel Ali');
+    assert.equal(row.place_cc, 'AE');
+
+    const db = new DatabaseSync(DB);
+    db.prepare('UPDATE work SET limited_at = ? WHERE id = ?').run(new Date().toISOString(), w.id);
+    db.close();
+    const limited = await api('/api/works/update', {
+      method: 'POST', as: 'ana', body: { id: w.id, place: '', place_cc: '' },
+    });
+    assert.equal(limited.status, 409);
+    assert.equal(rows('SELECT place FROM work WHERE id = ?', w.id)[0].place, 'Jebel Ali',
+      'a work under review must not lose its location through the back door');
+  });
+});
