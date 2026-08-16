@@ -25,7 +25,7 @@
  */
 import { useState } from 'react';
 import { api } from './api';
-import { placeClaim } from '../../shared/place.mjs';
+import { PLACE_MAX, placeClaim } from '../../shared/place.mjs';
 
 function chipLabel(place, placeCc) {
   const name = place == null ? '' : String(place).trim();
@@ -46,7 +46,7 @@ export function PlaceFields({ place, placeCc, onPlace, onPlaceCc }) {
     if (locating) return;
     setLocateError('');
     if (!navigator.geolocation) {
-      setLocateError('Location is unavailable.');
+      setLocateError('Location is unavailable. Write it below instead.');
       return;
     }
     setLocating(true);
@@ -55,7 +55,7 @@ export function PlaceFields({ place, placeCc, onPlace, onPlaceCc }) {
         try {
           const data = await api.reverseGeocode(pos.coords.latitude, pos.coords.longitude);
           if (!data?.place) {
-            setLocateError('Could not find a place name for where you are.');
+            setLocateError('Could not find a place name for where you are. Write it below instead.');
             return;
           }
           onPlace(data.place);
@@ -72,14 +72,14 @@ export function PlaceFields({ place, placeCc, onPlace, onPlaceCc }) {
           // PERMISSION_DENIED. Never re-prompt in a loop — the browser will
           // not ask again until the user changes the site setting, and we
           // must not pretend otherwise.
-          setLocateError('Location is off for this site.');
+          setLocateError('Location is off for this site. Write it below instead.');
           return;
         }
         if (err?.code === 3) {
-          setLocateError('Location timed out.');
+          setLocateError('Location timed out. Write it below instead.');
           return;
         }
-        setLocateError('Location is unavailable.');
+        setLocateError('Location is unavailable. Write it below instead.');
       },
       // A suburb name needs no GPS fix. High accuracy costs battery and time
       // for precision the server is about to throw away.
@@ -112,14 +112,33 @@ export function PlaceFields({ place, placeCc, onPlace, onPlaceCc }) {
           {locating ? 'Looking up…' : 'Use my location'}
         </button>
       </div>
-      {chip ? (
-        <span className="cp-place-chip">
-          {chip}
+      {/*
+        * EDITABLE, not just settable. The typed field was removed when the button arrived, and
+        * that went too far: a geocoder returns the wrong suburb often enough, and a place nobody
+        * can correct is one they either publish wrongly or abandon. So the resolved name lands
+        * HERE, in a field, and the author confirms or fixes it before Share.
+        *
+        * The button still leads — pressing it is the fast path — and this is the correction, which
+        * is why it sits under rather than beside. It appears once there is something to correct,
+        * or when someone wants to write a place the sensor cannot name: a room, a site, a stand at
+        * a fair.
+        */}
+      <div className="cp-place-edit">
+        <input
+          className="cp-place-input"
+          placeholder="Or write where this is"
+          aria-label="Location"
+          maxLength={PLACE_MAX}
+          value={place}
+          autoComplete="off"
+          onChange={(e) => onPlace(e.target.value)}
+        />
+        {chip ? (
           <button type="button" className="cp-place-chip-x" onClick={clearPlace}>
             ×<span className="sr-only">Remove location</span>
           </button>
-        </span>
-      ) : null}
+        ) : null}
+      </div>
       <p className="cp-place-note">
         Your coordinates are used to look up a place name and are not saved.
       </p>

@@ -133,11 +133,22 @@ describe('the surfaces: click only, labelled, privacy copy, caption unchanged', 
     assert.match(code, /cp-place-use/);
     assert.match(code, /cp-place-chip/);
     assert.match(code, /Remove location/);
-    assert.ok(code.indexOf('Use my location') >= 0, 'the button IS the control');
-    assert.doesNotMatch(code, /Add a location/,
-      'the typed field was removed — one button, nothing to fill in');
+    /*
+     * THE RULE MOVED TWICE, so it is worth stating plainly rather than leaving the assertion to
+     * imply it. It began as a typed field plus a country select. Both were removed for one
+     * button. Then the button alone proved too little: a geocoder returns the wrong suburb often
+     * enough, and a place nobody can correct is one they publish wrongly or abandon.
+     *
+     * Where it landed: the BUTTON LEADS and an EDITABLE FIELD CORRECTS. The country select stays
+     * gone — the geocoder supplies place_cc, and a dropdown beside a resolved name is a second
+     * way to say the same thing, which is a second way to disagree with it.
+     */
+    const useAt = code.indexOf('Use my location');
+    const fieldAt = code.indexOf('cp-place-input');
+    assert.ok(useAt >= 0, 'the button is the primary control');
+    assert.ok(fieldAt > useAt, 'the field corrects what the button resolved, so it comes after');
     assert.doesNotMatch(code, /COUNTRY_OPTIONS|from '\.\/countries'/,
-      'the country select was removed too; the geocoder still supplies place_cc');
+      'the country select stays removed; the geocoder still supplies place_cc');
   });
 
   test('the privacy copy is present, and it stays true only while there is no lat/lng column', () => {

@@ -704,8 +704,11 @@
    to be usable without the profile scrolling behind it. */
 .cp-title{margin:0;font-size:1rem;font-weight:600}
 .cp-dismiss{width:36px;height:36px;padding:0;font-size:1.45rem;line-height:1}
-.wk-detail.cp{--cp-stage:min(360px,34vh);max-height:88vh;overflow:hidden;min-width:0;max-width:100%}
-.cp-body{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain}
+.wk-detail.cp{--cp-stage:min(320px,30vh);max-height:88vh;overflow:hidden;min-width:0;max-width:100%}
+.cp-body{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;
+  /* The action row is sticky, so it sits OVER the scroll area. Without room to scroll past it the
+     last control — currently the location field — can never be fully seen. */
+  scroll-padding-bottom:72px}
 /* Share must never scroll out of reach. The stage is large on purpose, so on a short window the
    body scrolls; pinning the actions to its bottom edge keeps the decision reachable at all times. */
 /* The floating Create button is a way IN to this window; while the window is open it is a bright
@@ -765,6 +768,8 @@ body:has(.wk-detail-back) .nav-fab{display:none}
 /* The ratio chooser. A trigger that names the current value, and a popover for changing it —
    collapsed because a ratio is decided once and then wanted out of the way, but LABELLED with the
    choice because a control you must open to understand is worse than the chips it replaced. */
+.cp-place-edit{display:flex;align-items:center;gap:6px;margin-top:8px}
+.cp-place-input{flex:1 1 auto;min-width:0}
 .cp-ratio-menu{position:relative;display:inline-flex}
 .cp-ratio-trigger{display:inline-flex;align-items:center;gap:8px;padding:7px 12px;border-radius:99px;
   cursor:pointer;font-family:inherit;font-size:.82rem;color:var(--text);
