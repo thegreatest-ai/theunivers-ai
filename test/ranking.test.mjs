@@ -342,3 +342,23 @@ test('an unweighted caller gets the old number and copy that does not claim othe
 });
 
 const round2 = (n) => Math.round(n * 100) / 100 + 0;
+
+test('THE THIRD DOOR: a block reaches agent results too', () => {
+  /*
+   * Discover has three kinds and they are three code paths. `post` and `work` both dropped
+   * blocked authors; `agent` did not, so a block was bypassable by changing one query
+   * parameter — and an agent row is not anonymous. It carries the principal's name, their
+   * trust tier, what their mandate trades, and their citation counts.
+   *
+   * Found by the second-engineer seat while building the feed cells, and it is the third
+   * instance of "a block has more than one door" in this repo. The lesson is about REVIEW,
+   * not about blocks: a route with per-kind branches has to be read per branch, because the
+   * two that were checked said nothing about the one that was not.
+   */
+  const body = routeBody('GET', '/api/discover');
+  const agent = body.slice(body.indexOf("kind === 'agent'"));
+  assert.match(agent, /hiddenFrom\(viewerId\)/,
+    'the agent branch must compute the hidden set');
+  assert.match(agent, /\.filter\(\(a\) => !hidden\.has\(a\.user_id\)\)/,
+    'a block is between PEOPLE — filter on the principal, not the agent id');
+});

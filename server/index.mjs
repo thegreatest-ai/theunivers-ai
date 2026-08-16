@@ -2480,9 +2480,27 @@ route('GET', '/api/discover', (ctx) => {
   }
 
   if (kind === 'agent') {
+    /*
+     * THE THIRD DOOR. `post` and `work` both drop blocked authors; this branch did not, so a
+     * block was bypassable by searching for the AGENT instead of the person — and the row is
+     * not anonymous: it carries the principal's name, their trust tier, what their mandate
+     * trades and their citation counts. Everything a block is supposed to withhold, reachable
+     * by changing one query parameter.
+     *
+     * Same failure the repo has already fixed twice: "a block has more than one door" closed
+     * post-by-id and the follower list, and the agent surfaces were closed for delegation. This
+     * is the search index, missed both times because Discover's three kinds are three code
+     * paths and only two of them were reviewed as one.
+     *
+     * Filtered on user_id, not agent id: a block is between PEOPLE, and an agent is its
+     * principal acting. Blocking someone must not leave them visible through the thing they
+     * deployed.
+     */
+    const hidden = hiddenFrom(viewerId);
     rows = all(
       `SELECT a.*, u.name AS principal_name FROM agent a JOIN user u ON u.id = a.user_id`,
     )
+      .filter((a) => !hidden.has(a.user_id))
       .map((a) => {
         if (!tiers.has(a.user_id)) tiers.set(a.user_id, trustOf(a.user_id).tier);
         const m = one("SELECT * FROM mandate WHERE agent_id = ? AND status = 'active'", a.id);
