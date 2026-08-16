@@ -669,10 +669,11 @@
 .wk-list{display:flex;flex-direction:column;gap:10px}
 .wk-item{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--glass);
   display:flex;flex-direction:column}
-.wk-shot{position:relative;background:#000;min-height:120px}
-.wk-shot.has-ratio{min-height:0}
-.wk-shot img,.wk-shot video{width:100%;display:block}
-.wk-shot.has-ratio img,.wk-shot.has-ratio video{height:100%;object-fit:cover}
+/* Square, always. The profile grid is "unified in profile" — it does not read work.ratio, which
+   governs the feed. Declared here rather than passed as an inline style per cell, because there
+   is one shape for the whole grid and nothing to compute. */
+.wk-shot{position:relative;background:#000;aspect-ratio:1}
+.wk-shot img,.wk-shot video{width:100%;height:100%;display:block;object-fit:cover}
 /* Instagram's carousel marker: a count, because the second photo is invisible until you open it. */
 .wk-count{position:absolute;top:8px;right:8px;background:rgba(0,0,0,.6);color:#fff;border-radius:99px;
   padding:2px 9px;font-size:.72rem}

@@ -45,17 +45,24 @@ export function parseWorkRatio(raw) {
 }
 
 /**
- * The aspect the GRID cell should hold. A chosen work.ratio wins, so every slide of a
- * carousel presents at the post's shape rather than its own. Original (null) falls back
- * to the first image's true shape from the bytes. Absent stays absent — never zero.
+ * THE PROFILE GRID IS ALWAYS SQUARE. It does not read work.ratio, and that is the point.
+ *
+ * The brief this was built from said "absent must render as the true shape", and that was
+ * wrong — it let every existing work (all of them NULL) fall back to its own shape and put
+ * the ragged grid straight back. The owner's instruction is the authority and it is one
+ * sentence: **"the photo display in profile will be unified in profile"**, later shortened
+ * to "fix the grid & keep the original detail". A grid that reserves each cell differently
+ * is not unified, whether the difference comes from the file or from a chosen ratio.
+ *
+ * It is also what Instagram does, which is easy to misremember: the profile grid is square
+ * for every post regardless of the ratio it was published at. The chosen ratio governs the
+ * FEED. Those are two different surfaces and conflating them is what produced the bug.
+ *
+ * A constant rather than a computed value, so there is nothing here to drift. `ratioAspect`
+ * is what a feed cell will use when Discover shows images.
  */
-export function cellAspect(work) {
-  const chosen = work?.ratio;
-  if (chosen && chosen !== 'original') {
-    const n = ratioAspect(chosen);
-    if (typeof n === 'number' && n > 0) return n;
-  }
-  const r = work?.media?.[0]?.ratio;
-  if (typeof r === 'number' && r > 0) return r;
-  return undefined;
+export const GRID_ASPECT = 1;
+
+export function cellAspect() {
+  return GRID_ASPECT;
 }

@@ -23,7 +23,6 @@ import { api } from './api';
 import { ReportButton } from './Safety';
 import WorkDetail from './WorkDetail';
 import CreatePost from './CreatePost';
-import { cellAspect } from '../../shared/work-ratio.mjs';
 
 export const KINDS = [
   { id: 'photo', label: 'Photos', accept: 'image/jpeg,image/png,image/webp,image/heic', multiple: true,
@@ -37,13 +36,6 @@ export const KINDS = [
     empty: 'Documents others can read — and, if you allow it, build on.',
     invite: 'Share your first file' },
 ];
-
-function shotStyle(work) {
-  // Absent must render as absent, never as zero. A 0×n box is worse than reserving a sensible one.
-  const r = cellAspect(work);
-  if (typeof r === 'number' && r > 0) return { aspectRatio: String(r) };
-  return undefined;
-}
 
 export default function Works({ userId, own }) {
   const [kind, setKind] = useState('photo');
@@ -142,13 +134,11 @@ export default function Works({ userId, own }) {
 
       <div className={kind === 'photo' || kind === 'video' ? 'wk-grid' : 'wk-list'}>
         {works?.map((w) => {
-          const aspect = cellAspect(w);
-          const shot = shotStyle(w);
           return (
           <article key={w.id} className="wk-item">
             <button type="button" className="wk-open" onClick={() => setOpen(w)}>
               {w.kind === 'photo' && w.media[0] && (
-                <div className={`wk-shot${aspect ? ' has-ratio' : ''}`} style={shot}>
+                <div className="wk-shot">
                   {/* No srcset: there is only ever one size of these bytes. The server has no image
                       library and may not gain one, so a full-size photograph is what exists to
                       offer — see docs/design/PERFORMANCE.md for what that costs and what would fix
@@ -159,7 +149,7 @@ export default function Works({ userId, own }) {
                 </div>
               )}
               {w.kind === 'video' && w.media[0] && (
-                <div className={`wk-shot${aspect ? ' has-ratio' : ''}`} style={shot}>
+                <div className="wk-shot">
                   <video src={w.media[0].url} preload="metadata"
                          controlsList="nodownload" disablePictureInPicture
                          onContextMenu={(e) => e.preventDefault()} />

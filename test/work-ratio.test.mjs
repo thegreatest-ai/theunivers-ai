@@ -42,27 +42,50 @@ describe('the four allowed values, and nothing else', () => {
   });
 });
 
-describe('the grid cell reads the post, not each image', () => {
-  test('a chosen ratio wins over every slide', () => {
-    const work = {
-      ratio: '4:5',
-      media: [{ ratio: 1.5 }, { ratio: 0.5 }],
-    };
-    assert.equal(cellAspect(work), 4 / 5);
-    assert.notEqual(cellAspect(work), work.media[0].ratio);
-    assert.notEqual(cellAspect(work), work.media[1].ratio);
+describe('the profile grid is square, whatever the post says', () => {
+  /*
+   * These tests replace ones that asserted the opposite, and the reason is worth keeping.
+   *
+   * The first version let the grid cell follow work.ratio, falling back to the photograph's own
+   * shape when the ratio was NULL. Since EVERY work that already exists is NULL, that put the
+   * ragged grid straight back — the exact thing the owner asked to have fixed. The brief said
+   * "absent must render as the true shape" and the brief was wrong.
+   *
+   * The instruction is "the photo display in profile will be unified in profile". A grid that
+   * reserves each cell differently is not unified, and it makes no difference whether the
+   * difference came from the file or from a chosen ratio.
+   */
+  test('a chosen ratio does NOT reshape the profile cell', () => {
+    assert.equal(cellAspect({ ratio: '4:5', media: [{ ratio: 1.5 }] }), 1);
+    assert.equal(cellAspect({ ratio: '16:9', media: [{ ratio: 0.5 }] }), 1);
   });
 
-  test('a work created before this change (ratio NULL) uses the photograph', () => {
-    const work = { ratio: null, media: [{ ratio: 1.3333 }] };
-    assert.equal(cellAspect(work), 1.3333);
+  test('a pre-existing work (ratio NULL) is square too — this is the regression', () => {
+    assert.equal(cellAspect({ ratio: null, media: [{ ratio: 1.3333 }] }), 1);
   });
 
-  test('absent dimensions do not become a zero-height box', () => {
-    assert.equal(cellAspect({ ratio: null, media: [{ ratio: null }] }), undefined);
-    assert.equal(cellAspect({ ratio: null, media: [] }), undefined);
-    assert.equal(cellAspect({ ratio: null }), undefined);
-    assert.equal(cellAspect({ ratio: '1:1', media: [{ ratio: 0 }] }), 1);
+  test('every cell in a mixed grid reserves the same box', () => {
+    const grid = [
+      { ratio: '4:5', media: [{ ratio: 1.5 }] },
+      { ratio: null, media: [{ ratio: 0.66 }] },
+      { ratio: '16:9', media: [] },
+      { ratio: 'original', media: [{ ratio: null }] },
+    ].map(cellAspect);
+    assert.deepEqual(grid, [1, 1, 1, 1], 'one shape for the whole grid, no exceptions');
+  });
+
+  test('missing dimensions cannot produce a zero-height box', () => {
+    // The old failure mode: undefined aspect → no reserved space → a collapsed cell.
+    for (const w of [{ ratio: null, media: [] }, { ratio: null }, {}, undefined]) {
+      assert.equal(cellAspect(w), 1);
+    }
+  });
+
+  test('the ratio a post carries is still available for the FEED', () => {
+    // Not dead code: Discover will reserve cells with this once it shows images. The grid
+    // deliberately ignores it; the feed deliberately will not.
+    assert.equal(ratioAspect('4:5'), 4 / 5);
+    assert.equal(ratioAspect('16:9'), 16 / 9);
   });
 
   test('Original has no aspect of its own', () => {
@@ -94,7 +117,6 @@ describe('the window, the invite, and the trap are the ones already built', () =
     assert.doesNotMatch(src, /onChange=\{addFiles\}/);
     assert.match(src, /CreatePost/);
     assert.match(src, /Share your first photo/);
-    assert.match(src, /cellAspect/);
   });
 
   test('CreatePost reuses WorkDetail\'s trap rather than writing a second one', () => {
@@ -106,11 +128,16 @@ describe('the window, the invite, and the trap are the ones already built', () =
     assert.match(read('src/app/WorkDetail.jsx'), /role="dialog"/);
   });
 
-  test('the hardcoded square is gone; the cell takes work.ratio', () => {
+  test('the square is KEPT: the grid is uniform and reads no per-post ratio', () => {
+    // This test was originally the opposite — "the hardcoded square is gone". It asserted the
+    // regression. The square IS the feature: "the photo display in profile will be unified in
+    // profile". The cell must not be reshaped per post, and must not be an inline style either,
+    // because one shape for the whole grid has nothing to compute.
     const css = read('src/app/app.css');
-    assert.doesNotMatch(css, /\.wk-shot\{[^}]*aspect-ratio:1/s);
-    assert.match(css, /\.wk-shot\.has-ratio/);
-    assert.match(read('src/app/Works.jsx'), /cellAspect\(w\)/);
+    assert.match(css, /\.wk-shot\{[^}]*aspect-ratio:1/s);
+    const src = read('src/app/Works.jsx');
+    assert.doesNotMatch(src, /cellAspect/, 'the grid must not consult a per-post ratio');
+    assert.doesNotMatch(src, /aspectRatio/, 'no inline per-cell shape');
   });
 
   test('WorkDetail still opens the photograph at its true shape, not the grid crop', () => {
