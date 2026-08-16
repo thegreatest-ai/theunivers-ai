@@ -60,3 +60,13 @@ export const COUNTRIES = [
   { code: 'VN', name: 'Vietnam' }, { code: 'YE', name: 'Yemen' }, { code: 'ZM', name: 'Zambia' },
   { code: 'ZW', name: 'Zimbabwe' },
 ];
+
+/**
+ * Codes a `place_cc` may take. The separator row is not a country — accepting it would
+ * store a filter that silently matches nothing, which is the failure the 400 exists to
+ * prevent. ONE set, imported by the parser the server gates on, so the selector and the
+ * gate cannot drift.
+ */
+export const COUNTRY_CODES = new Set(
+  COUNTRIES.filter((c) => !c.disabled).map((c) => c.code),
+);

@@ -21,6 +21,7 @@ import { ShareSheet } from './Projects';
 import { ReportButton } from './Safety';
 import { trapFocus } from './dialog';
 import { WORK_RATIOS } from '../../shared/work-ratio.mjs';
+import { PlaceFields, PlaceLine } from './PlaceFields';
 
 function Text({ url }) {
   const [body, setBody] = useState('Loading…');
@@ -48,7 +49,7 @@ export default function WorkDetail({ work: initial, workId, own: ownProp, onClos
   const [error, setError] = useState('');
   const [sharing, setSharing] = useState(false);
   const [editing, setEditing] = useState(false);
-  const [edit, setEdit] = useState({ title: '', body: '', ratio: 'original' });
+  const [edit, setEdit] = useState({ title: '', body: '', ratio: 'original', place: '', place_cc: '' });
   const composer = useRef(null);
 
   function loadWork() {
@@ -118,7 +119,14 @@ export default function WorkDetail({ work: initial, workId, own: ownProp, onClos
     setBusy('edit');
     setError('');
     try {
-      const r = await api.updateWork({ id, title: edit.title, body: edit.body, ratio: edit.ratio });
+      const r = await api.updateWork({
+        id,
+        title: edit.title,
+        body: edit.body,
+        ratio: edit.ratio,
+        place: edit.place,
+        place_cc: edit.place_cc,
+      });
       setWork(r.work);
       setEditing(false);
       onChanged?.();
@@ -243,6 +251,7 @@ export default function WorkDetail({ work: initial, workId, own: ownProp, onClos
                 {work.body && <p>{work.body}</p>}
               </div>
             )}
+            <PlaceLine place={work.place} placeCc={work.place_cc} />
           </>
         )}
 
@@ -272,6 +281,8 @@ export default function WorkDetail({ work: initial, workId, own: ownProp, onClos
                     title: work.title || '',
                     body: work.body || '',
                     ratio: work.ratio || 'original',
+                    place: work.place || '',
+                    place_cc: work.place_cc || '',
                   });
                   setEditing(true);
                 }}>Edit</button>
@@ -288,6 +299,12 @@ export default function WorkDetail({ work: initial, workId, own: ownProp, onClos
                    onChange={(e) => setEdit((p) => ({ ...p, title: e.target.value }))} />
             <textarea rows={4} value={edit.body} placeholder="Caption"
                       onChange={(e) => setEdit((p) => ({ ...p, body: e.target.value }))} />
+            <PlaceFields
+              place={edit.place}
+              placeCc={edit.place_cc}
+              onPlace={(v) => setEdit((p) => ({ ...p, place: v }))}
+              onPlaceCc={(v) => setEdit((p) => ({ ...p, place_cc: v }))}
+            />
             {(work.kind === 'photo' || work.kind === 'video') && (
               <fieldset className="cp-ratios">
                 <legend>Ratio</legend>
