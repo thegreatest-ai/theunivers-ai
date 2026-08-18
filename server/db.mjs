@@ -984,6 +984,12 @@ ensureColumn('work', 'place', 'place TEXT');
 ensureColumn('work', 'place_cc', 'place_cc TEXT');
 
 /*
+ * Opt-out of the comment filter. Default ON: a safety default that must be discovered is
+ * not a safety default. Absent (NULL on a row that predated the column) means on, same as 1.
+ */
+ensureColumn('user', 'filter_comments', 'filter_comments INTEGER NOT NULL DEFAULT 1');
+
+/*
  * A comment is an unstructured human utterance on a work. Person-only at the route; RESTRICT
  * here so deleting the work cannot quietly drop other people's words, and deleting a person
  * cannot quietly drop what they said. Index (work_id, created_at) is the list query: oldest
@@ -998,6 +1004,21 @@ db.exec(`
     created_at TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS comment_work_idx ON comment(work_id, created_at);
+`);
+
+/*
+ * A filtered comment is the limit rung applied automatically: hidden from readers, retained
+ * in full, appealable. ADR-0006: takedown retains, purge destroys. Dropping the comment at
+ * the door would destroy the only evidence that the filter fired — and a filter nobody can
+ * audit is a filter nobody can fix.
+ *
+ * hidden_reason is 'filter' today. A column rather than a boolean so a later operator hide
+ * can say so without a second timestamp.
+ */
+ensureColumn('comment', 'hidden_at', 'hidden_at TEXT');
+ensureColumn('comment', 'hidden_reason', 'hidden_reason TEXT');
+
+db.exec(`
 
   /*
    * Distinct viewers of a WORK, split the same way as post views and for the same reason: a

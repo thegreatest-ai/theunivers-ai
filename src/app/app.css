@@ -552,6 +552,7 @@
 .set-inline{cursor:default;flex-wrap:wrap}
 .set-inline:hover{background:var(--glass)}
 .set-inline .set-chev{display:none}
+.set-check{width:20px;height:20px;flex:none;accent-color:var(--cyan)}
 .set-panel{margin-top:-8px}
 .set-foot{text-align:center;padding-top:8px}
 .settings p{font-size:.9rem;line-height:1.6;color:var(--muted)}

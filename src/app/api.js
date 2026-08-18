@@ -115,6 +115,9 @@ export const api = {
   watchSeen: (id) => req('/api/watch/seen', { method: 'POST', body: JSON.stringify({ id }) }),
   deleteWatch: (id) => req('/api/watch/delete', { method: 'POST', body: JSON.stringify({ id }) }),
   setKind: (body) => req('/api/account/kind', { method: 'POST', body: JSON.stringify(body) }),
+  setFilterComments: (on) => req('/api/account/filter-comments', {
+    method: 'POST', body: JSON.stringify({ filterComments: on }),
+  }),
   orders: () => req('/api/orders'),
   order: (id) => req(`/api/orders/${id}`),
   moveOrder: (order, to) => req('/api/orders/transition', {
