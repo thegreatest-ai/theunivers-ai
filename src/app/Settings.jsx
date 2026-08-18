@@ -23,6 +23,7 @@ import { LOCALES } from './locale';
 import Select from './Select';
 import { COUNTRIES } from './countries';
 import { registrationFor } from './registrations';
+import Avatar from './Avatar';
 
 function Row({ to, onClick, label, value, hint, danger }) {
   const inner = (
@@ -99,7 +100,7 @@ export default function Settings() {
 
       <Group title="Who you are">
         <Row to="/app/account" label="Profile" value={user.name || user.email} />
-        <Row to="/app/settings/profile" label="Bio and links" hint="What other people see — a claim, not evidence" />
+        <Row to="/app/settings/profile" label="Photo, bio and links" hint="What other people see — a claim, not evidence" />
         <Row to="/app/account" label="Standing and anchors" hint="Derived from evidence, never granted" />
         <Row
           label="Acting as"
@@ -214,17 +215,23 @@ export default function Settings() {
 }
 
 /**
- * Bio and links. Standing is not on this form — a bio that says "T4" does not make you T4,
+ * Photo, bio and links. Standing is not on this form — a bio that says "T4" does not make you T4,
  * and the server will not let this route touch the derivation. The copy says so because a
  * settings page that looks like it edits your badge is how a directory of badges starts.
+ *
+ * The photograph is chosen here, not on the profile itself. Tapping the circle on your own
+ * profile lands on this screen so there is one place a picture is set, the same reason every
+ * other switch lives in this file.
  */
 export function ProfileEdit() {
-  const { me } = useOutletContext();
+  const { me, setMe } = useOutletContext();
   const user = me?.user;
   const [bio, setBio] = useState('');
   const [links, setLinks] = useState([{ label: '', url: '' }]);
+  const [avatar, setAvatar] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [photoBusy, setPhotoBusy] = useState(false);
   const [error, setError] = useState('');
   const [done, setDone] = useState('');
 
@@ -237,10 +244,48 @@ export function ProfileEdit() {
           ? d.person.links.map((l) => ({ label: l.label || '', url: l.url || '' }))
           : [{ label: '', url: '' }];
         setLinks(existing);
+        setAvatar(d.person.avatar ?? null);
         setLoaded(true);
       })
       .catch((e) => setError(e.message));
   }, [user?.id]);
+
+  function rememberPerson(person) {
+    setAvatar(person.avatar ?? null);
+    setMe((m) => m && ({ ...m, user: { ...m.user, avatar: person.avatar ?? null } }));
+  }
+
+  async function onPhoto(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || photoBusy) return;
+    setPhotoBusy(true);
+    setError('');
+    setDone('');
+    try {
+      const r = await api.uploadAvatar(file);
+      rememberPerson(r.person);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setPhotoBusy(false);
+    }
+  }
+
+  async function onRemovePhoto() {
+    if (photoBusy || !avatar) return;
+    setPhotoBusy(true);
+    setError('');
+    setDone('');
+    try {
+      const r = await api.removeAvatar();
+      rememberPerson(r.person);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setPhotoBusy(false);
+    }
+  }
 
   function setLink(i, k, v) {
     setLinks((rows) => rows.map((r, n) => n === i ? { ...r, [k]: v } : r));
@@ -267,6 +312,7 @@ export function ProfileEdit() {
       setLinks(r.person.links?.length
         ? r.person.links.map((l) => ({ label: l.label || '', url: l.url || '' }))
         : [{ label: '', url: '' }]);
+      setAvatar(r.person.avatar ?? null);
       setDone('Saved. This is what other people see — it does not change your standing.');
     } catch (err) {
       setError(err.message);
@@ -282,11 +328,35 @@ export function ProfileEdit() {
 
   return (
     <div className="settings">
-      <h1 className="set-title">Bio and links</h1>
+      <h1 className="set-title">Photo, bio and links</h1>
       <p className="app-note" style={{ margin: 0 }}>
         A claim about yourself, not evidence. Standing is derived from anchors and receipts —
         writing a tier into a bio does not grant it.
       </p>
+
+      <div className="set-photo">
+        <Avatar src={avatar?.url} name={user.name || user.email} />
+        <div className="set-photo-actions">
+          <label className="app-link set-photo-pick">
+            {photoBusy ? 'Uploading…' : (avatar ? 'Change photo' : 'Add a photo')}
+            <input
+              type="file"
+              accept="image/avif,image/jpeg,image/png,image/webp,image/heic,image/heif"
+              disabled={photoBusy}
+              onChange={onPhoto}
+              hidden
+            />
+          </label>
+          {avatar && (
+            <button type="button" className="app-link" disabled={photoBusy} onClick={onRemovePhoto}>
+              Remove photo
+            </button>
+          )}
+          <span className="app-note">A circle, centre-cropped. The original is kept.</span>
+        </div>
+      </div>
+
+      {error && <p className="app-error">{error}</p>}
 
       <form onSubmit={save} className="set-profile">
         <div className="app-field">
@@ -347,7 +417,6 @@ export function ProfileEdit() {
           )}
         </div>
 
-        {error && <p className="app-error">{error}</p>}
         {done && <p className="app-ok" style={{ textTransform: 'none', letterSpacing: 0 }}>{done}</p>}
 
         <button className="app-cta" disabled={busy} type="submit">

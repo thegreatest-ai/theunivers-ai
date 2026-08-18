@@ -70,6 +70,18 @@ export const api = {
   blocks: () => req('/api/blocks'),
   report: (body) => req('/api/report', { method: 'POST', body: JSON.stringify(body) }),
   editProfile: (body) => req('/api/profile/edit', { method: 'POST', body: JSON.stringify(body) }),
+  /* Raw bytes, same as a work. An avatar is not a work — the route stores it with no work_id
+     so it cannot appear in the grid. */
+  uploadAvatar: (file) => fetch('/api/profile/avatar', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${localStorage.getItem('tu_session')}`,
+      'content-type': file.type || 'application/octet-stream',
+      'x-filename': encodeURIComponent(file.name || 'avatar'),
+    },
+    body: file,
+  }).then(readBody),
+  removeAvatar: () => req('/api/profile/avatar/remove', { method: 'POST', body: JSON.stringify({}) }),
   works: (user, kind) => req(`/api/works?${new URLSearchParams({ ...(user && { user }), ...(kind && { kind }) })}`),
   work: (id) => req(`/api/works/${encodeURIComponent(id)}`),
   createWork: (body) => req('/api/works', { method: 'POST', body: JSON.stringify(body) }),

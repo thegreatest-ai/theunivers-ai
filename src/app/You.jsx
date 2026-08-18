@@ -20,6 +20,7 @@ import { useEffect, useState } from 'react';
 import { Link, useOutletContext } from 'react-router-dom';
 import { api } from './api';
 import Works from './Works';
+import Avatar from './Avatar';
 
 const TAB = ['Published', 'Agent', 'Anchors', 'Receipts'];
 
@@ -69,12 +70,12 @@ export default function You() {
   }
   if (!p) return <p className="app-note you-pad">Loading…</p>;
 
-  const initials = (p.user.name || p.user.email).split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
-
   return (
     <div className="you">
       <header className="you-head">
-        <div className="you-avatar" aria-hidden="true">{initials}</div>
+        <Link to="/app/settings/profile" className="you-avatar-link" aria-label="Change profile photo">
+          <Avatar src={p.user.avatar?.url} name={p.user.name || p.user.email} />
+        </Link>
 
         <div className="you-id">
           <h1>{p.user.name || 'Unnamed'}</h1>

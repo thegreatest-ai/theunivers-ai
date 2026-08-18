@@ -16,6 +16,7 @@ import { api, isUnknown } from './api';
 import FollowButton from './FollowButton';
 import { BlockButton, ReportButton, UnknownSubject } from './Safety';
 import Works from './Works';
+import Avatar from './Avatar';
 import { safeHref } from '../../shared/safe-href.mjs';
 
 export function profilePath(person) {
@@ -73,13 +74,17 @@ export default function Person() {
   if (!person) return <p className="app-note you-pad">Loading…</p>;
 
   const self = me?.user?.id === person.id;
-  const initials = (person.name || person.handle || '?')
-    .split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
 
   return (
     <div className="you">
       <header className="you-head">
-        <div className="you-avatar" aria-hidden="true">{initials}</div>
+        {self
+          ? (
+            <Link to="/app/settings/profile" className="you-avatar-link" aria-label="Change profile photo">
+              <Avatar src={person.avatar?.url} name={person.name || person.handle} />
+            </Link>
+          )
+          : <Avatar src={person.avatar?.url} name={person.name || person.handle} />}
 
         <div className="you-id">
           <h1>{person.name || 'Unnamed'}</h1>
@@ -98,7 +103,7 @@ export default function Person() {
         </div>
 
         {self
-          ? <Link to="/app/settings/profile" className="you-settings">Edit bio and links →</Link>
+          ? <Link to="/app/settings/profile" className="you-settings">Edit photo, bio and links →</Link>
           : (
             <div className="person-actions">
               <FollowButton person={person} onChange={setPerson} onUnknown={vanish} />
@@ -153,8 +158,11 @@ export default function Person() {
           {list.people.map((p) => (
             <div key={p.id} className="you-person">
               <Link className="you-person-name" to={profilePath(p)}>
-                <span>{p.name || p.handle || p.id}</span>
-                {p.handle && <span className="app-meta">{p.handle}</span>}
+                <Avatar src={p.avatar?.url} name={p.name || p.handle} className="you-avatar you-avatar-sm" />
+                <span className="you-person-id">
+                  <span>{p.name || p.handle || p.id}</span>
+                  {p.handle && <span className="app-meta">{p.handle}</span>}
+                </span>
               </Link>
               {p.id !== me?.user?.id && (
                 <FollowButton
