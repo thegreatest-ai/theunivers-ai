@@ -198,7 +198,11 @@ export default function Discover() {
           {/* Drawn from the kind the SERVER answered with, not the one now selected. Between
               switching tab and the reply arriving those disagree, and reading the old results
               through the new card renders a work as a post with every field blank. */}
-          <div className={data.kind === 'post' ? 'dsc-list' : 'dsc-grid'}>
+          <div className={
+            data.kind === 'post' ? 'dsc-list'
+              : data.kind === 'work' ? 'dsc-feed'
+                : 'dsc-grid'
+          }>
             {data.results.map((r) => (
               data.kind === 'post' ? <PostHit key={r.id} p={r} />
                 : data.kind === 'work' ? <WorkHit key={r.id} w={r} onOpen={() => setOpen(r)} />
@@ -256,8 +260,18 @@ function shotStyle(work) {
 function WorkHit({ w, onOpen }) {
   const shot = shotStyle(w);
   const first = w.media?.[0];
+  const who = w.handle || w.author;
+  const whoHref = w.handle
+    ? `/app/u/${encodeURIComponent(w.handle)}`
+    : (w.authorId ? `/app/u/${encodeURIComponent(w.authorId)}` : null);
   return (
-    <article className="app-post dsc-hit">
+    <article className="app-post dsc-hit ig-post">
+      <header className="ig-post-head">
+        {whoHref
+          ? <Link className="ig-post-who" to={whoHref}>{who}</Link>
+          : <span className="ig-post-who">{who}</span>}
+        <Tier tier={w.tier} />
+      </header>
       <button type="button" className="wk-open dsc-work-open" onClick={onOpen}>
         {(w.kind === 'photo' || w.kind === 'video') && first && (
           <div className={`dsc-shot${shot ? ' has-ratio' : ''}`} style={shot}>
@@ -276,27 +290,23 @@ function WorkHit({ w, onOpen }) {
             )}
           </div>
         )}
-        <div className="dsc-hit-head">
-          <span className="app-meta">{w.kind}</span>
-          {w.edited && <span className="app-meta">edited</span>}
-          <Tier tier={w.tier} />
-        </div>
-        {/* No "Untitled" filler. A picture posted from the compose window has no title by design —
-            the caption is what it says — so a placeholder here would print the same dead word on
-            every photograph in the feed. Absent renders as absent, the same rule the cells follow. */}
-        {w.title && <b className="dsc-hit-title">{w.title}</b>}
-        {w.body && <p className="dsc-hit-body">{w.body}</p>}
-        <PlaceLine place={w.place} placeCc={w.place_cc} />
       </button>
-      <div className="post-foot">
-        <span className="app-meta">
-          {w.authorId
-            ? <Link to={`/app/u/${encodeURIComponent(w.authorId)}`}>{w.author}</Link>
-            : w.author}
-        </span>
-        {/* A promise the author made to other people, so it is shown rather than only enforced. */}
-        <span className="app-meta">{w.shareable ? 'May be shared and cited' : 'Not for sharing'}</span>
+      <div className="ig-post-acts">
+        <button type="button" className="wk-act" onClick={onOpen}>Comment</button>
+        <span className="app-meta">{w.comments ?? 0} comments</span>
         {w.cited > 0 && <b className="dsc-cited">{w.cited} cited</b>}
+      </div>
+      {(w.title || w.body) && (
+        <div className="ig-post-cap">
+          {who && <b>{who} </b>}
+          {w.title && <span className="dsc-hit-title">{w.title} </span>}
+          {w.body && <span className="dsc-hit-body">{w.body}</span>}
+        </div>
+      )}
+      <PlaceLine place={w.place} placeCc={w.place_cc} />
+      <div className="post-foot">
+        {w.edited && <span className="app-meta">edited</span>}
+        <span className="app-meta">{w.shareable ? 'May be shared and cited' : 'Not for sharing'}</span>
         {w.id && <ReportButton kind="work" subject={w.id} />}
       </div>
     </article>

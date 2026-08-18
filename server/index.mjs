@@ -1372,8 +1372,12 @@ const workViewCounts = (workId) => ({
 
 /** The live shape. Counts are derived here so the client never issues three requests per tile. */
 function liveWork(w, viewerId = null) {
+  const author = one('SELECT name FROM user WHERE id = ?', w.user_id);
+  const agent = one('SELECT name FROM agent WHERE user_id = ?', w.user_id);
   return {
     id: w.id, kind: w.kind, title: w.title, body: w.body, authorId: w.user_id,
+    author: author?.name ?? null,
+    handle: agent?.name ?? null,
     shareable: Boolean(w.shareable), at: w.created_at,
     edited: Boolean(w.edited_at), editedAt: w.edited_at || null,
     // NULL is Original. Returned as null, never as a guessed '1:1' — absent must render as
@@ -2614,7 +2618,10 @@ route('GET', '/api/discover', (ctx) => {
     // Once, not once per row — same reason as the post branch above.
     const hidden = hiddenFrom(viewerId);
     rows = all(
-      `SELECT w.*, u.name AS author_name FROM work w JOIN user u ON u.id = w.user_id`,
+      `SELECT w.*, u.name AS author_name, a.name AS author_handle
+         FROM work w
+         JOIN user u ON u.id = w.user_id
+         LEFT JOIN agent a ON a.user_id = w.user_id`,
     )
       // A photograph in search is still a photograph of the person. A block that hid their
       // posts and left their works would be a block with a door left open.
@@ -2630,7 +2637,7 @@ route('GET', '/api/discover', (ctx) => {
       })
       .map((w) => ({
         id: w.id, kind: w.kind, title: w.title, body: w.body.slice(0, 400),
-        author: w.author_name, authorId: w.user_id, tier: tiers.get(w.user_id),
+        author: w.author_name, authorId: w.user_id, handle: w.author_handle ?? null, tier: tiers.get(w.user_id),
         // Sent so the client can disable the share control rather than offer it and then refuse.
         shareable: Boolean(w.shareable),
         edited: Boolean(w.edited_at),
@@ -3306,6 +3313,27 @@ function followCounts(userId) {
   };
 }
 
+/**
+ * Published works the viewer may see. Same filters as GET /api/works: withdrawn is gone from
+ * the index, and a stranger does not count limited or taken-down rows. Derived, never stored
+ * — a `posts` column would disagree with the grid the moment a work was withdrawn.
+ */
+function publishedCount(userId, viewerId) {
+  if (viewerId === userId) {
+    return one(
+      `SELECT COUNT(*) c FROM work
+        WHERE user_id = ? AND withdrawn_at IS NULL`,
+      userId,
+    ).c;
+  }
+  return one(
+    `SELECT COUNT(*) c FROM work
+      WHERE user_id = ? AND withdrawn_at IS NULL
+        AND limited_at IS NULL AND taken_down_at IS NULL`,
+    userId,
+  ).c;
+}
+
 const follows = (a, b) =>
   Boolean(one('SELECT 1 x FROM follow WHERE follower_id = ? AND followee_id = ?', a, b));
 
@@ -3338,7 +3366,7 @@ function publicPerson(u, viewerId) {
     bio: u.bio ?? null,
     links,
     trust: trustOf(u.id),
-    counts: followCounts(u.id),
+    counts: { ...followCounts(u.id), published: publishedCount(u.id, viewerId) },
     // Both directions, because the interface needs to tell "follow" from "follow back".
     youFollow: viewerId ? follows(viewerId, u.id) : false,
     followsYou: viewerId ? follows(u.id, viewerId) : false,

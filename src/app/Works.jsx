@@ -175,15 +175,18 @@ export default function Works({ userId, own }) {
               )}
             </button>
 
-            <div className="wk-foot">
-              {/* Shown because it is a promise to other people, not a preference — it decides
-                  whether somebody may file this into their research. */}
-              <span className="app-meta">
-                {w.shareable ? 'May be shared and cited' : 'Not for sharing'}
-                {w.edited ? ' · edited' : ''}
-              </span>
-              {!own && <ReportButton kind="work" subject={w.id} />}
-            </div>
+            {kind !== 'photo' && kind !== 'video' && (
+              <div className="wk-foot">
+                {/* Shown because it is a promise to other people, not a preference — it decides
+                    whether somebody may file this into their research. On the photo grid it is
+                    noise under every tile; the detail carries it. */}
+                <span className="app-meta">
+                  {w.shareable ? 'May be shared and cited' : 'Not for sharing'}
+                  {w.edited ? ' · edited' : ''}
+                </span>
+                {!own && <ReportButton kind="work" subject={w.id} />}
+              </div>
+            )}
           </article>
           );
         })}

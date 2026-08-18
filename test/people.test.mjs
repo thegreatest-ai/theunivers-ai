@@ -143,6 +143,21 @@ describe('following', () => {
     assert.equal(r.json.person.signInMethod, undefined);
   });
 
+  test('published is derived from work rows, not stored', async () => {
+    const before = await api('/api/people/usr_ana', { as: 'ben' });
+    assert.equal(before.json.person.counts.published, 0);
+    const db = new DatabaseSync(DB);
+    const t = new Date().toISOString();
+    db.prepare(`INSERT INTO work (id, user_id, kind, title, body, shareable, created_at)
+                VALUES (?,?,?,?,?,?,?)`)
+      .run('wrk_pub', ID.ana, 'photo', 'a picture', '', 1, t);
+    db.close();
+    const after = await api('/api/people/usr_ana', { as: 'ben' });
+    assert.equal(after.json.person.counts.published, 1, 'one live work is one published');
+    assert.equal(after.json.person.counts.followers, before.json.person.counts.followers,
+      'publishing must not invent a follower');
+  });
+
   test('unfollowing removes the edge', async () => {
     await api('/api/unfollow', { method: 'POST', as: 'ana', body: { person: 'ben.works' } });
     const r = await api('/api/people/usr_ben', { as: 'ana' });

@@ -8,9 +8,13 @@
  *   · the same destinations as a left sidebar on desktop and a bottom bar on a phone. Never two
  *     different navigations — that is two products to keep in agreement, and ADR-0002 exists
  *     because the mockups already contained four.
- *   · compose as its own affordance, not a tab. X has a prominent Post button; we have ＋ Create.
- *     Nobody navigates TO create — they create a thing and leave.
- *   · the account at the foot of the sidebar, out of the way but always reachable.
+ *   · compose as its own affordance, not a tab. X has a prominent Post button; we have ＋ Create
+ *     in the rail (desk) and the top bar (phone). Nobody navigates TO create — they create a
+ *     thing and leave. The floating button was a third place for the same act, and Instagram
+ *     already learned that Create-as-a-tab is the wrong slot (evicted Oct 2025).
+ *   · the account at the foot of the sidebar, out of the way but always reachable. On a phone
+ *     Account and Sign out live in Settings, not in the top bar — the bar that cropped them
+ *     was repeating destinations the You tab already reaches.
  *   · an attention count on the destination that has something waiting. X does this for
  *     notifications; here it is a pending proposal, which is literally a decision waiting on you.
  *
@@ -96,7 +100,6 @@ export default function Nav({ counts = {}, onCreate }) {
       <nav className="nav-bar" aria-label="Main">
         {items}
       </nav>
-      <button type="button" className="nav-fab" onClick={onCreate} aria-label="Create">＋</button>
 
       {/* A live region so a screen reader is told when a decision arrives, rather than a badge
           appearing silently for people who cannot see it. */}

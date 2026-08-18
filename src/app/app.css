@@ -205,12 +205,15 @@
 
    Rather than shrink everything until it technically fits, the two informational items step
    aside: the agent status is already shown on the Bridge's own agent card, and the locale moves
-   to /app/account, where a preference belongs anyway. Nothing is lost, and the actions stay
-   reachable at any width. */
+   to Settings, where a preference belongs anyway. Account and Sign out belong there too — You
+   is already a tab, and Settings already has Sign out. Create takes their place in the top bar,
+   which is where Instagram moved it in Oct 2025 after the centre-tab version failed. */
 @media (max-width: 720px){
   .app-bar{gap:12px;padding:14px 16px}
   .app-bar .app-status{display:none}     /* duplicated on the Bridge agent card */
-  .app-bar .app-locale{display:none}     /* lives in Account, and persists */
+  .app-bar .app-locale{display:none}     /* lives in Settings, and persists */
+  .app-bar-desk{display:none}            /* Account + Sign out — Settings */
+  .app-bar-create{display:grid}
   .app-brand{font-size:.98rem}
   .app-link{font-size:.9rem}             /* a touch bigger, not smaller — it is a tap target */
 }
@@ -244,6 +247,10 @@
 .nav-create{margin-top:8px;padding:12px;border:none;border-radius:99px;cursor:pointer;
   font-family:inherit;font-size:.95rem;font-weight:600;color:#fff;background:var(--grad)}
 
+.app-bar-create{display:none;width:44px;height:44px;place-items:center;border:none;border-radius:99px;
+  cursor:pointer;font-size:1.35rem;color:var(--text);background:transparent;flex:none}
+.app-bar-create:hover{color:var(--cyan)}
+
 .nav-bar{position:fixed;left:0;right:0;bottom:0;z-index:50;display:flex;
   border-top:1px solid var(--line);background:rgba(5,6,14,.94);backdrop-filter:blur(12px);
   padding-bottom:env(safe-area-inset-bottom)}
@@ -255,10 +262,6 @@
   background:var(--cyan);border:2px solid var(--bg)}
 .nav-rail .nav-dot{display:none}           /* the rail shows a number instead */
 
-.nav-fab{position:fixed;right:16px;bottom:calc(64px + env(safe-area-inset-bottom));z-index:51;
-  width:52px;height:52px;border:none;border-radius:99px;cursor:pointer;font-size:1.5rem;
-  color:#fff;background:var(--grad);box-shadow:0 8px 24px rgba(46,123,255,.35)}
-
 /* Clear of the fixed navigation. The bar is ~62px plus whatever the phone reserves for its own
    home indicator, so the safe-area inset is added rather than assumed to be zero — without it the
    last row of every screen sits under the bar on any hardware with a gesture bar. */
@@ -267,7 +270,8 @@
 
 @media (min-width:900px){
   .nav-rail{display:flex}
-  .nav-bar,.nav-fab{display:none}
+  .nav-bar{display:none}
+  .app-bar-create{display:none}
   .has-nav{padding-left:232px;padding-bottom:0}
   .app-brand-mobile{display:none}          /* the rail carries the brand */
 }
@@ -450,7 +454,8 @@
 .deal-hash{font-family:'Space Grotesk',monospace;font-size:.72rem;color:var(--muted);margin-left:auto}
 
 /* ══ You ══════════════════════════════════════════════════════════════════════════════════ */
-.you,.settings{max-width:720px;margin:0 auto;padding:22px 16px;display:flex;flex-direction:column;gap:16px}
+.you{max-width:935px;margin:0 auto;padding:22px 16px;display:flex;flex-direction:column;gap:16px}
+.settings{max-width:720px;margin:0 auto;padding:22px 16px;display:flex;flex-direction:column;gap:16px}
 .you-pad{padding:26px}
 /* Settings sits on its own row below the identity rather than competing with it for width. In
    the same row it squeezed a name into two lines on a 360px screen to make space for a link. */
@@ -502,6 +507,15 @@
 .you-links a{font-size:.9rem}
 
 .you-stats-2{grid-template-columns:repeat(2,1fr)}
+.you-stats-3{grid-template-columns:repeat(3,1fr)}
+.ig-head{align-items:center}
+.ig-id{min-width:0;display:flex;flex-direction:column;gap:12px}
+.ig-id-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.ig-id-row h1{margin:0;font-size:1.15rem;font-weight:500;overflow-wrap:anywhere}
+.ig-id .you-stats{border-radius:0;border-left:none;border-right:none;background:transparent;border:none;gap:16px}
+.ig-id .you-stats>div,.ig-id .you-stats>button{background:transparent;padding:0;text-align:left}
+.ig-bio{display:flex;flex-direction:column;gap:8px}
+.ig-name{margin:0;font-weight:600;font-size:.95rem}
 .you-stats>button{background:var(--bg);padding:14px 8px;text-align:center;border:none;
   cursor:pointer;font-family:inherit;color:inherit;min-height:44px}
 .you-stats>button.on{background:rgba(56,189,248,.08)}
@@ -669,10 +683,11 @@
 /* 1px, not 8px. Measured live on Instagram's profile and Explore. A hairline is why their grid
    reads as a single photographic surface rather than a set of cards — the gap was doing more work
    than its size suggests. */
-.wk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:1px}
+.wk-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line)}
 .wk-list{display:flex;flex-direction:column;gap:10px}
 .wk-item{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--glass);
   display:flex;flex-direction:column}
+.wk-grid .wk-item{border:none;border-radius:0;background:#000}
 /* 3:4 PORTRAIT, always — not square. The grid is "unified in profile" and does not read
    work.ratio, which governs the feed. The number is 3:4 because Instagram moved the grid from 1:1
    in early 2025 and it measures 0.750 live; I had asserted square from memory and was a year out
@@ -717,12 +732,7 @@
   scroll-padding-bottom:72px}
 /* Share must never scroll out of reach. The stage is large on purpose, so on a short window the
    body scrolls; pinning the actions to its bottom edge keeps the decision reachable at all times. */
-/* The floating Create button is a way IN to this window; while the window is open it is a bright
-   target sitting on top of Share, competing with the action it already led to. The backdrop is
-   translucent by design, so z-index does not solve it — the control has to go. :has() rather than a
-   body class because the modal's own presence is the condition, and a class would need keeping in
-   sync with every dialog that mounts. */
-body:has(.wk-detail-back) .nav-fab{display:none}
+/* The floating Create button is gone; Create is in the rail and the phone top bar. */
 .cp-actions{position:sticky;bottom:0;z-index:2;margin:0;padding:12px 16px calc(12px + env(safe-area-inset-bottom));
   background:linear-gradient(to top,#0b1020 72%,rgba(11,16,32,0));border-top:1px solid var(--line)}
 .cp-body > .app-error{margin:12px 16px 0}
@@ -843,6 +853,30 @@ body:has(.wk-detail-back) .nav-fab{display:none}
 .wk-detail-back{align-items:center;z-index:90;overscroll-behavior:none}
 .wk-detail{width:min(720px,100%);max-height:92vh;overflow:auto;background:var(--bg);
   border:1px solid var(--line);border-radius:16px;display:flex;flex-direction:column}
+.wk-post{touch-action:pan-y}
+.wk-post-media{background:#000;min-width:0}
+.wk-post-pane{display:flex;flex-direction:column;min-width:0;min-height:0}
+.wk-who{font-weight:600;color:var(--text);text-decoration:none}
+.wk-who:hover{color:var(--cyan)}
+.wk-cap-who{font-size:.9rem}
+.wk-act{background:none;border:none;color:var(--text);font-family:inherit;font-size:.9rem;
+  font-weight:600;cursor:pointer;padding:8px 0;min-height:44px}
+.wk-act:hover{color:var(--cyan)}
+.wk-dots{display:flex;gap:5px;align-items:center}
+.wk-dots i{width:6px;height:6px;border-radius:99px;background:rgba(255,255,255,.35);display:block}
+.wk-dots i.on{background:#fff}
+.wk-composer{display:flex;align-items:flex-end;gap:8px;padding-top:8px;border-top:1px solid var(--line)}
+.wk-composer textarea{flex:1;min-height:44px;resize:none}
+@media (min-width:900px){
+  .wk-post{width:min(1100px,100%);max-height:92vh;overflow:hidden;
+    display:grid;grid-template-columns:minmax(0,1.35fr) minmax(320px,380px);align-items:stretch}
+  .wk-post-media{display:flex;align-items:center;justify-content:center;max-height:92vh}
+  .wk-post-pane{border-left:1px solid var(--line);max-height:92vh;overflow:hidden;
+    display:grid;grid-template-rows:auto 1fr auto}
+  .wk-post-pane .wk-comments{overflow-y:auto;min-height:0}
+  .wk-post .wk-detail-stage img,.wk-post .wk-detail-stage video{max-height:92vh}
+  .wk-post:has(.wk-post-media:empty){grid-template-columns:minmax(0,1fr);width:min(720px,100%)}
+}
 .wk-detail-head{display:flex;align-items:center;gap:10px;padding:12px 16px;
   border-bottom:1px solid var(--line)}
 .wk-detail-head .app-link{margin-left:auto}
@@ -948,8 +982,17 @@ body:has(.wk-detail-back) .nav-fab{display:none}
 .dsc-chip:hover{background:rgba(56,189,248,.2)}
 
 .dsc-list{display:flex;flex-direction:column;gap:10px}
+.dsc-feed{display:flex;flex-direction:column;gap:22px;max-width:470px;width:100%;margin:0 auto}
 .dsc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
 .dsc-hit{cursor:default;display:flex;flex-direction:column;gap:8px}
+.ig-post{gap:0;border:none;padding:0;border-radius:0;background:transparent;box-shadow:none}
+.ig-post-head{display:flex;align-items:center;gap:10px;padding:12px 0}
+.ig-post-who{font-weight:600;color:var(--text);text-decoration:none}
+.ig-post-who:hover{color:var(--cyan)}
+.ig-post .dsc-shot{border-radius:0}
+.ig-post-acts{display:flex;align-items:center;gap:14px;padding:4px 0}
+.ig-post-cap{padding:0 0 8px;font-size:.9rem;line-height:1.45}
+.ig-post .post-foot{border:none;background:none;padding:0 0 8px;border-radius:0}
 .dsc-hit:hover{transform:none}
 .dsc-hit-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .dsc-hit-title{font-size:.98rem;font-weight:600;line-height:1.35;color:var(--text);text-decoration:none}
