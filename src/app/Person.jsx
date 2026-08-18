@@ -78,65 +78,67 @@ export default function Person() {
 
   return (
     <div className="you">
-      <header className="you-head">
+      <header className="you-head ig-head">
         <div className="you-avatar" aria-hidden="true">{initials}</div>
 
-        <div className="you-id">
-          <h1>{person.name || 'Unnamed'}</h1>
-          {person.handle && <p className="you-handle">{person.handle}</p>}
-          <p className="app-meta">
-            {person.kind === 'business' ? 'Registered business' : 'Individual'}
-            {person.profession ? ` · ${person.profession}` : ''}
-            {person.jurisdiction ? ` · ${person.jurisdiction}` : ''}
-          </p>
-          {person.trust?.tier && (
-            <span className="you-tier">
-              <b>{person.trust.tier}</b>
-              <span>derived, not granted</span>
-            </span>
-          )}
-        </div>
-
-        {self
-          ? <Link to="/app/settings/profile" className="you-settings">Edit bio and links →</Link>
-          : (
-            <div className="person-actions">
-              <FollowButton person={person} onChange={setPerson} onUnknown={vanish} />
-              <div className="person-more">
-                <BlockButton person={person} onBlocked={() => nav('/app/discover')} />
-                <ReportButton kind="person" subject={person.id} />
-              </div>
+        <div className="ig-id">
+          <div className="ig-id-row">
+            <h1>{person.handle || person.name || 'Unnamed'}</h1>
+            {self
+              ? <Link to="/app/settings/profile" className="app-ghost follow-btn">Edit profile</Link>
+              : <FollowButton person={person} onChange={setPerson} onUnknown={vanish} />}
+          </div>
+          <div className="you-stats you-stats-3">
+            <div>
+              <b>{person.counts.published ?? 0}</b><span>Published</span>
             </div>
-          )}
+            <button type="button" className={list?.direction === 'followers' ? 'on' : ''}
+                    onClick={() => openList('followers')}>
+              <b>{person.counts.followers}</b><span>Followers</span>
+            </button>
+            <button type="button" className={list?.direction === 'following' ? 'on' : ''}
+                    onClick={() => openList('following')}>
+              <b>{person.counts.following}</b><span>Following</span>
+            </button>
+          </div>
+        </div>
       </header>
 
-      {person.bio && <p className="you-bio">{person.bio}</p>}
-
-      {person.links?.some((l) => safeHref(l.url)) && (
-        <ul className="you-links">
-          {person.links.map((l) => {
-            const href = safeHref(l.url);
-            if (!href) return null;
-            return (
-              <li key={href}>
-                <a href={href} target="_blank" rel="noopener noreferrer">{l.label || href}</a>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-
-      {/* Two counts, both derived, both a button that fetches the list rather than a number
-          painted from memory. Opening the same direction again closes it. */}
-      <div className="you-stats you-stats-2">
-        <button type="button" className={list?.direction === 'followers' ? 'on' : ''}
-                onClick={() => openList('followers')}>
-          <b>{person.counts.followers}</b><span>Followers</span>
-        </button>
-        <button type="button" className={list?.direction === 'following' ? 'on' : ''}
-                onClick={() => openList('following')}>
-          <b>{person.counts.following}</b><span>Following</span>
-        </button>
+      <div className="ig-bio">
+        {person.name && person.handle && person.name !== person.handle && (
+          <p className="ig-name">{person.name}</p>
+        )}
+        <p className="app-meta">
+          {person.kind === 'business' ? 'Registered business' : 'Individual'}
+          {person.profession ? ` · ${person.profession}` : ''}
+          {person.jurisdiction ? ` · ${person.jurisdiction}` : ''}
+        </p>
+        {person.trust?.tier && (
+          <span className="you-tier">
+            <b>{person.trust.tier}</b>
+            <span>derived, not granted</span>
+          </span>
+        )}
+        {person.bio && <p className="you-bio">{person.bio}</p>}
+        {person.links?.some((l) => safeHref(l.url)) && (
+          <ul className="you-links">
+            {person.links.map((l) => {
+              const href = safeHref(l.url);
+              if (!href) return null;
+              return (
+                <li key={href}>
+                  <a href={href} target="_blank" rel="noopener noreferrer">{l.label || href}</a>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        {!self && (
+          <div className="person-more">
+            <BlockButton person={person} onBlocked={() => nav('/app/discover')} />
+            <ReportButton kind="person" subject={person.id} />
+          </div>
+        )}
       </div>
 
       {error && person && <p className="app-error">{error}</p>}

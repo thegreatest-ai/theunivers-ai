@@ -7,7 +7,11 @@ import { api, clearAuth, hasSession, getAgentToken } from './api';
 import { subscribe } from './stream';
 import { LOCALES } from './locale';
 import Nav from './Nav';
+import CreatePost from './CreatePost';
+import { KINDS } from './Works';
 import './app.css';
+
+const PHOTO = KINDS.find((k) => k.id === 'photo');
 
 export default function Shell({ bare = false }) {
   const nav = useNavigate();
@@ -20,6 +24,7 @@ export default function Shell({ bare = false }) {
   });
   useEffect(() => { localStorage.setItem('tu_locale', locale); }, [locale]);
   const [me, setMe] = useState(null);
+  const [creating, setCreating] = useState(false);
 
   // Only a decision waiting on you earns a badge. A count of things that merely happened is a
   // notification habit; this is a tool.
@@ -73,7 +78,7 @@ export default function Shell({ bare = false }) {
       {/* Five destinations, two shapes. Both from shared/navigation.mjs — the file existed with
           the decision in it and nothing imported it, which made an ADR look implemented when it
           was not. */}
-      <Nav counts={{ Deals: pending }} onCreate={() => nav(me?.agent ? '/app/workspace' : '/app/deploy')} />
+      <Nav counts={{ Deals: pending }} onCreate={() => setCreating(true)} />
 
       <header className="app-bar">
         <Link to="/" className="app-brand app-brand-mobile">theunivers<span className="grad">.ai</span></Link>
@@ -93,12 +98,20 @@ export default function Shell({ bare = false }) {
             <span className="app-dot" /> {me.agent.name} · {me.agent.status}
           </span>
         )}
-        <Link to="/app/account" className="app-link">Account</Link>
+        <Link to="/app/account" className="app-link app-bar-desk">Account</Link>
         <button
-          className="app-link"
+          className="app-link app-bar-desk"
           onClick={() => { clearAuth(); nav('/app/signin'); }}
         >
           Sign out
+        </button>
+        <button
+          type="button"
+          className="app-bar-create"
+          onClick={() => setCreating(true)}
+          aria-label="Create"
+        >
+          ＋
         </button>
       </header>
 
@@ -110,6 +123,15 @@ export default function Shell({ bare = false }) {
       )}
 
       <Outlet context={{ locale, currency, setLocale, me, setMe }} />
+      {creating && (
+        <CreatePost
+          kind="photo"
+          accept={PHOTO.accept}
+          multiple={PHOTO.multiple}
+          onClose={() => setCreating(false)}
+          onShared={() => { setCreating(false); nav('/app/account'); }}
+        />
+      )}
     </div>
   );
 }
