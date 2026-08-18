@@ -13,7 +13,7 @@ GitHub: `github.com/thegreatest-ai/theunivers-ai` — **public**, so scan before
 ```bash
 npm install
 npm run dev:all     # server :8790 + vite :5188
-npm test            # 494 tests — run npm run build FIRST or it fails by design
+npm test            # 500 tests — run npm run build FIRST or it fails by design
 npm run deploy      # build → real-browser render test → fly deploy
 ```
 
@@ -72,7 +72,7 @@ server/storage.mjs      media provider. One implementation; R2 goes here when vi
 shared/                 imported by BOTH server and browser — one definition, no drift
 src/app/                the Bridge product (React)
 src/App.jsx             the marketing scroll (Three.js). Do not put Three.js in /app
-test/                   494 tests. Source-reading tests pin rules a unit test cannot
+test/                   500 tests. Source-reading tests pin rules a unit test cannot
 ```
 
 ## 5. How work is done here
