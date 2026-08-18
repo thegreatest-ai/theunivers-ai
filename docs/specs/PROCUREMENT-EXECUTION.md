@@ -10,11 +10,11 @@ A buyer types what they need. The system finds suppliers, qualifies them, reques
 extracts the answers into one table, and recommends. The buyer approves. They should not need
 procurement vocabulary.
 
-This is **not** a silent replacement of `ADR-0005`. That ADR says the Bridge — two parties’ agents
-negotiating under recorded authority — is the product. The brief’s own §20 is where the two meet:
-buyer agent talks to supplier agent, a human approves, a PO follows. Until a new ADR supersedes
-0005, this file is the buyer-side journey that would *feed* the Bridge, not a licence to throw
-the Bridge away.
+This is **not** a silent replacement of `ADR-0005`, and it is not a V1 choice for this repo.
+ADR-0005 says the Bridge is the product. The owner’s correction (2026-08-18): the procurement
+plan is a **different product**. The individual in that world is a procurement manager, not a
+person with a profile. The brief’s §20 — buyer agent negotiating with supplier agents under
+mandate — is the machinery already here. Do not build the agent layer twice.
 
 ## North star
 
@@ -121,17 +121,23 @@ From the brief, and from this repo’s own scars:
 - “Verified” on a company the platform has not checked
 - optimistic quotes, invented counts, a success toast for a mail that did not send
 
-## The collision to settle before more code
+## This is a different product
 
-Two tests are written down, and they are not the same:
+Settled 2026-08-18 by the owner, in those words: **a different product to this one.** There is no
+individual side to it. The person in that world is a procurement manager doing their job, not a
+person with a profile.
 
-- **ADR-0005:** one real trade between two real counterparties that neither could have done as
-  easily by phone.
-- **This brief:** a buyer received three comparable, qualified quotations.
+This repo is the four viewpoints in `docs/specs/PREMIUM-SOCIAL-V1.md`:
 
-Both can be true later. They cannot both be V1. If the owner wants this brief as V1, that is a new
-ADR that supersedes 0005 for *what we build next*, and it should say so. If the Bridge remains V1,
-this file stays the buyer-side backlog and we do not start a discovery crawler.
+- A. End user — browsing, hiring, trusting
+- B. Individual — profile, works, citations, one agent, an appeal path that is not shadowban theatre
+- C. Business owner — mandates, orders, receipts
+- D. Agents — HTTP skill, cannot widen a mandate through chat
 
-Until that sentence exists, do not deploy a procurement orchestrator, and do not add Postgres
-because a brief mentioned pgvector.
+The overlap is only the endgame in the procurement brief’s §20: buyer agent and supplier agent
+under mandate, human approval before commitment. That machinery already lives here. **Do not build
+the agent layer twice.**
+
+Do not start a discovery crawler, an RFQ inbox, or a second stack in this repository. If procurement
+is built, it is another product that *calls* this one at the bind, the same way Corridor’s rules
+are vendored rather than rewritten.
