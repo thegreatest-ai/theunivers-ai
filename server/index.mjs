@@ -48,6 +48,7 @@ import { CSP } from '../shared/csp.mjs';
 import { review as reviewTerms } from '../shared/terms-diff.mjs';
 import { isWebAddress } from '../shared/safe-href.mjs';
 import { MODERATION_ACTIONS, AVAILABLE_ACTIONS } from '../shared/moderation-actions.mjs';
+import { matches } from '../shared/hidden-words.mjs';
 import {
   oauthConfigured, googleAuthUrl, githubAuthUrl,
   finishGoogle, finishGithub,
@@ -922,6 +923,20 @@ route('POST', '/api/account/kind', (ctx) => {
 });
 
 /**
+ * Opt out of the comment filter on YOUR works. The list is ours and stays on; this only
+ * stops it firing on comments you receive. Default on, because a safety default that must
+ * be discovered is not a safety default.
+ */
+route('POST', '/api/account/filter-comments', (ctx) => {
+  const user = ctx.user;
+  if (!user) return err(401, 'sign in required');
+  const on = ctx.body.filterComments;
+  if (typeof on !== 'boolean') return err(400, 'filterComments must be true or false');
+  run('UPDATE user SET filter_comments = ? WHERE id = ?', on ? 1 : 0, user.id);
+  return { user: publicUser(one('SELECT * FROM user WHERE id = ?', user.id)) };
+});
+
+/**
  * ── Workspace ────────────────────────────────────────────────────────────────────────────
  * Everything in progress, in one call — drafts, saved searches with their unread counts, and
  * whatever the agent has said unprompted.
@@ -1328,13 +1343,35 @@ const mediaFor = (workId) =>
 const commentCount = (workId) =>
   one('SELECT COUNT(*) c FROM comment WHERE work_id = ?', workId)?.c ?? 0;
 
+/**
+ * What THIS viewer may see. Same predicate as GET /api/works/:id/comments — a count that
+ * includes what the list hides is how a viewer learns a comment was filtered.
+ *
+ * commentCount itself still counts every row: a hidden comment is still somebody else's
+ * words, and the withdraw-if-commented rule must not treat a filter hit as a licence to
+ * hard-delete.
+ */
+function visibleCommentCount(workId, viewerId) {
+  if (viewerId) {
+    return one(
+      `SELECT COUNT(*) c FROM comment
+        WHERE work_id = ? AND (hidden_at IS NULL OR user_id = ?)`,
+      workId, viewerId,
+    )?.c ?? 0;
+  }
+  return one(
+    `SELECT COUNT(*) c FROM comment WHERE work_id = ? AND hidden_at IS NULL`,
+    workId,
+  )?.c ?? 0;
+}
+
 const workViewCounts = (workId) => ({
   people: one("SELECT COUNT(*) c FROM work_view WHERE work_id = ? AND kind = 'person'", workId)?.c ?? 0,
   agents: one("SELECT COUNT(*) c FROM work_view WHERE work_id = ? AND kind = 'agent'", workId)?.c ?? 0,
 });
 
 /** The live shape. Counts are derived here so the client never issues three requests per tile. */
-function liveWork(w) {
+function liveWork(w, viewerId = null) {
   return {
     id: w.id, kind: w.kind, title: w.title, body: w.body, authorId: w.user_id,
     shareable: Boolean(w.shareable), at: w.created_at,
@@ -1347,7 +1384,7 @@ function liveWork(w) {
     place_cc: w.place_cc ?? null,
     media: mediaFor(w.id),
     views: workViewCounts(w.id),
-    comments: commentCount(w.id),
+    comments: visibleCommentCount(w.id, viewerId),
     cited: citedCount(w.id),
   };
 }
@@ -1601,7 +1638,7 @@ route('GET', '/api/works', (ctx) => {
   // GET /api/works/:id, for a commenter following their own words — not a tile that says nothing.
   rows = rows.filter((w) => !w.withdrawn_at);
 
-  return { works: rows.map((w) => liveWork(w)) };
+  return { works: rows.map((w) => liveWork(w, viewerId)) };
 });
 
 route('GET', '/api/works/:id', (ctx) => {
@@ -1619,7 +1656,7 @@ route('GET', '/api/works/:id', (ctx) => {
   if (w.limited_at && viewerId !== w.user_id) {
     return { work: {
       id: w.id, limited: true, limitedAt: w.limited_at, authorId: w.user_id,
-      cited: citedCount(w.id), comments: commentCount(w.id), views: workViewCounts(w.id),
+      cited: citedCount(w.id), comments: visibleCommentCount(w.id, viewerId), views: workViewCounts(w.id),
     } };
   }
 
@@ -1630,11 +1667,11 @@ route('GET', '/api/works/:id', (ctx) => {
       removedBy: w.taken_down_at ? 'operator' : 'author',
       bodySha256: w.body_sha256 ?? null,
       authorId: w.user_id, at: w.created_at,
-      cited: citedCount(w.id), comments: commentCount(w.id), views: workViewCounts(w.id),
+      cited: citedCount(w.id), comments: visibleCommentCount(w.id, viewerId), views: workViewCounts(w.id),
     } };
   }
 
-  return { work: liveWork(w) };
+  return { work: liveWork(w, viewerId) };
 });
 
 route('POST', '/api/works/:id/comments', (ctx) => {
@@ -1660,11 +1697,24 @@ route('POST', '/api/works/:id/comments', (ctx) => {
 
   const id = `cmt_${randomUUID().slice(0, 8)}`;
   const at = now();
-  run(`INSERT INTO comment (id, work_id, user_id, body, created_at) VALUES (?, ?, ?, ?, ?)`,
-      id, work.id, user.id, text, at);
+
+  /*
+   * The WORK OWNER's flag, not the commenter's. A commenter opting out would let them bypass
+   * the filter on everyone else's posts, which is not a safety feature. Absent means on.
+   */
+  const owner = one('SELECT filter_comments FROM user WHERE id = ?', work.user_id);
+  const filtering = owner?.filter_comments !== 0;
+  const hit = filtering ? matches(text) : null;
+
+  run(`INSERT INTO comment (id, work_id, user_id, body, created_at, hidden_at, hidden_reason)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      id, work.id, user.id, text, at,
+      hit ? at : null, hit ? 'filter' : null);
   // Kind only — the client refetches the list, so there is one code path for "how do I load
   // comments" instead of two that can disagree.
   publishAll([work.user_id, user.id], 'comment', { work: work.id });
+  // The response is the same whether the filter fired or not. Telling the commenter "your
+  // comment was hidden" is how they write it again, angrier, from another account.
   return { comment: { id, workId: work.id, authorId: user.id, author: user.name, body: text, at } };
 });
 
@@ -1677,10 +1727,23 @@ route('GET', '/api/works/:id/comments', (ctx) => {
   if (isHidden(viewerId, work.user_id)) return err(404, 'no such work');
   if (work.limited_at && viewerId !== work.user_id) return err(404, 'no such work');
 
+  /*
+   * THE ONE PLACE a viewer is deliberately shown something others cannot see.
+   *
+   * A filtered comment is hidden from every reader except its author. Instagram's reasoning
+   * holds: a person told "your comment was hidden" writes it again angrier, from another
+   * account. A person who sees it sitting there does not. Do not "fix" this into equal
+   * visibility — that is the whole feature.
+   *
+   * Filtered in SQL, the same way limited posts are excluded. A client-side hide is a
+   * client that can be told not to. The count uses the same predicate, or it betrays
+   * what the list hides.
+   */
   const rows = all(
     `SELECT c.id, c.body, c.created_at, c.user_id, u.name AS author
        FROM comment c JOIN user u ON u.id = c.user_id
-      WHERE c.work_id = ? ORDER BY c.created_at ASC`, work.id);
+      WHERE c.work_id = ? AND (c.hidden_at IS NULL OR c.user_id = ?)
+      ORDER BY c.created_at ASC`, work.id, viewerId);
   const page = paginate(rows, ctx.query.get('page'), ctx.query.get('per'));
   return {
     comments: page.rows.map((c) => ({
@@ -2581,7 +2644,7 @@ route('GET', '/api/discover', (ctx) => {
         // count. Signed URLs, same as the profile — the bytes are not re-encoded.
         media: mediaFor(w.id),
         cited: citedCount(w.id),
-        comments: commentCount(w.id),
+        comments: visibleCommentCount(w.id, viewerId),
         views: workViewCounts(w.id),
         at: w.created_at,
       }));
@@ -2982,6 +3045,11 @@ route('GET', '/api/moderation/queue', (ctx) => {
   if (!ok) return err(401, 'bad operator token');
   const rows = all(
     `SELECT * FROM report WHERE status = 'open' ORDER BY created_at ASC LIMIT 200`);
+  const hidden = all(
+    `SELECT c.id, c.body, c.work_id, c.user_id, c.hidden_at, c.hidden_reason, u.name AS author
+       FROM comment c JOIN user u ON u.id = c.user_id
+      WHERE c.hidden_at IS NOT NULL
+      ORDER BY c.hidden_at ASC LIMIT 200`);
   return {
     open: rows.length,
     reports: rows.map((r) => ({
@@ -2992,6 +3060,11 @@ route('GET', '/api/moderation/queue', (ctx) => {
       alsoReported: one(
         `SELECT COUNT(DISTINCT reporter_id) c FROM report
          WHERE subject_kind = ? AND subject_id = ?`, r.subject_kind, r.subject_id).c,
+    })),
+    // Filter hits, retained in full so a false positive can be released rather than lost.
+    hidden: hidden.map((c) => ({
+      id: c.id, work: c.work_id, authorId: c.user_id, author: c.author,
+      body: c.body, at: c.hidden_at, reason: c.hidden_reason,
     })),
   };
 });
@@ -3189,6 +3262,39 @@ const SUBJECT_TABLE = { post: 'post', work: 'work' };
 route('POST', '/api/moderation/limit', (ctx) => resolveReport(ctx, 'limit'));
 route('POST', '/api/moderation/takedown', (ctx) => resolveReport(ctx, 'takedown'));
 route('POST', '/api/moderation/dismiss', (ctx) => resolveReport(ctx, 'dismiss'));
+
+/**
+ * Release a false-positive filter hit. Hide, never delete: the comment was retained, so
+ * undoing the hide is clearing two columns and appending a receipt. Named `release` rather
+ * than `restore` because /api/moderation/restore must not exist — a takedown has no undo,
+ * and a route by that name would look like one.
+ */
+route('POST', '/api/moderation/release', (ctx) => {
+  const ok = operatorAuthorised(ctx);
+  if (ok === null) return err(404, 'not found');
+  if (!ok) return err(401, 'bad operator token');
+
+  const id = String(ctx.body.comment ?? '');
+  const reason = String(ctx.body.reason ?? '').trim();
+  if (!reason) return err(400, 'a reason is required');
+  const comment = one('SELECT * FROM comment WHERE id = ?', id);
+  if (!comment) return err(404, 'no such comment');
+  if (!comment.hidden_at) return err(409, 'not hidden');
+
+  const at = now();
+  const attempt = raced(() => inTransaction(() => {
+    const moved = run(
+      `UPDATE comment SET hidden_at = NULL, hidden_reason = NULL
+        WHERE id = ? AND hidden_at IS NOT NULL`, id);
+    if (moved.changes !== 1) throw new Error('RACE_LOST');
+    return appendReceiptIn(comment.user_id, MODERATION_ACTIONS.release.receipt, {
+      subjectKind: 'comment', subject: comment.id, work: comment.work_id,
+      reason, source: 'operator-token',
+    });
+  }));
+  if (!attempt.ok) return err(409, 'not hidden');
+  return { comment: comment.id, action: 'release', at, receipt: attempt.value?.id ?? null };
+});
 
 /* ── Phase 1: follow ─────────────────────────────────────────────────────────────────────── */
 
@@ -3594,6 +3700,8 @@ function publicUser(u) {
     // and to warn an OAuth-only account that it currently has no way back in without Google.
     hasPassword: Boolean(u.password_hash),
     signInMethod: u.password_hash ? 'password' : (u.oauth_provider || 'oauth'),
+    // Absent means on. A safety default that must be discovered is not a safety default.
+    filterComments: u.filter_comments !== 0,
   };
 }
 

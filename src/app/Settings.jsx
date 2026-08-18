@@ -59,6 +59,7 @@ export default function Settings() {
   const [f, setF] = useState({ jurisdiction: user?.jurisdiction ?? 'AE', licenceNo: '' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [filterBusy, setFilterBusy] = useState(false);
 
   const reg = registrationFor(f.jurisdiction);
   const isBusiness = user?.kind === 'business';
@@ -76,6 +77,17 @@ export default function Settings() {
       setError(e.message);
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function setFilterComments(on) {
+    if (filterBusy) return;
+    setFilterBusy(true);
+    try {
+      const r = await api.setFilterComments(on);
+      setMe((m) => ({ ...m, user: r.user }));
+    } finally {
+      setFilterBusy(false);
     }
   }
 
@@ -164,6 +176,23 @@ export default function Settings() {
               }))}
             />
           </div>
+        </div>
+        <div className="set-row set-inline">
+          <span className="set-label">
+            Hide offensive comments
+            <span className="set-hint">
+              Comments that match a safety list are kept, but only the person who wrote them
+              can see them. On by default.
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            className="set-check"
+            checked={user.filterComments !== false}
+            disabled={filterBusy}
+            onChange={(e) => setFilterComments(e.target.checked)}
+            aria-label="Hide offensive comments"
+          />
         </div>
       </Group>
 

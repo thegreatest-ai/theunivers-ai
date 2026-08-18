@@ -51,11 +51,27 @@ export const MODERATION_ACTIONS = {
     sentence: 'This account was suspended by the operator',
     implemented: false,
   },
+  /*
+   * Not a rung. Releasing a false-positive filter hit is the reverse of the automatic limit,
+   * recorded as a forward append — the same `moderation.restored` ADR-0006 already named for
+   * a reversal that keeps the chain intact. It has its own route; it must not become callable
+   * as a report action, which is why AVAILABLE_ACTIONS below ignores rung-less entries other
+   * than dismiss.
+   */
+  release: {
+    rung: null,
+    receipt: 'moderation.restored',
+    sentence: 'This was restored by the operator after a filter hid it',
+    implemented: true,
+  },
 };
 
-/** The actions a route may accept today. A rung with no implementation must not be callable. */
+/**
+ * The actions a report-resolution route may accept today. A rung with no implementation must
+ * not be callable. `rung: null` is either dismiss (nothing happened) or release (its own path).
+ */
 export const AVAILABLE_ACTIONS = Object.entries(MODERATION_ACTIONS)
-  .filter(([name, a]) => name === 'dismiss' || a.implemented)
+  .filter(([name, a]) => name === 'dismiss' || (a.implemented && a.rung != null))
   .map(([name]) => name);
 
 /**
