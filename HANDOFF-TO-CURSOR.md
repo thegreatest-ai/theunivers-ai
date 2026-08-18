@@ -91,7 +91,8 @@ message that will be reversed by somebody who did not know.
 
 **Shipped and live:** auth (password + Google OAuth), agents and mandates, orders with receipts,
 Discover, the follow graph, block/report, the full moderation ladder (limit · takedown · dismiss ·
-withdraw) with receipts, comments with **Hidden Words** filtering, the create-post window with
+withdraw) with receipts, comments with **Hidden Words** filtering, author-facing **appeal** of a
+filtered comment (receipt + contest; still CLI for the operator), the create-post window with
 ratio · zoom · add-more · location, and a 3:4 profile grid.
 
 **Highest-value open items** (details in `docs/KNOWN-ISSUES.md`):
@@ -99,7 +100,8 @@ ratio · zoom · add-more · location, and a 3:4 profile grid.
 1. **No avatar upload.** Profiles render initials. Every piece needed already exists — media
    upload, `image-size.mjs`, signed URLs. Small work, largest visible effect.
 2. **No operator interface in the browser.** Releasing a filtered comment or clearing the
-   moderation queue is CLI-only.
+   moderation queue is CLI-only. The author can now contest; the operator still reads
+   `GET /api/moderation/queue`. Do not build a web desk (ADR-0007).
 3. **A shared operator token cannot say WHICH human moderated.** Blocking the moment a second
    person can moderate.
 4. **Media lives on a ~900MB Fly volume.** Fine for photos; wrong for video. R2 provider goes in

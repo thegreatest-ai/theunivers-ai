@@ -114,6 +114,8 @@ address, and offices, cafés, universities and VPNs all look the same.
 | `reportPerIp` | 100 / hour | the Sybil case: throwaway accounts sharing one host |
 | `commentPerUser` | 60 / hour | a real conversation; tighter than a flood, looser than a report |
 | `commentPerIp` | 300 / hour | flood ceiling behind carrier NAT |
+| `appealPerUser` | 12 / hour | contesting a limit is exceptional; twelve is already more than one operator can read |
+| `appealPerIp` | 60 / hour | the Sybil case: throwaway accounts sharing one host |
 | `geocodePerUser` | 20 / hour | Nominatim is a shared 1/s slot; twenty lookups is already more than composing uses |
 | `geocodePerIp` | 100 / hour | the Sybil case: throwaway accounts sharing one host |
 

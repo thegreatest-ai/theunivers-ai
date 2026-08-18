@@ -23,6 +23,7 @@ import { trapFocus } from './dialog';
 import { WORK_RATIOS } from '../../shared/work-ratio.mjs';
 import { PlaceFields, PlaceLine } from './PlaceFields';
 import { RatioMenu } from './RatioMenu';
+import { Contest } from './Contest';
 
 function Text({ url }) {
   const [body, setBody] = useState('Loading…');
@@ -90,10 +91,12 @@ export default function WorkDetail({ work: initial, workId, own: ownProp, onClos
     try {
       const r = await api.commentOnWork(id, body);
       setDraft('');
-      // The row the server stored, not a local guess at one.
-      setComments((cur) => [...(cur || []), r.comment]);
-      const d = await api.work(id);
-      setWork(d.work);
+      // Refetch rather than appending the POST body: a filter hit is silent on write, and the
+      // list is how the author sees enough to contest. One code path, same as delete.
+      const d = await api.workComments(id);
+      setComments(d.comments || []);
+      const w = await api.work(id);
+      setWork(w.work);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -328,6 +331,24 @@ export default function WorkDetail({ work: initial, workId, own: ownProp, onClos
                   <b>{c.author}</b>
                   <span className="app-meta">{new Date(c.at).toLocaleString()}</span>
                   <p>{c.body}</p>
+                  {c.hidden && (
+                    <div className="wk-own-hidden">
+                      <p className="app-note">Only you can see this.</p>
+                      {c.appealed
+                        ? (
+                          <p className="app-note">
+                            You asked the operator of this node to look. There is no panel.
+                          </p>
+                        )
+                        : (
+                          <Contest
+                            commentId={c.id}
+                            operator={c.operator}
+                            onDone={() => loadComments()}
+                          />
+                        )}
+                    </div>
+                  )}
                   {(own || c.authorId === viewerId) && (
                     <button type="button" className="app-link" onClick={() => dropComment(c.id)}>
                       Delete
