@@ -665,16 +665,21 @@
 
 /* Photos and video read as a grid; threads and files read as a list. The shape follows what the
    thing is for — you scan pictures and you read text. */
-.wk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+/* 1px, not 8px. Measured live on Instagram's profile and Explore. A hairline is why their grid
+   reads as a single photographic surface rather than a set of cards — the gap was doing more work
+   than its size suggests. */
+.wk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:1px}
 .wk-list{display:flex;flex-direction:column;gap:10px}
 .wk-item{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--glass);
   display:flex;flex-direction:column}
-/* Square, always. The profile grid is "unified in profile" — it does not read work.ratio, which
-   governs the feed. Declared here rather than passed as an inline style per cell, because there
-   is one shape for the whole grid and nothing to compute.
+/* 3:4 PORTRAIT, always — not square. The grid is "unified in profile" and does not read
+   work.ratio, which governs the feed. The number is 3:4 because Instagram moved the grid from 1:1
+   in early 2025 and it measures 0.750 live; I had asserted square from memory and was a year out
+   of date (docs/specs/INSTAGRAM-SPEC-FINDINGS.md). One shape for the whole grid, nothing to
+   compute per cell.
    overflow:hidden is load-bearing for zoom: transform:scale() on the img would otherwise
    paint outside the cell. Discover's .dsc-shot already clips; this is the matching lock. */
-.wk-shot{position:relative;background:#000;aspect-ratio:1;overflow:hidden}
+.wk-shot{position:relative;background:#000;aspect-ratio:3/4;overflow:hidden}
 .wk-shot img,.wk-shot video{width:100%;height:100%;display:block;object-fit:cover}
 /* Instagram's carousel marker: a count, because the second photo is invisible until you open it. */
 .wk-count{position:absolute;top:8px;right:8px;background:rgba(0,0,0,.6);color:#fff;border-radius:99px;

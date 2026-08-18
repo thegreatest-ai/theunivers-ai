@@ -93,9 +93,9 @@ describe('the profile empty state is one invitation', () => {
     assert.match(add, /spec\.invite/, 'the sentence is the button\'s explanation, inside the card');
   });
 
-  test('the profile grid is still square — do not reintroduce cdda5cb', () => {
+  test('the profile grid is one uniform shape — do not reintroduce cdda5cb', () => {
     const css = read('src/app/app.css');
-    assert.match(css, /\.wk-shot\{[^}]*aspect-ratio:1/s);
+    assert.match(css, /\.wk-shot\{[^}]*aspect-ratio:3\/4/s);
     const works = read('src/app/Works.jsx');
     assert.doesNotMatch(works, /cellAspect/);
     assert.doesNotMatch(works, /aspectRatio/);

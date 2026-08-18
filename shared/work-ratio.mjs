@@ -51,23 +51,26 @@ export function parseWorkRatio(raw) {
 }
 
 /**
- * THE PROFILE GRID IS ALWAYS SQUARE. It does not read work.ratio, and that is the point.
+ * THE PROFILE GRID IS 3:4 PORTRAIT, AND UNIFORM. Not square — that was my error, twice over.
  *
- * The brief this was built from said "absent must render as the true shape", and that was
- * wrong — it let every existing work (all of them NULL) fall back to its own shape and put
- * the ragged grid straight back. The owner's instruction is the authority and it is one
- * sentence: **"the photo display in profile will be unified in profile"**, later shortened
- * to "fix the grid & keep the original detail". A grid that reserves each cell differently
- * is not unified, whether the difference comes from the file or from a chosen ratio.
+ * The first version let each cell follow work.ratio, which put the ragged grid back. I corrected
+ * it to a square in cdda5cb and wrote, in that commit, that a square "is also what Instagram does,
+ * which is easy to misremember". It was easy to misremember, and I misremembered it.
  *
- * It is also what Instagram does, which is easy to misremember: the profile grid is square
- * for every post regardless of the ratio it was published at. The chosen ratio governs the
- * FEED. Those are two different surfaces and conflating them is what produced the bug.
+ * Instagram changed the profile grid from 1:1 to 3:4 in early 2025. Measured in a signed-in
+ * session on 2026-08-18: 215.8 x 287.7px, ratio 0.750 exactly, centre-cropped, every post forced
+ * to that shape regardless of what it was published at. Source:
+ * docs/specs/INSTAGRAM-SPEC-FINDINGS.md.
  *
- * A constant rather than a computed value, so there is nothing here to drift. `feedAspect`
- * is what Discover uses; this function exists so a test can pin the grid without reading CSS.
+ * The OWNER'S rule is unchanged and is the one that matters — "the photo display in profile will
+ * be unified in profile". 3:4 is uniform; it is simply taller. What changes is the number, and the
+ * lesson is that I asserted a fact about a live product from memory and was a year out of date.
+ *
+ * Two surfaces, still deliberately disagreeing: the GRID is 3:4, the FEED takes the post's chosen
+ * ratio, and the detail view shows the photograph's true shape. `feedAspect` serves the feed; this
+ * serves the grid; nothing consults both.
  */
-export const GRID_ASPECT = 1;
+export const GRID_ASPECT = 3 / 4;
 
 export function cellAspect() {
   return GRID_ASPECT;

@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseWorkRatio, ratioAspect, cellAspect, feedAspect, WORK_RATIOS } from '../shared/work-ratio.mjs';
+import { parseWorkRatio, ratioAspect, cellAspect, feedAspect, GRID_ASPECT, WORK_RATIOS } from '../shared/work-ratio.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
@@ -42,7 +42,14 @@ describe('the four allowed values, and nothing else', () => {
   });
 });
 
-describe('the profile grid is square, whatever the post says', () => {
+describe('the profile grid is one uniform shape, whatever the post says', () => {
+  test('that shape is 3:4 — measured, not remembered', () => {
+    // 0.750 exactly, measured in a signed-in session on 2026-08-18 (Instagram moved the grid from
+    // 1:1 in early 2025). It was previously asserted as square here on my say-so, which was a year
+    // out of date. The rule — ONE shape, not per-post — never changed; only the number did.
+    assert.equal(GRID_ASPECT, 0.75);
+  });
+
   /*
    * These tests replace ones that asserted the opposite, and the reason is worth keeping.
    *
@@ -56,12 +63,12 @@ describe('the profile grid is square, whatever the post says', () => {
    * difference came from the file or from a chosen ratio.
    */
   test('a chosen ratio does NOT reshape the profile cell', () => {
-    assert.equal(cellAspect({ ratio: '4:5', media: [{ ratio: 1.5 }] }), 1);
-    assert.equal(cellAspect({ ratio: '16:9', media: [{ ratio: 0.5 }] }), 1);
+    assert.equal(cellAspect({ ratio: '4:5', media: [{ ratio: 1.5 }] }), GRID_ASPECT);
+    assert.equal(cellAspect({ ratio: '16:9', media: [{ ratio: 0.5 }] }), GRID_ASPECT);
   });
 
   test('a pre-existing work (ratio NULL) is square too — this is the regression', () => {
-    assert.equal(cellAspect({ ratio: null, media: [{ ratio: 1.3333 }] }), 1);
+    assert.equal(cellAspect({ ratio: null, media: [{ ratio: 1.3333 }] }), GRID_ASPECT);
   });
 
   test('every cell in a mixed grid reserves the same box', () => {
@@ -71,13 +78,13 @@ describe('the profile grid is square, whatever the post says', () => {
       { ratio: '16:9', media: [] },
       { ratio: 'original', media: [{ ratio: null }] },
     ].map(cellAspect);
-    assert.deepEqual(grid, [1, 1, 1, 1], 'one shape for the whole grid, no exceptions');
+    assert.deepEqual(grid, Array(4).fill(GRID_ASPECT), 'one shape for the whole grid, no exceptions');
   });
 
   test('missing dimensions cannot produce a zero-height box', () => {
     // The old failure mode: undefined aspect → no reserved space → a collapsed cell.
     for (const w of [{ ratio: null, media: [] }, { ratio: null }, {}, undefined]) {
-      assert.equal(cellAspect(w), 1);
+      assert.equal(cellAspect(w), GRID_ASPECT);
     }
   });
 
@@ -130,11 +137,11 @@ describe('the feed cell follows the author\'s chosen ratio', () => {
     assert.doesNotMatch(src, /WORK_RATIOS/, 'a reader does not edit the author\'s ratio');
   });
 
-  test('the feed cell is not the profile cell — .wk-shot stays square', () => {
+  test('the feed cell is not the profile cell — .wk-shot keeps its own shape', () => {
     // Sharing .wk-shot would square every Discover cell, which is the regression the other
     // way: the author's composition would vanish into the index shape.
     const css = read('src/app/app.css');
-    assert.match(css, /\.wk-shot\{[^}]*aspect-ratio:1/s);
+    assert.match(css, /\.wk-shot\{[^}]*aspect-ratio:3\/4/s);
     assert.match(css, /\.dsc-shot\{/);
     assert.match(css, /\.dsc-shot\.has-ratio img,\.dsc-shot\.has-ratio video\{[^}]*object-fit:cover/s);
     const src = read('src/app/Discover.jsx');
@@ -187,7 +194,7 @@ describe('the window, the invite, and the trap are the ones already built', () =
     // profile". The cell must not be reshaped per post, and must not be an inline style either,
     // because one shape for the whole grid has nothing to compute.
     const css = read('src/app/app.css');
-    assert.match(css, /\.wk-shot\{[^}]*aspect-ratio:1/s);
+    assert.match(css, /\.wk-shot\{[^}]*aspect-ratio:3\/4/s);
     const src = read('src/app/Works.jsx');
     assert.doesNotMatch(src, /cellAspect/, 'the grid must not consult a per-post ratio');
     assert.doesNotMatch(src, /aspectRatio/, 'no inline per-cell shape');

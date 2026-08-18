@@ -97,7 +97,7 @@ describe('the surfaces: zoom is a crop, WorkDetail is the original', () => {
     assert.doesNotMatch(src, /current\.zoom|\.zoom\b/);
   });
 
-  test('the profile grid and the feed apply cropStyle; the grid stays square', () => {
+  test('the profile grid and the feed apply cropStyle; the grid keeps its own shape', () => {
     assert.match(read('src/app/Works.jsx'), /cropStyle/, 'the square cell still frames');
     assert.match(read('src/app/Discover.jsx'), /cropStyle/, 'the feed cell still frames');
     assert.match(read('src/app/Works.jsx'), /from '\.\.\/\.\.\/shared\/media-zoom\.mjs'/);
@@ -106,7 +106,7 @@ describe('the surfaces: zoom is a crop, WorkDetail is the original', () => {
     assert.doesNotMatch(works, /cellAspect/, 'cdda5cb: the grid must not consult a per-post ratio');
     assert.doesNotMatch(works, /aspectRatio/, 'cdda5cb: no inline per-cell shape');
     const css = read('src/app/app.css');
-    assert.match(css, /\.wk-shot\{[^}]*aspect-ratio:1/s);
+    assert.match(css, /\.wk-shot\{[^}]*aspect-ratio:3\/4/s);
     assert.match(css, /\.wk-shot\{[^}]*overflow:hidden/s,
       'a scaled image must clip to the cell, not escape it');
   });

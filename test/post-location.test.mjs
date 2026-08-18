@@ -201,10 +201,10 @@ describe('the surfaces: a caption, not a badge, and NULL paints nothing', () => 
       'the control sits in CreatePost');
   });
 
-  test('the profile grid is still square and still ignores work.ratio', () => {
+  test('the profile grid keeps one shape and still ignores work.ratio', () => {
     // Do not reintroduce cdda5cb. A location on a post is not a reason to reshape the grid.
     const css = read('src/app/app.css');
-    assert.match(css, /\.wk-shot\{[^}]*aspect-ratio:1/s);
+    assert.match(css, /\.wk-shot\{[^}]*aspect-ratio:3\/4/s);
     const works = read('src/app/Works.jsx');
     assert.doesNotMatch(works, /cellAspect/, 'the grid must not consult a per-post ratio');
     assert.doesNotMatch(works, /aspectRatio/, 'no inline per-cell shape');
