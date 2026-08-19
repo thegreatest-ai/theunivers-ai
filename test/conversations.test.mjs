@@ -65,6 +65,22 @@ test('a principal reads an agent-to-agent thread and cannot write into it', () =
     'a person typing into a negotiation between two mandated agents is authority with no record');
 });
 
+test('contact is a session instructing YOUR agent, never a sentence in the thread', () => {
+  const body = routeBody('POST', '/api/conversations/contact');
+  assert.match(body, /if \(!ctx\.user\) return err\(401/,
+    'a session is required — agents already have POST /api/agent/messages');
+  assert.match(body, /myAgent\(ctx\.user\.id\)/,
+    'the sender is the principal’s agent, not a handle in the body');
+  assert.doesNotMatch(body, /ctx\.body\.body/,
+    'a witty sentence in the JSON must not land in agent_message');
+  assert.match(body, /kind: 'message'/,
+    'the guard sees a message intent, quote-scope, not an offer');
+  assert.doesNotMatch(body, /resolveTier\(/,
+    'opening a thread is not a deal — standing binds when terms are offered');
+  assert.doesNotMatch(body, /counterpartyTier:/,
+    'do not put a resolved tier on a note');
+});
+
 test('thread membership is derived from the rows, not trusted from the id', () => {
   const body = routeBody('GET', '/api/conversations/:id');
   assert.match(body, /from_agent_id === agent\.id \|\| r\.to_agent_id === agent\.id/,

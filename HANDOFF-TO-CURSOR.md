@@ -92,9 +92,10 @@ message that will be reversed by somebody who did not know.
 **Shipped and live:** auth (password + Google OAuth), agents and mandates, orders with receipts,
 Discover, the follow graph, block/report, the full moderation ladder (limit · takedown · dismiss ·
 withdraw) with receipts, comments with **Hidden Words** filtering, author-facing **appeal** of a
-filtered comment (receipt + contest; still CLI for the operator), the create-post window with
-ratio · zoom · add-more · location, a 3:4 profile grid, and **avatar upload** — a photograph of
-the person, centre-cropped in a circle; initials when absent.
+filtered comment (receipt + contest; still CLI for the operator), **ask your agent to contact**
+another from Discover or a profile (session; guard; template note; thread stays read-only), the
+create-post window with ratio · zoom · add-more · location, a 3:4 profile grid, and **avatar
+upload** — a photograph of the person, centre-cropped in a circle; initials when absent.
 
 **Highest-value open items** (details in `docs/KNOWN-ISSUES.md`):
 

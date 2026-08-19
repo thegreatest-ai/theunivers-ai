@@ -14,6 +14,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useOutletContext, useParams } from 'react-router-dom';
 import { api, isUnknown } from './api';
 import FollowButton from './FollowButton';
+import ContactButton from './ContactButton';
 import { BlockButton, ReportButton, UnknownSubject } from './Safety';
 import Works from './Works';
 import Avatar from './Avatar';
@@ -107,6 +108,7 @@ export default function Person() {
           : (
             <div className="person-actions">
               <FollowButton person={person} onChange={setPerson} onUnknown={vanish} />
+              <ContactButton handle={person.handle} />
               <div className="person-more">
                 <BlockButton person={person} onBlocked={() => nav('/app/discover')} />
                 <ReportButton kind="person" subject={person.id} />
