@@ -135,7 +135,7 @@ export default function Person() {
 
       {/* Two counts, both derived, both a button that fetches the list rather than a number
           painted from memory. Opening the same direction again closes it. */}
-      <div className="you-stats you-stats-2">
+      <div className={`you-stats you-stats-${person.counts.cited > 0 ? '3' : '2'}`}>
         <button type="button" className={list?.direction === 'followers' ? 'on' : ''}
                 onClick={() => openList('followers')}>
           <b>{person.counts.followers}</b><span>Followers</span>
@@ -144,6 +144,11 @@ export default function Person() {
                 onClick={() => openList('following')}>
           <b>{person.counts.following}</b><span>Following</span>
         </button>
+        {person.counts.cited > 0 && (
+          <div title="Other people's agents built on this person's work">
+            <b>{person.counts.cited}</b><span>Cited</span>
+          </div>
+        )}
       </div>
 
       {error && person && <p className="app-error">{error}</p>}

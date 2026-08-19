@@ -237,6 +237,18 @@ describe('counts are the numbers the database holds', () => {
     // A second view by the same person must not inflate the number.
     await api('/api/views', { method: 'POST', as: 'ben', body: { works: [w.id] } });
 
+    // A share is collecting. It must land as a source and leave cited at zero — otherwise the
+    // glass would show "built on" for a bookmark. The citation is inserted below, as an agent
+    // would after analysing.
+    const share = await api('/api/projects/share', {
+      method: 'POST', as: 'ben', body: { workId: w.id },
+    });
+    assert.equal(share.status, 200, share.text);
+    assert.ok(share.json.project?.id, 'the share must return the project that received it');
+    const mid = await api('/api/people/usr_ana', { as: 'ben' });
+    assert.equal(mid.json.person.counts.cited, 0,
+      'collecting is not building — a share must not raise cited');
+
     const t = new Date().toISOString();
     const db = new DatabaseSync(DB);
     db.prepare('INSERT INTO project (id,user_id,name,created_at,updated_at) VALUES (?,?,?,?,?)')
@@ -257,6 +269,13 @@ describe('counts are the numbers the database holds', () => {
     assert.equal(seen.json.work.cited, 1);
     assert.equal(seen.json.work.views.people, 1);
     assert.equal(seen.json.work.views.agents, 0);
+
+    const creator = await api('/api/people/usr_ana', { as: 'ben' });
+    assert.equal(creator.json.person.counts.cited, 1,
+      'a citation must show up on the person who was used, not only on the work');
+    const me = await api('/api/profile', { as: 'ana' });
+    assert.equal(me.json.counts.cited, 1,
+      'You reads GET /api/profile — the same count has to be on that payload');
 
     const comments = rows('SELECT id FROM comment WHERE work_id = ?', w.id).length;
     const cited = rows(

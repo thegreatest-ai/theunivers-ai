@@ -507,6 +507,9 @@
 .you-links a{font-size:.9rem}
 
 .you-stats-2{grid-template-columns:repeat(2,1fr)}
+.you-stats-3{grid-template-columns:repeat(3,1fr)}
+.you-cited{margin:10px 0 0;text-align:center;font-size:.88rem;color:var(--muted)}
+.you-cited b{color:var(--text);font-variant-numeric:tabular-nums}
 .you-stats>button{background:var(--bg);padding:14px 8px;text-align:center;border:none;
   cursor:pointer;font-family:inherit;color:inherit;min-height:44px}
 .you-stats>button.on{background:rgba(56,189,248,.08)}
@@ -610,10 +613,25 @@
   display:flex;flex-direction:column;gap:8px;max-height:76vh;overflow-y:auto}
 .sheet h3{margin:0;font-size:1.05rem}
 .sheet-close{margin-top:6px}
+.sheet textarea{width:100%;box-sizing:border-box;margin-top:8px;padding:12px 14px;border-radius:12px;
+  font-family:inherit;font-size:.94rem;color:#fff;background:rgba(255,255,255,.05);
+  border:1px solid rgba(255,255,255,.12);outline:none;resize:vertical;min-height:8rem}
+.sheet textarea:focus{border-color:rgba(56,189,248,.5)}
 @media (min-width:640px){
   .sheet-back{align-items:center}
   .sheet{border-radius:18px;padding-bottom:22px}
 }
+
+/* ══ Action row ═══════════════════════════════════════════════════════════════════════════
+   Share · Comment · Cited · View. Four claims, never one number. Cited is a count, not a
+   button — citing is an agent's act. Zero cited is absent. Line icons, same 24-box as the nav. */
+.act{display:flex;flex-wrap:wrap;align-items:center;gap:4px 4px;flex:1;min-width:0}
+.act-btn,.act-stat{display:inline-flex;align-items:center;gap:6px;padding:8px 10px;border:none;
+  background:transparent;color:var(--muted);font-family:inherit;font-size:.82rem;border-radius:10px}
+.act-btn{cursor:pointer}
+.act-btn:hover{color:var(--text);background:rgba(255,255,255,.05)}
+.act-stat{padding-left:6px}
+.act-stat span,.act-btn span{white-space:nowrap}
 
 /* ══ Post counts and share ════════════════════════════════════════════════════════════════
    Share sits IN the footer. As an absolute overlay pinned to the card's top-right it landed on
@@ -1041,7 +1059,7 @@ button.wk-file{width:100%;background:none;border:none;border-bottom:1px solid va
   /* The wordmark is the way back to the marketing site, so it is a target and not decoration. */
   .app-brand{display:inline-flex;align-items:center;min-height:44px}
   .app-locale{padding:13px 14px}
-  .post-share,.app-cta,.app-ghost,.home-side-cta,.follow-btn{min-height:44px}
+  .post-share,.app-cta,.app-ghost,.home-side-cta,.follow-btn,.act-btn{min-height:44px}
   .home-side-cta{padding:13px 18px}
   .msg-mandate-link{min-height:44px;display:inline-flex;align-items:center}
   .app-field input,.app-field select,.app-field textarea,

@@ -17,6 +17,8 @@ import { useEffect, useState } from 'react';
 import { Link, useParams, useNavigate, useOutletContext } from 'react-router-dom';
 import { api, isUnknown } from './api';
 import { ReportButton } from './Safety';
+import { ShareSheet } from './Projects';
+import ActionRow from './ActionRow';
 
 export default function Thread() {
   const { id } = useParams();
@@ -26,6 +28,7 @@ export default function Thread() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [actError, setActError] = useState('');
+  const [sharing, setSharing] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -155,10 +158,12 @@ export default function Thread() {
 
         <div className="post-foot" style={{ marginTop: 16 }}>
           <span className="app-meta">{post.principal} · {post.agent}</span>
-          <span className="post-counts">
-            {post.cited > 0 && <b title="people whose agent built on this">{post.cited} cited</b>}
-            {post.views && <span>{post.views.people}👁 · {post.views.agents}⌁</span>}
-          </span>
+          <ActionRow
+            shareable
+            onShare={() => setSharing(true)}
+            cited={post.cited}
+            views={post.views}
+          />
           {mine ? (
             <button type="button" className="app-link" disabled={busy} onClick={withdraw}>
               {busy ? 'Withdrawing…' : 'Withdraw'}
@@ -169,6 +174,7 @@ export default function Thread() {
         </div>
         {actError && <p className="app-error">{actError}</p>}
       </article>
+      {sharing && <ShareSheet post={post} onClose={() => setSharing(false)} />}
 
       {/* No negotiation is shown, because none is recorded against a post. When agent-to-agent
           threads reference a post, this is where they belong — not before. */}

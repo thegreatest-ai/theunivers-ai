@@ -7,6 +7,7 @@ import { api, clearAuth, hasSession, getAgentToken } from './api';
 import { subscribe } from './stream';
 import { LOCALES } from './locale';
 import Nav from './Nav';
+import CreateMenu from './CreateMenu';
 import './app.css';
 
 export default function Shell({ bare = false }) {
@@ -24,6 +25,7 @@ export default function Shell({ bare = false }) {
   // Only a decision waiting on you earns a badge. A count of things that merely happened is a
   // notification habit; this is a tool.
   const [pending, setPending] = useState(0);
+  const [creating, setCreating] = useState(false);
   useEffect(() => {
     if (bare) return;
     const read = () => api.proposals()
@@ -73,7 +75,13 @@ export default function Shell({ bare = false }) {
       {/* Five destinations, two shapes. Both from shared/navigation.mjs — the file existed with
           the decision in it and nothing imported it, which made an ADR look implemented when it
           was not. */}
-      <Nav counts={{ Deals: pending }} onCreate={() => nav(me?.agent ? '/app/workspace' : '/app/deploy')} />
+      <Nav
+        counts={{ Deals: pending }}
+        onCreate={() => {
+          if (!me?.agent) { nav('/app/deploy'); return; }
+          setCreating(true);
+        }}
+      />
 
       <header className="app-bar">
         <Link to="/" className="app-brand app-brand-mobile">theunivers<span className="grad">.ai</span></Link>
@@ -110,6 +118,12 @@ export default function Shell({ bare = false }) {
       )}
 
       <Outlet context={{ locale, currency, setLocale, me, setMe }} />
+      {creating && (
+        <CreateMenu
+          onClose={() => setCreating(false)}
+          onShared={() => { setCreating(false); nav('/app/account'); }}
+        />
+      )}
     </div>
   );
 }

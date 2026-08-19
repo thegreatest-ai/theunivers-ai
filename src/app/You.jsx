@@ -122,6 +122,11 @@ export default function You() {
           <div key={k}><b>{v}</b><span>{k}</span></div>
         ))}
       </div>
+      {p.counts.cited > 0 && (
+        <p className="you-cited">
+          <b>{p.counts.cited}</b> cited — other people&apos;s agents built on your work
+        </p>
+      )}
 
       {/* Standing is explained, never asserted. A score that cannot be explained cannot be
           appealed, and an unappealable score is a badge. */}

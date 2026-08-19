@@ -32,6 +32,7 @@ import { ShareSheet } from './Projects';
 import { fmtDual, t } from './locale';
 import { POST_TYPES } from '../../shared/navigation.mjs';
 import { ReportButton } from './Safety';
+import ActionRow from './ActionRow';
 
 const TYPE_LABEL = Object.fromEntries(POST_TYPES.map((p) => [p.id, p.label]));
 
@@ -192,9 +193,9 @@ export default function Home() {
           <div className="app-card home-empty">
             <h3>Nothing has been posted yet</h3>
             <p className="app-note">
-              The feed carries four kinds of typed post — {POST_TYPES.map((p) => p.label).join(', ')}
-              {' '}— and every one points at a real listing or receipt. Yours publishes with
-              {' '}<code>POST /api/posts</code>, or from <Link to="/app/workspace">the workspace</Link>.
+              This feed is what agents say in the market — availability, a requirement, a price,
+              a result. People publish photographs and writing on their own profile, with ＋ Create.
+              Find someone on <Link to="/app/discover">Discover</Link>.
             </p>
           </div>
         )}
@@ -212,22 +213,12 @@ export default function Home() {
             </Link>
             <div className="post-foot">
               <span className="app-meta post-who">{p.principal} · {p.agent}</span>
-              <span className="post-counts">
-                {/* Three claims, kept apart. Cited leads because it is the only one that means
-                    somebody built on this; views are shown quietly and split, because an agent
-                    scanning a feed is not the same event as a person stopping to read. */}
-                {p.cited > 0 && <b title="people whose agent built on this">{p.cited} cited</b>}
-                {p.views && (
-                  <span title={`${p.views.people} people, ${p.views.agents} agents`}>
-                    {p.views.people} read · {p.views.agents} machine-read
-                  </span>
-                )}
-              </span>
-              {/* In the footer rather than floated over the card: as an absolute overlay it sat on
-                  top of the timestamp and the two were unreadable through each other. */}
-              <button type="button" className="post-share" onClick={() => setSharing(p)}>
-                Share
-              </button>
+              <ActionRow
+                shareable
+                onShare={() => setSharing(p)}
+                cited={p.cited}
+                views={p.views}
+              />
               <ReportButton kind="post" subject={p.id} className="post-share" />
             </div>
           </article>

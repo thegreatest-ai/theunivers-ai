@@ -891,6 +891,7 @@ route('GET', '/api/profile', (ctx) => {
       receipts: chain.length ?? 0,
       mandates: mandate ? 1 : 0,
       deals: orders?.c ?? 0,
+      cited: citedTotal(user.id),
     },
     chain: { ok: chain.ok, length: chain.length ?? 0, at: chain.at ?? null },
   };
@@ -3440,7 +3441,7 @@ function publicPerson(u, viewerId) {
     bio: u.bio ?? null,
     links,
     trust: trustOf(u.id),
-    counts: followCounts(u.id),
+    counts: { ...followCounts(u.id), cited: citedTotal(u.id) },
     // Both directions, because the interface needs to tell "follow" from "follow back".
     youFollow: viewerId ? follows(viewerId, u.id) : false,
     followsYou: viewerId ? follows(u.id, viewerId) : false,

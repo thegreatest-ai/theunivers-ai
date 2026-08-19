@@ -141,6 +141,8 @@ describe('following', () => {
     assert.equal(r.json.person.email, undefined, 'email is nobody else\'s business');
     assert.equal(r.json.person.hasPassword, undefined);
     assert.equal(r.json.person.signInMethod, undefined);
+    assert.equal(r.json.person.counts.cited, 0,
+      'cited is derived and starts at zero — a share is not a citation');
   });
 
   test('unfollowing removes the edge', async () => {
