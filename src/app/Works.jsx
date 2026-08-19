@@ -30,7 +30,7 @@ import CreatePost from './CreatePost';
 import { cropStyle } from '../../shared/media-zoom.mjs';
 
 export const KINDS = [
-  { id: 'photo', label: 'Photos', accept: 'image/avif,image/jpeg,image/png,image/webp,image/heic,image/heif', multiple: true,
+  { id: 'photo', label: 'Photos', accept: 'image/jpeg,image/png,image/webp,image/heic', multiple: true,
     empty: 'Photographs and carousels.', invite: 'Share your first photo' },
   { id: 'video', label: 'Videos', accept: 'video/mp4,video/quicktime', multiple: false,
     empty: 'Short clips. Large files are capped while storage is on one small volume.',

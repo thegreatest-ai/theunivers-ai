@@ -602,3 +602,32 @@ test('a picture whose ratio is unknown is CONTAINED, not clipped or spilled', ()
     'the stage must not shrink below its picture — that is what put 165px of it outside the frame');
   assert.match(stage, /overflow:hidden/, 'and nothing escapes even if a future rule reintroduces it');
 });
+
+test('a failed upload does not leave a work that can never render', () => {
+  /*
+   * Two works with no media sit in production — a video and a photo of Frida's from 2026-08-12.
+   * The work is created BEFORE the bytes are sent, so an upload that fails left the row behind:
+   * a tile showing nothing, indistinguishable from a broken product. It is also exactly what a
+   * crashed script of mine produced during the walk, which is how it was recognised.
+   */
+  const src = readFileSync(new URL('../src/app/CreatePost.jsx', import.meta.url), 'utf8');
+  const share = src.slice(src.indexOf('async function share'), src.indexOf('ORIGINAL MEANS'));
+  assert.match(share, /catch[\s\S]*deleteWork/,
+    'the half-made work must be removed when its bytes never arrive');
+  assert.match(share, /setError\(err\.message\)/,
+    'and the UPLOAD error is what survives — not an error about the cleanup');
+});
+
+test('the picker offers only formats the server will actually take', () => {
+  /*
+   * image/avif and image/heif were added to the picker on 2026-08-18 from Instagram's live file
+   * input, without checking server/storage.mjs — which does not list them. Choosing one produced a
+   * failure after the fact, and (before the fix above) a ghost work with it.
+   */
+  const offered = readFileSync(new URL('../src/app/Works.jsx', import.meta.url), 'utf8')
+    .match(/accept: '([^']+)'/g).flatMap((m) => m.slice(9, -1).split(','));
+  const allowed = readFileSync(new URL('../server/storage.mjs', import.meta.url), 'utf8');
+  for (const mime of offered) {
+    assert.ok(allowed.includes(`'${mime}'`), `the picker offers ${mime} and the server refuses it`);
+  }
+});

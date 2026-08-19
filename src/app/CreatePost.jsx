@@ -173,12 +173,13 @@ export default function CreatePost({ kind, accept, multiple, onClose, onShared }
   }
 
   async function share(e) {
+    let created = null;
     e.preventDefault();
     if (!items.length || busy) return;
     setBusy(true);
     setError('');
     try {
-      const w = await api.createWork({
+      const w = created = await api.createWork({
         kind,
         title: '',
         body: text.body,
@@ -193,6 +194,20 @@ export default function CreatePost({ kind, accept, multiple, onClose, onShared }
       }
       onShared();
     } catch (err) {
+      /*
+       * THE WORK IS CREATED BEFORE THE BYTES ARRIVE, so an upload that fails used to leave a row
+       * behind that could never render — a tile on someone's profile showing nothing, with no way
+       * to tell it apart from a bug. Two of those are in production right now: a video and a photo
+       * of Frida's from 2026-08-12, both works with no media at all.
+       *
+       * Removing it is safe precisely here and nowhere else: it has just been created, it has no
+       * media, and nobody can have commented on or cited something that was never visible. If the
+       * removal itself fails we keep the original error — the upload failure is what the person
+       * needs to read, not a second one about tidying up.
+       */
+      if (created?.work?.id) {
+        try { await api.deleteWork(created.work.id); } catch { /* keep the real error */ }
+      }
       setError(err.message);
       setBusy(false);
     }
