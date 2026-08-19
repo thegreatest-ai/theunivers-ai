@@ -68,7 +68,8 @@ server/index.mjs        every route. Large and deliberately so — one file, one
 server/db.mjs           schema + the ensureColumn / table-rebuild patterns
 server/env.mjs          .env loader. Resolves `keychain:NAME` refs — read the header
 server/geocode.mjs      the reverse-geocode provider (swappable, like storage.mjs)
-server/storage.mjs      media provider. One implementation; R2 goes here when video is real
+server/storage.mjs      media provider — volume by default; R2 when the four secrets are set
+server/r2.mjs           S3 signature v4, no SDK. The page never talks to this host.
 shared/                 imported by BOTH server and browser — one definition, no drift
 src/app/                the Bridge product (React)
 src/App.jsx             the marketing scroll (Three.js). Do not put Three.js in /app
@@ -103,8 +104,8 @@ the person, centre-cropped in a circle; initials when absent.
    `GET /api/moderation/queue`. Do not build a web desk (ADR-0007).
 2. **A shared operator token cannot say WHICH human moderated.** Blocking the moment a second
    person can moderate.
-3. **Media lives on a ~900MB Fly volume.** Fine for photos; wrong for video. R2 provider goes in
-   `server/storage.mjs`.
+3. **R2 is built and not turned on.** Four secrets (`R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`,
+   `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`) — same shape as GitHub OAuth. Volume until then.
 4. **Comments are flat and chronological.** Instagram is two-level and ranked. A deliberate
    decision has never been made — currently it is a default.
 

@@ -39,7 +39,7 @@ someone works has to be quiet and fast.
 | Layer | Choice | Why |
 |---|---|---|
 | Server | Node 22+, **zero dependencies** | `node:sqlite`, `node:http`, `fetch` and `node:crypto` cover everything needed. No supply chain to audit, no lockfile drift. |
-| Storage | SQLite on a Fly volume, WAL | One machine, one file. Postgres is the upgrade path, not the starting point — and the trigger for taking it is a **second machine**, not a row count. A Fly volume attaches to exactly one machine, and measured write throughput is ~69,000/sec. See `docs/specs/SCALING.md`. |
+| Storage | SQLite on a Fly volume, WAL | One machine, one file. Media defaults to the same volume; R2 is a second `put`/`get`/`remove` in `server/storage.mjs` when the four `R2_*` secrets are set. Postgres is the upgrade path for the database — trigger is a **second machine**, not a row count. See `docs/specs/SCALING.md` and `docs/specs/R2-MEDIA.md`. |
 | Frontend | Vite + React 18 + react-router-dom | |
 | Mail | Resend over HTTPS | SMTP would need a client library and a long-lived connection; this is one `fetch`. |
 | Auth | scrypt + opaque session tokens | `node:crypto` has scrypt. No JWT: revocation matters more here than statelessness. |

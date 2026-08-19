@@ -99,23 +99,15 @@ time. That makes a leak traceable, which deters where a header cannot.
 
 ---
 
-## MEDIUM — media lives on the Fly volume, which is ~900MB
+## MEDIUM — R2 is built and not turned on
 
-Fine for photographs and documents in a pilot. **Wrong for video at any real scale**: twenty-odd
-clips fill the disk, and serving them from `bom` costs $0.12/GB — Fly's most expensive egress band.
-The same bytes on Cloudflare R2 cost nothing to serve.
+The provider lives in `server/r2.mjs`. Puts go to the bucket when `R2_ACCOUNT_ID`,
+`R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` and `R2_BUCKET` are all set; otherwise the Fly volume.
+Serving stays on `/api/media/:id` — a 302 to Cloudflare would be an external image, and `img-src`
+is `'self'`. Brief: `docs/specs/R2-MEDIA.md`.
 
-Guarded rather than ignored: a 120MB per-person quota, per-type size caps, and `/api/metrics`
-reports usage under `scale.volume` — so the day this must move arrives as a warning rather than a
-full disk. That reporting was claimed here before it existed; `storageStats()` was exported and
-never called. It is real now.
-
-**Eight people at the full quota fill the volume, and so do ~22 videos.** The database shares the
-same 900MB. Triggers and the exact shape of an R2 provider are in `docs/specs/SCALING.md`.
-
-**Fix when video is used in earnest:** add an R2 or Tigris provider to `server/storage.mjs`. It is
-written as a provider with one implementation precisely so that is a `put`/`get`/`remove` and
-nothing else.
+**Fix:** `npm run secret` for those four, then a deploy. Do not put them in `fly.toml`. Until then
+the volume is still the disk twenty clips fill.
 
 ---
 
