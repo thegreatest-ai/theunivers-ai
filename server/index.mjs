@@ -891,6 +891,7 @@ route('GET', '/api/profile', (ctx) => {
       receipts: chain.length ?? 0,
       mandates: mandate ? 1 : 0,
       deals: orders?.c ?? 0,
+      cited: citedTotal(user.id),
     },
     chain: { ok: chain.ok, length: chain.length ?? 0, at: chain.at ?? null },
   };
@@ -3440,7 +3441,7 @@ function publicPerson(u, viewerId) {
     bio: u.bio ?? null,
     links,
     trust: trustOf(u.id),
-    counts: followCounts(u.id),
+    counts: { ...followCounts(u.id), cited: citedTotal(u.id) },
     // Both directions, because the interface needs to tell "follow" from "follow back".
     youFollow: viewerId ? follows(viewerId, u.id) : false,
     followsYou: viewerId ? follows(u.id, viewerId) : false,
@@ -3653,6 +3654,16 @@ function refusalItems(agentId) {
   });
 }
 
+/** One row in the guard's own record. Callers must not skip this on a refusal — Messages reads it. */
+function recordGuard(agentId, intent, result) {
+  run(
+    `INSERT INTO mandate_audit (id, agent_id, intent, allowed, code, reason, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `aud_${randomUUID().slice(0, 8)}`, agentId, JSON.stringify(intent),
+    result.ok ? 1 : 0, result.ok ? null : result.code, result.ok ? null : result.reason, now(),
+  );
+}
+
 route('GET', '/api/conversations', (ctx) => {
   if (!ctx.user) return err(401, 'auth required');
   const agent = myAgent(ctx.user.id);
@@ -3788,6 +3799,54 @@ route('GET', '/api/conversations/:id', (ctx) => {
 });
 
 /**
+ * Ask YOUR agent to open a thread with another, addressed by HANDLE.
+ *
+ * This is a session route on purpose. A principal cannot type into an agent-to-agent thread
+ * (ADR-0001); agents already have POST /api/agent/messages. What was missing was the door from
+ * the interface — Discover listed agents and nothing started a conversation. The server acts as
+ * the hosted agent because the model runner is still a stub: the opening note is a template from
+ * the mandate, never a sentence from the body. See docs/specs/CONTACT.md.
+ */
+route('POST', '/api/conversations/contact', (ctx) => {
+  if (!ctx.user) return err(401, 'auth required');
+  const agent = myAgent(ctx.user.id);
+  if (!agent) return err(409, 'deploy an agent first');
+
+  const handle = String(ctx.body.handle ?? ctx.body.to ?? '').trim();
+  const other = counterpartyAgent(handle, ctx.user.id);
+  if (!other || other.hidden) return err(404, 'no agent with that name');
+  if (other.id === agent.id) return err(400, 'an agent cannot message itself');
+
+  const existing = one(
+    `SELECT thread_id FROM agent_message
+      WHERE thread_id = ? LIMIT 1`, threadId(agent.id, other.id));
+  if (existing) return { thread: existing.thread_id, existing: true, ok: true };
+
+  const mandates = all("SELECT * FROM mandate WHERE agent_id = ? AND status = 'active'", agent.id);
+  const intent = { kind: 'message' };
+  if (mandates[0]?.commodity) intent.commodity = mandates[0].commodity;
+  // Opening a thread is not a deal. Standing binds when terms are offered. Supplying a
+  // resolved tier on this intent would make every unanchored account refuse every other
+  // unanchored account, and the first five minutes would never show a thread.
+  const result = checkMandates(mandates, intent);
+  recordGuard(agent.id, intent, result);
+  if (!result.ok) return err(409, result.reason, undefined, result.code);
+
+  const id = `amsg_${randomUUID().slice(0, 8)}`;
+  const thread = threadId(agent.id, other.id);
+  run(
+    `INSERT INTO agent_message
+       (id, thread_id, from_agent_id, to_agent_id, kind, body, terms, ref, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    id, thread, agent.id, other.id, 'note',
+    `Opening a thread under the mandate for ${intent.commodity}.`,
+    null, null, now(),
+  );
+  publishAll([agent.user_id, other.user_id], 'message', {});
+  return { id, thread, existing: false, ok: true };
+});
+
+/**
  * An agent writes to another agent, addressed by HANDLE.
  *
  * The sender is taken from the token and never from the body — the same rule as everywhere else
@@ -3837,12 +3896,7 @@ route('POST', '/api/agent/intents/check', (ctx) => {
   const result = checkMandates(mandates, ctx.body, {
     counterpartyTier: resolveTier(ctx.body.counterpartyUserId),
   });
-  run(
-    `INSERT INTO mandate_audit (id, agent_id, intent, allowed, code, reason, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    `aud_${randomUUID().slice(0, 8)}`, agent.id, JSON.stringify(ctx.body),
-    result.ok ? 1 : 0, result.ok ? null : result.code, result.ok ? null : result.reason, now(),
-  );
+  recordGuard(agent.id, ctx.body, result);
   const mandate = mandates[0] ? publicMandate(mandates[0]) : null;
   return { ...result, mandate };
 });

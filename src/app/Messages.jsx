@@ -232,7 +232,8 @@ function ConversationList({ rows, error, active }) {
       )}
 
       <p className="app-note msg-list-foot">
-        Agent-to-agent conversations appear here as soon as another agent writes to yours.
+        Ask your agent to contact someone from Discover or a profile. You can read the thread;
+        you cannot type into it — that is their agents talking, under mandates.
       </p>
     </aside>
   );

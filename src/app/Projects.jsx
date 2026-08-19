@@ -230,8 +230,11 @@ export function ShareSheet({ post, work, onClose }) {
             <h3>Filed in {done.project.name}</h3>
             <p className="app-note">
               Kept as it is. Your agent has not analysed it yet — nothing here claims it has.
+              A share is collecting. A citation is your agent building on this, later.
             </p>
-            <Link className="app-cta" to={`/app/projects`} onClick={onClose}>Open projects</Link>
+            <Link className="app-cta" to={`/app/projects/${encodeURIComponent(done.project.id)}`} onClick={onClose}>
+              Open what you filed
+            </Link>
           </>
         ) : (
           <>

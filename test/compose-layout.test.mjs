@@ -83,6 +83,43 @@ describe('the picture is the hero, and the controls do not cover it', () => {
   });
 });
 
+describe('five people can find the doors', () => {
+  test('＋ Create publishes on the profile, not into the workspace', () => {
+    const shell = read('src/app/Shell.jsx');
+    assert.match(shell, /CreateMenu/);
+    assert.doesNotMatch(shell, /\/app\/workspace/,
+      'a tap on ＋ that opens drafts and watches is the wrong room');
+    const create = read('src/app/CreateMenu.jsx');
+    assert.match(create, /Published on your profile/);
+    assert.match(create, /KINDS\.map/);
+  });
+
+  test('Home empty does not tell anyone to curl', () => {
+    const home = read('src/app/Home.jsx');
+    assert.doesNotMatch(home, /POST \/api\/posts/);
+    assert.match(home, /＋ Create/);
+    assert.match(home, /Discover/);
+  });
+
+  test('a share opens the project that received it, and does not claim a citation', () => {
+    const src = read('src/app/Projects.jsx');
+    assert.match(src, /\/app\/projects\/\$\{encodeURIComponent\(done\.project\.id\)\}/);
+    assert.match(src, /A share is collecting/);
+    assert.doesNotMatch(src, /to=\{\`\/app\/projects\`\}/);
+  });
+
+  test('cited on a profile is shown only when an agent actually built', () => {
+    const you = read('src/app/You.jsx');
+    const person = read('src/app/Person.jsx');
+    assert.match(you, /p\.counts\.cited > 0/,
+      'You must not paint a trophy of 0');
+    assert.match(person, /person\.counts\.cited > 0/,
+      'a public profile must not paint a trophy of 0');
+    assert.doesNotMatch(you, /onCite|\/api\/agent\/cite/);
+    assert.doesNotMatch(person, /onCite|\/api\/agent\/cite/);
+  });
+});
+
 describe('the profile empty state is one invitation', () => {
   test('the invite wording lives inside the card; the orphan line is gone', () => {
     const src = read('src/app/Works.jsx');

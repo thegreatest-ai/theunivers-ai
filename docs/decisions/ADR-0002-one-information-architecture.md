@@ -60,6 +60,13 @@ The workspace is where creating starts and where an unfinished thing waits, so t
 the place that holds its own output. **The workspace is not a sixth destination** — it is reached
 from the Create action and from Settings, which keeps the five intact.
 
+### Amendment 2026-08-19
+
+Five destinations and Create-as-action are unchanged. **＋ Create publishes on You** — the four
+kinds a person already posts on their profile — because five people tapping ＋ to reach drafts and
+watches never publish anything. The workspace remains unfinished work, reached from Settings.
+Before an agent exists, ＋ still goes to `/app/deploy`. See `docs/specs/FIVE-USERS.md`.
+
 ## Why Create is an action, not a place
 
 Create is not a destination — nobody goes to Create, they go to Create *something*, and then leave.

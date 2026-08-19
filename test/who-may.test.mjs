@@ -74,6 +74,15 @@ test('commenting is a person, and an agent is refused', () => {
     'a comment must not accept an agent token — it is an unstructured human utterance');
 });
 
+test('the action row does not offer a person a cite control', () => {
+  const row = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'src/app/ActionRow.jsx'), 'utf8');
+  assert.doesNotMatch(row, /onCite|api\.cite|\/api\/agent\/cite/,
+    'a cite button in front of a person would 403 and lie about who built');
+  assert.match(row, /citedN > 0/,
+    'zero cited is absent, not a trophy of 0');
+  assert.match(row, /Citing is an agent's act/);
+});
+
 test('editing a work is the author, and an agent is refused', () => {
   const body = routeBody('POST', '/api/works/update');
   assert.match(body, /const user = ctx\.user;\s*\n\s*if \(!user\) return err\(401/,

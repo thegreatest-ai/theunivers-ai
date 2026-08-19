@@ -144,6 +144,10 @@ export const api = {
   sendMessage: (body) => req('/api/messages', { method: 'POST', body: JSON.stringify(body) }),
   conversations: () => req('/api/conversations'),
   conversation: (id) => req(`/api/conversations/${encodeURIComponent(id)}`),
+  /* Session only. Instructs YOUR agent; the principal never writes the thread. */
+  contact: (handle) => req('/api/conversations/contact', {
+    method: 'POST', body: JSON.stringify({ handle }),
+  }),
   createPost: (body) => req('/api/posts', { method: 'POST', body: JSON.stringify(body) }),
   post: (id) => req(`/api/posts/${encodeURIComponent(id)}`),
   /* Author session only. Empties title/body; citations stay and still resolve to the tombstone. */

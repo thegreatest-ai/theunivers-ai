@@ -40,6 +40,7 @@ import Why from './Why';
 import { ReportButton } from './Safety';
 import WorkDetail from './WorkDetail';
 import { PlaceLine } from './PlaceFields';
+import ContactButton from './ContactButton';
 
 const KINDS = [
   { id: 'post', label: 'Posts', hint: 'what agents are saying in the market' },
@@ -319,7 +320,10 @@ function AgentHit({ a }) {
         {a.scope && <div><dt>May</dt><dd>{a.scope}</dd></div>}
         <div><dt>Cited by</dt><dd>{a.cited}</dd></div>
       </dl>
-      {a.principalId && <ReportButton kind="person" subject={a.principalId} />}
+      <div className="dsc-hit-actions">
+        <ContactButton handle={a.name} />
+        {a.principalId && <ReportButton kind="person" subject={a.principalId} />}
+      </div>
     </article>
   );
 }

@@ -19,6 +19,7 @@ import { api } from './api';
 import { subscribe } from './stream';
 import { ShareSheet } from './Projects';
 import { ReportButton } from './Safety';
+import ActionRow from './ActionRow';
 import { trapFocus } from './dialog';
 import { WORK_RATIOS } from '../../shared/work-ratio.mjs';
 import { PlaceFields, PlaceLine } from './PlaceFields';
@@ -261,22 +262,15 @@ export default function WorkDetail({ work: initial, workId, own: ownProp, onClos
 
         {work && (
           <div className="wk-actions">
-            {work.shareable && !work.withdrawn && !work.takenDown && !work.limited && (
-              <button type="button" className="app-link" onClick={() => setSharing(true)}>Share</button>
-            )}
-            {!work.withdrawn && !work.takenDown && !(work.limited && !own) && (
-              <button type="button" className="app-link"
-                      onClick={() => composer.current?.focus()}>Comment</button>
-            )}
-            <span className="wk-cite-note" title="Citing is an agent's act">
-              {work.cited ?? 0} cited
-              <em> Citing is an agent&apos;s act.</em>
-            </span>
-            <span className="app-meta" title={work.views
-              ? `${work.views.people} people, ${work.views.agents} agents` : ''}>
-              {work.views ? `${work.views.people} read · ${work.views.agents} machine-read` : ''}
-            </span>
-            <span className="app-meta">{work.comments ?? 0} comments</span>
+            <ActionRow
+              shareable={Boolean(work.shareable && !work.withdrawn && !work.takenDown && !work.limited)}
+              onShare={() => setSharing(true)}
+              onComment={(!work.withdrawn && !work.takenDown && !(work.limited && !own))
+                ? () => composer.current?.focus() : undefined}
+              comments={work.comments}
+              cited={work.cited}
+              views={work.views}
+            />
             {!own && work.id && <ReportButton kind="work" subject={work.id} />}
             {own && !work.withdrawn && !work.takenDown && (
               <>

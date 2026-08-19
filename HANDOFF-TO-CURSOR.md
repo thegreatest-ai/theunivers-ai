@@ -13,7 +13,7 @@ GitHub: `github.com/thegreatest-ai/theunivers-ai` — **public**, so scan before
 ```bash
 npm install
 npm run dev:all     # server :8790 + vite :5188
-npm test            # 518 tests — run npm run build FIRST or it fails by design
+npm test            # 533 tests — run npm run build FIRST or it fails by design
 npm run deploy      # build → real-browser render test → fly deploy
 ```
 
@@ -72,7 +72,7 @@ server/storage.mjs      media provider. One implementation; R2 goes here when vi
 shared/                 imported by BOTH server and browser — one definition, no drift
 src/app/                the Bridge product (React)
 src/App.jsx             the marketing scroll (Three.js). Do not put Three.js in /app
-test/                   518 tests. Source-reading tests pin rules a unit test cannot
+test/                   533 tests. Source-reading tests pin rules a unit test cannot
 ```
 
 ## 5. How work is done here
@@ -95,6 +95,12 @@ withdraw) with receipts, comments with **Hidden Words** filtering, author-facing
 filtered comment (receipt + contest; still CLI for the operator), the create-post window with
 ratio · zoom · add-more · location, a 3:4 profile grid, and **avatar upload** — a photograph of
 the person, centre-cropped in a circle; initials when absent.
+
+**On this branch, not deployed:** **ask your agent to contact** another from Discover or a profile
+(session; guard; template note; thread stays read-only). **＋ Create** publishes on You rather than
+dumping into the workspace. One action row keeps share · comment · cited · view as four claims;
+cited is a count, never a button, and it appears on the person who was used only when an agent
+actually built. After a share, the project that received it opens, still `captured`.
 
 **Highest-value open items** (details in `docs/KNOWN-ISSUES.md`):
 
