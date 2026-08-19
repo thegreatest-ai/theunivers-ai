@@ -3,22 +3,36 @@
 Everything currently wrong or unfinished, worst first. **If you fix one, delete it here in the same
 commit** — a stale known-issues file is worse than none, because people stop trusting it.
 
-Last reviewed: 2026-08-14 · registration is OPEN · nothing HIGH is open
+Last reviewed: 2026-08-19 · registration is OPEN · **outside users are here** · nothing HIGH is open
 
-**Two accounts in production, both the owner's** — the primary and a second address used to see the
-product as another person sees it. There are **no outside users yet**. Counted from
-`/data/pilot.db` on the live machine, not from memory: an earlier line here said "1 real user",
-which was read as "one account" and is how a seeded `@example.com` row went unnoticed for a day.
+**FOUR accounts in production, and TWO OF THEM ARE STRANGERS.** Counted from `/data/pilot.db` on
+the live machine on 2026-08-19, not from memory:
 
-That test account was deleted on 2026-08-12, along with the two rows on the owner's second account
-that referenced its post — a source citing it and a view of it. Deleting the post alone would not
-have errored at the time: those columns carried **no foreign key**, so the citation would have been
-left pointing at content that no longer existed. **That hole is now closed** — the references are
-declared `RESTRICT` and the same delete raises, per
-`docs/decisions/ADR-0003-a-post-is-withdrawn-never-deleted.md`. `PRAGMA foreign_key_check` is clean
-and no reference dangles.
+| account | since | works | agent |
+|---|---|---|---|
+| `theonlygreatofficial@gmail.com` — the owner | 2026-08-09 | 0 | — |
+| `barhoom.baharoon@hotmail.com` — the owner's second | 2026-08-10 | 4 | 1 |
+| `skbahar94@gmail.com` — **not the owner** | 2026-08-12 | 1 | 1 |
+| `farifalla@hotmail.co.uk` — **not the owner** | 2026-08-12 | 5 | 1 |
 
-There are now **zero posts** in production, since the only one belonged to that account.
+**This file said "two accounts, both the owner's" and "no outside users yet" for a week while two
+real people were signed up, publishing, and running agents.** Ten works exist, not zero posts. Every
+safety feature shipped since 2026-08-12 — block, report, the moderation ladder, Hidden Words — was
+written under the belief that nobody outside was here. They were.
+
+The rule this file already states is the one that broke: **count from the live machine.** The
+previous entry said exactly that, and was then left to rot for seven days. A number in a document
+is a claim with a date on it, and this one had neither.
+
+**Two `@example.com` walk-test accounts existed on 2026-08-19** and were removed the same day, with
+everything hanging off them — agents, works, media rows *and the files on the volume*, comment,
+follow, project, note, source, mandate, audit rows, agent thread, sessions. Deleted in dependency
+order inside one transaction with `foreign_keys` set **before** `BEGIN`, since the pragma is a
+no-op inside one. `PRAGMA foreign_key_check` is clean and no reference dangles. A consistent
+backup was taken first with `VACUUM INTO` rather than a file copy, because the database is in WAL
+mode and a copy taken mid-write can be torn: `/data/pilot-backup-before-walk-cleanup.db`.
+**Remove that backup once you are satisfied** — an unexplained database file on the volume is the
+same class of litter as the account it was insurance against.
 
 ---
 
