@@ -21,6 +21,8 @@ import { Link, useOutletContext } from 'react-router-dom';
 import { api } from './api';
 import Works from './Works';
 import Avatar from './Avatar';
+import { Contest } from './Contest';
+import { moderationSentence } from '../../shared/moderation-actions.mjs';
 
 const TAB = ['Published', 'Agent', 'Anchors', 'Receipts'];
 
@@ -69,6 +71,18 @@ export default function You() {
     );
   }
   if (!p) return <p className="app-note you-pad">Loading…</p>;
+
+  function reloadChain() {
+    return api.receipts()
+      .then((d) => { setChainRows(d.receipts || []); setChainError(''); })
+      .catch((e) => setChainError(e.message));
+  }
+
+  function latestFor(subject) {
+    // chainFor is newest-first, so the first match is the latest act on that subject.
+    return chainRows.find((r) => r.payload?.subject === subject
+      && String(r.type).startsWith('moderation.'));
+  }
 
   return (
     <div className="you">
@@ -201,21 +215,41 @@ export default function You() {
           {chainError && <p className="app-error">{chainError}</p>}
           {!chainError && chainRows.length === 0 && <p className="app-note">Nothing recorded yet.</p>}
           <ol className="deal-chain">
-            {chainRows.map((r) => (
-              <li key={r.id}>
-                <span className="deal-seq">{r.seq}</span>
-                <span className="deal-rtype">{r.type}</span>
-                <span className="app-meta">{new Date(r.created_at).toLocaleDateString()}</span>
-                <code className="deal-hash" title={r.hash}>{r.hash.slice(0, 12)}…</code>
-                {String(r.type).startsWith('moderation.') && (
-                  <p className="app-note" style={{ margin: '6px 0 0' }}>
-                    Your appeal goes directly to the operator of this node
-                    {r.payload?.operator ? ` (${r.payload.operator})` : ''}.
-                    There is no panel.
-                  </p>
-                )}
-              </li>
-            ))}
+            {chainRows.map((r) => {
+              const sentence = moderationSentence(r.type, r.payload);
+              const subject = r.payload?.subject;
+              const latest = subject ? latestFor(subject) : null;
+              const canContest = r.type === 'moderation.limited'
+                && r.payload?.subjectKind === 'comment'
+                && latest?.id === r.id;
+              return (
+                <li key={r.id}>
+                  <span className="deal-seq">{r.seq}</span>
+                  <span className="deal-rtype">{r.type}</span>
+                  <span className="app-meta">{new Date(r.created_at).toLocaleDateString()}</span>
+                  <code className="deal-hash" title={r.hash}>{r.hash.slice(0, 12)}…</code>
+                  {sentence && (
+                    <p className="app-note" style={{ margin: '6px 0 0', flexBasis: '100%' }}>
+                      {sentence}
+                    </p>
+                  )}
+                  {String(r.type).startsWith('moderation.') && !canContest && (
+                    <p className="app-note" style={{ margin: '6px 0 0', flexBasis: '100%' }}>
+                      Your appeal goes directly to the operator of this node
+                      {r.payload?.operator ? ` (${r.payload.operator})` : ''}.
+                      There is no panel.
+                    </p>
+                  )}
+                  {canContest && (
+                    <Contest
+                      commentId={subject}
+                      operator={r.payload?.operator}
+                      onDone={reloadChain}
+                    />
+                  )}
+                </li>
+              );
+            })}
           </ol>
         </div>
       )}

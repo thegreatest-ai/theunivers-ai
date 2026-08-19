@@ -87,3 +87,10 @@ name.
 
 ## Done
 `npm run build && npm test` green, rules tested, commit in the house style. Do not deploy.
+
+## Amended by `docs/specs/APPEAL.md`
+
+Decision 2 still holds for **POST**: 200, byte-identical, no toast. The author learns a limit
+happened from a receipt on their chain (ADR-0007 §4) and may contest it. GET may mark `hidden` /
+`appealed` on the author's own hidden comments only — never a client-side filter of other people's
+rows, never a public badge.

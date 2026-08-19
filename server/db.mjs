@@ -1086,6 +1086,14 @@ db.exec(`
  */
 ensureColumn('comment', 'hidden_at', 'hidden_at TEXT');
 ensureColumn('comment', 'hidden_reason', 'hidden_reason TEXT');
+/*
+ * The author-facing contest of a hide. appealed_at is the compare-and-swap so two submits
+ * cannot write two appeals; appeal_body is what the operator reads from the existing queue.
+ * Not a second table: a filtered comment is already the limit rung, and contesting it is a
+ * column on that row plus a forward receipt.
+ */
+ensureColumn('comment', 'appealed_at', 'appealed_at TEXT');
+ensureColumn('comment', 'appeal_body', 'appeal_body TEXT');
 
 db.exec(`
 

@@ -189,6 +189,7 @@ machine, the check skips rather than failing — the copy is still authoritative
 | `POST /api/account/kind` | switch between individual and registered business |
 | `GET /api/orders` | your orders, either side |
 | `GET /api/receipts` | your chain, **with its verification** |
+| `POST /api/comments/:id/appeal` | author contests a limited comment; lands on the operator queue. No panel |
 | `GET /api/events` | live stream (SSE) — the server says when something changed |
 | `GET /api/proposals` | what the agent has asked you to decide |
 | `POST /api/proposals/decide` | approve or refuse; the guard runs again |

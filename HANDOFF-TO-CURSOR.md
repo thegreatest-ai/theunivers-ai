@@ -13,7 +13,7 @@ GitHub: `github.com/thegreatest-ai/theunivers-ai` — **public**, so scan before
 ```bash
 npm install
 npm run dev:all     # server :8790 + vite :5188
-npm test            # 512 tests — run npm run build FIRST or it fails by design
+npm test            # 518 tests — run npm run build FIRST or it fails by design
 npm run deploy      # build → real-browser render test → fly deploy
 ```
 
@@ -72,7 +72,7 @@ server/storage.mjs      media provider. One implementation; R2 goes here when vi
 shared/                 imported by BOTH server and browser — one definition, no drift
 src/app/                the Bridge product (React)
 src/App.jsx             the marketing scroll (Three.js). Do not put Three.js in /app
-test/                   512 tests. Source-reading tests pin rules a unit test cannot
+test/                   518 tests. Source-reading tests pin rules a unit test cannot
 ```
 
 ## 5. How work is done here
@@ -91,14 +91,16 @@ message that will be reversed by somebody who did not know.
 
 **Shipped and live:** auth (password + Google OAuth), agents and mandates, orders with receipts,
 Discover, the follow graph, block/report, the full moderation ladder (limit · takedown · dismiss ·
-withdraw) with receipts, comments with **Hidden Words** filtering, the create-post window with
+withdraw) with receipts, comments with **Hidden Words** filtering, author-facing **appeal** of a
+filtered comment (receipt + contest; still CLI for the operator), the create-post window with
 ratio · zoom · add-more · location, a 3:4 profile grid, and **avatar upload** — a photograph of
 the person, centre-cropped in a circle; initials when absent.
 
 **Highest-value open items** (details in `docs/KNOWN-ISSUES.md`):
 
 1. **No operator interface in the browser.** Releasing a filtered comment or clearing the
-   moderation queue is CLI-only.
+   moderation queue is CLI-only. The author can now contest; the operator still reads
+   `GET /api/moderation/queue`. Do not build a web desk (ADR-0007).
 2. **A shared operator token cannot say WHICH human moderated.** Blocking the moment a second
    person can moderate.
 3. **Media lives on a ~900MB Fly volume.** Fine for photos; wrong for video. R2 provider goes in

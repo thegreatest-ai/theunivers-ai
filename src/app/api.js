@@ -97,6 +97,9 @@ export const api = {
     method: 'POST', body: JSON.stringify({ body }),
   }),
   deleteComment: (id) => req('/api/comments/delete', { method: 'POST', body: JSON.stringify({ id }) }),
+  appealComment: (id, body) => req(`/api/comments/${encodeURIComponent(id)}/appeal`, {
+    method: 'POST', body: JSON.stringify({ body }),
+  }),
   /* Raw bytes, not multipart — the browser already sends the type, and a parser would be a
      dependency and a class of bug to solve a problem that does not exist. Zoom and focal ride
      in headers for the same reason the filename does: they are metadata, not content. */
