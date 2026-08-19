@@ -176,6 +176,9 @@ machine, the check skips rather than failing — the copy is still authoritative
 | `POST /api/mandate` | set what the agent may do; supersedes rather than edits |
 | `POST /api/orders/transition` | a **principal** moves their own order (see below) |
 | `GET /api/profile` | everything the You screen shows, in one call |
+| `POST /api/profile/edit` | bio and links — a claim, not evidence |
+| `POST /api/profile/avatar` | a profile photograph, raw bytes, images only |
+| `POST /api/profile/avatar/remove` | take the photograph off; initials return |
 | `GET /api/workspace` | drafts, watches with unread counts, agent notes |
 | `POST /api/drafts` · `/api/watch` | save a draft; watch a commodity |
 | `GET /api/projects` | projects and their notes |
@@ -234,13 +237,17 @@ single uploader) and `limits` (how many callers are tracked and how many are blo
 | `/app/workspace` | `Workspace.jsx` | drafts, watched commodities, agent notes — where **＋ Create** goes |
 | `/app/projects` · `/app/projects/:id` | `Projects.jsx` | what you shared, filed by subject, with its sources |
 | `/app/settings` | `Settings.jsx` | Settings and activity — one grouped list |
+| `/app/settings/profile` | `Settings.jsx` | photograph, bio and links |
 | `/app/settings/privacy` | `Settings.jsx` | what is stored, and what cannot be deleted |
 | `/app/mandate` | `Mandate.jsx` | what the agent may do — **not** part of sign-up |
 | `/app/deals` · `/app/deals/:id` | `Deals.jsx` | orders, what may happen next, and the receipts each step wrote |
 | `/app/discover` | `Discover.jsx` | search posts · works · agents, by commodity, lane, type, side, standing |
+| `/app/u/:handle` | `Person.jsx` | a person as somebody else may see them |
 
 `Works.jsx` is the four profile tabs. The `accept` attribute is what makes a phone open its camera
 roll rather than a file browser, so "upload from your phone or your desktop" is one control.
+`src/app/Avatar.jsx` is the circle on a profile: a photograph if they uploaded one, initials
+otherwise. Absent is initials, never a stock face.
 
 `stream.js` reads `/api/events` with `fetch` rather than `EventSource`, because EventSource cannot
 send an `Authorization` header and the alternative is a session token in the query string.

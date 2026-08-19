@@ -456,7 +456,12 @@
    the same row it squeezed a name into two lines on a 360px screen to make space for a link. */
 .you-head{display:grid;gap:12px 16px;grid-template-columns:auto minmax(0,1fr);align-items:start}
 .you-avatar{width:68px;height:68px;border-radius:99px;flex:none;display:grid;place-items:center;
-  font-size:1.4rem;font-weight:600;color:#fff;background:var(--grad)}
+  font-size:1.4rem;font-weight:600;color:#fff;background:var(--grad);overflow:hidden}
+.you-avatar img{width:100%;height:100%;object-fit:cover;display:block;border-radius:inherit}
+.you-avatar-sm{width:40px;height:40px;font-size:.85rem}
+.you-avatar-link{display:block;width:68px;height:68px;border-radius:99px;flex:none;
+  text-decoration:none;color:inherit}
+.you-avatar-link:hover{opacity:.9}
 .you-id{min-width:0}
 .you-id h1{margin:0;font-size:1.3rem;line-height:1.2;overflow-wrap:anywhere}
 .you-handle{margin:2px 0 4px;color:var(--cyan);font-size:.9rem;overflow-wrap:anywhere}
@@ -511,8 +516,10 @@
 .you-people h3{margin:0 0 8px;font-size:.9rem}
 .you-person{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
 .you-person:last-child{border-bottom:none}
-.you-person>a,.you-person-name{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;text-decoration:none;color:var(--text)}
+.you-person>a,.you-person-name{flex:1;min-width:0;display:flex;flex-direction:row;align-items:center;
+  gap:12px;text-decoration:none;color:var(--text)}
 .you-person>a:hover,.you-person-name:hover{color:var(--cyan)}
+.you-person-id{min-width:0;display:flex;flex-direction:column;gap:2px}
 
 .follow-wrap{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
 .you-head .follow-wrap{grid-column:unset}
@@ -525,6 +532,9 @@
 }
 
 .set-profile{display:flex;flex-direction:column;gap:18px}
+.set-photo{display:flex;align-items:center;gap:16px}
+.set-photo-actions{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
+.set-photo-pick{min-height:44px;display:inline-flex;align-items:center;cursor:pointer}
 .set-link-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr) auto;gap:8px;align-items:center}
 .set-link-row input{padding:11px 13px;border-radius:11px;font-family:inherit;font-size:.94rem;color:#fff;
   background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);outline:none;min-width:0}
@@ -982,7 +992,7 @@ button.wk-file{width:100%;background:none;border:none;border-bottom:1px solid va
    it may do", and it is the wrong blue on a dark background besides. Scoped to the content
    containers so it cannot reach the navigation, which colours itself. */
 .settings a:not(.app-link):not(.app-cta):not(.app-ghost),
-.you a:not(.app-link):not(.app-cta):not(.app-ghost):not(.you-settings):not(.you-person-name),
+.you a:not(.app-link):not(.app-cta):not(.app-ghost):not(.you-settings):not(.you-person-name):not(.you-avatar-link),
 .deal-empty a:not(.app-cta):not(.app-ghost),
 .deal-detail a:not(.app-cta):not(.app-ghost),
 .ws a:not(.app-link):not(.app-cta):not(.app-ghost),

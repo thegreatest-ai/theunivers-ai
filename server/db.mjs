@@ -342,10 +342,15 @@ db.exec(`
    *
    * path is generated and filename is what the person called it — the two are kept apart so a
    * user-supplied name never reaches the filesystem.
+   *
+   * work_id is NULLABLE: an avatar is a media row that does not belong to a work. A profile
+   * photograph is identity presentation, not a published work, and stuffing it into a fake work
+   * would put a face in the 3:4 grid. NULL means avatar; a real id means a slide. See
+   * docs/specs/AVATAR-UPLOAD.md.
    */
   CREATE TABLE IF NOT EXISTS media (
     id         TEXT PRIMARY KEY,
-    work_id    TEXT NOT NULL REFERENCES work(id),
+    work_id    TEXT REFERENCES work(id),
     user_id    TEXT NOT NULL REFERENCES user(id),
     mime       TEXT NOT NULL,
     kind       TEXT NOT NULL,
@@ -839,6 +844,70 @@ ensureColumn('media', 'height', 'height INTEGER');
 ensureColumn('media', 'zoom', 'zoom REAL NOT NULL DEFAULT 1');
 ensureColumn('media', 'focal_x', 'focal_x REAL NOT NULL DEFAULT 50');
 ensureColumn('media', 'focal_y', 'focal_y REAL NOT NULL DEFAULT 50');
+
+/*
+ * Avatar: a pointer on the person, and a media row with no work.
+ *
+ * avatar_id is TEXT rather than a declared foreign key because clearing it and deleting the
+ * row is one transaction we already control, and a rebuild of user for a pointer is ceremony.
+ * The media row is the file; NULL here means initials, and initials are what absent looks like.
+ */
+ensureColumn('user', 'avatar_id', 'avatar_id TEXT');
+
+/*
+ * Existing databases created media.work_id as NOT NULL. SQLite cannot ALTER that. The rebuild
+ * below is the same procedure as ensureForeignKeys: toggle constraints outside the transaction,
+ * copy by name, check before commit. Idempotent: PRAGMA table_info.notnull is 0 once the new
+ * shape is in place, and a fresh database already created the nullable column above.
+ */
+(function ensureMediaWorkIdNullable() {
+  const cols = db.prepare('PRAGMA table_info(media)').all();
+  if (cols.length === 0) return;
+  const work = cols.find((c) => c.name === 'work_id');
+  if (!work || work.notnull === 0) return;
+
+  const list = cols.map((c) => `"${c.name}"`).join(', ');
+  db.exec('PRAGMA foreign_keys = OFF');
+  try {
+    db.exec('BEGIN');
+    db.exec(`CREATE TABLE "media__new" (
+      id         TEXT PRIMARY KEY,
+      work_id    TEXT REFERENCES work(id),
+      user_id    TEXT NOT NULL REFERENCES user(id),
+      mime       TEXT NOT NULL,
+      kind       TEXT NOT NULL,
+      bytes      INTEGER NOT NULL,
+      path       TEXT NOT NULL,
+      filename   TEXT NOT NULL DEFAULT '',
+      ordinal    INTEGER NOT NULL DEFAULT 0,
+      width      INTEGER,
+      height     INTEGER,
+      zoom       REAL NOT NULL DEFAULT 1,
+      focal_x    REAL NOT NULL DEFAULT 50,
+      focal_y    REAL NOT NULL DEFAULT 50,
+      created_at TEXT NOT NULL
+    )`);
+    db.exec(`INSERT INTO "media__new" (${list}) SELECT ${list} FROM "media"`);
+    db.exec('DROP TABLE "media"');
+    db.exec('ALTER TABLE "media__new" RENAME TO "media"');
+    db.exec('CREATE INDEX IF NOT EXISTS media_work_idx ON media(work_id, ordinal)');
+    db.exec('CREATE INDEX IF NOT EXISTS media_user_idx ON media(user_id)');
+    const bad = db.prepare('PRAGMA foreign_key_check').all();
+    if (bad.length) {
+      throw new Error(
+        `media: ${bad.length} row(s) reference something that does not exist — ` +
+        `${JSON.stringify(bad.slice(0, 3))}. Nothing was changed.`,
+      );
+    }
+    db.exec('COMMIT');
+    console.log('[db] media: work_id is nullable, so an avatar can live here without a fake work');
+  } catch (e) {
+    try { db.exec('ROLLBACK'); } catch { /* already rolled back */ }
+    throw e;
+  } finally {
+    db.exec('PRAGMA foreign_keys = ON');
+  }
+})();
 
 /*
  * Person-to-person messaging was built on 2026-08-12 and removed the same day: the agent is the

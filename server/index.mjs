@@ -1329,6 +1329,21 @@ function mediaUrl(id) {
   return `/api/media/${id}?e=${exp}&s=${signMedia(id, exp)}`;
 }
 
+/**
+ * The photograph a person presents, or null.
+ *
+ * Null when they have never uploaded one, and also when the pointer is stale — a missing media
+ * row must not become a broken img. Absent renders as initials, never as a guessed URL.
+ */
+function avatarPayload(u) {
+  if (!u?.avatar_id) return null;
+  const m = one(
+    'SELECT id FROM media WHERE id = ? AND user_id = ? AND work_id IS NULL',
+    u.avatar_id, u.id,
+  );
+  return m ? { id: m.id, url: mediaUrl(m.id) } : null;
+}
+
 /** Media rows shaped for a client, with a URL rather than a disk path. */
 const mediaFor = (workId) =>
   all(`SELECT id, mime, kind, bytes, filename, ordinal, width, height, zoom, focal_x, focal_y
@@ -3429,6 +3444,7 @@ function publicPerson(u, viewerId) {
     // Both directions, because the interface needs to tell "follow" from "follow back".
     youFollow: viewerId ? follows(viewerId, u.id) : false,
     followsYou: viewerId ? follows(u.id, viewerId) : false,
+    avatar: avatarPayload(u),
   };
 }
 
@@ -3516,6 +3532,89 @@ route('POST', '/api/profile/edit', (ctx) => {
   if (links !== undefined) run('UPDATE user SET links = ? WHERE id = ?', JSON.stringify(links), ctx.user.id);
 
   return { person: publicPerson(one('SELECT * FROM user WHERE id = ?', ctx.user.id), ctx.user.id) };
+});
+
+/**
+ * Upload a profile photograph.
+ *
+ * Same door as a work's media: raw bytes, the allowlist, the quota, dimensions from the file,
+ * a signed URL. It is NOT a work — putting a face in the 3:4 grid would conflate identity
+ * with what a person publishes. The media row has work_id NULL so mediaFor() cannot see it.
+ *
+ * Replace replaces. An avatar is not cited, so the previous bytes go rather than being
+ * withdrawn: nothing else points at them, and keeping every face a person has ever used
+ * would be a locker we do not have a reason to run.
+ */
+route('POST', '/api/profile/avatar', async (ctx) => {
+  const user = ctx.user;
+  if (!user) return err(401, 'sign in required');
+
+  const mime = String(ctx.headers['content-type'] ?? '').split(';')[0].trim();
+  const spec = store.allowed(mime);
+  if (!spec || spec.kind !== 'image') {
+    return err(415, `${mime || 'that file type'} is not accepted here`);
+  }
+
+  const buf = ctx.raw;
+  if (!buf?.length) return err(400, 'no file received');
+
+  const previous = user.avatar_id
+    ? one('SELECT * FROM media WHERE id = ? AND user_id = ? AND work_id IS NULL', user.avatar_id, user.id)
+    : null;
+  const used = one('SELECT COALESCE(SUM(bytes),0) b FROM media WHERE user_id = ?', user.id)?.b ?? 0;
+  const counted = used - (previous?.bytes ?? 0);
+  if (counted + buf.length > store.QUOTA_BYTES) {
+    return err(413, 'You have used your storage allowance. Remove something first.');
+  }
+
+  let put;
+  try { put = store.put(buf, mime); } catch (e) { return err(413, e.message); }
+
+  const size = imageSize(buf, mime);
+  const filename = String(ctx.headers['x-filename'] ?? '').slice(0, 160);
+  const at = now();
+
+  try {
+    inTransaction(() => {
+      run(`INSERT INTO media (id, work_id, user_id, mime, kind, bytes, path, filename, ordinal,
+             width, height, created_at)
+           VALUES (?, NULL, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
+          put.id, user.id, mime, put.kind, put.bytes, put.path, filename,
+          size?.width ?? null, size?.height ?? null, at);
+      run('UPDATE user SET avatar_id = ? WHERE id = ?', put.id, user.id);
+      if (previous) run('DELETE FROM media WHERE id = ?', previous.id);
+    });
+  } catch (e) {
+    store.remove(put.path);
+    throw e;
+  }
+  if (previous) store.remove(previous.path);
+
+  return {
+    person: publicPerson(one('SELECT * FROM user WHERE id = ?', user.id), user.id),
+  };
+});
+
+/**
+ * Take the photograph off. The person stays; initials return. POST, not DELETE: CORS on this
+ * origin allows GET and POST only, and every other erasure in this file is already a POST.
+ */
+route('POST', '/api/profile/avatar/remove', (ctx) => {
+  const user = ctx.user;
+  if (!user) return err(401, 'sign in required');
+
+  const previous = user.avatar_id
+    ? one('SELECT * FROM media WHERE id = ? AND user_id = ? AND work_id IS NULL', user.avatar_id, user.id)
+    : null;
+  inTransaction(() => {
+    run('UPDATE user SET avatar_id = NULL WHERE id = ?', user.id);
+    if (previous) run('DELETE FROM media WHERE id = ?', previous.id);
+  });
+  if (previous) store.remove(previous.path);
+
+  return {
+    person: publicPerson(one('SELECT * FROM user WHERE id = ?', user.id), user.id),
+  };
 });
 
 /** The principal's own agent, or null. Every conversation is anchored to it. */
@@ -3789,6 +3888,7 @@ function publicUser(u) {
     signInMethod: u.password_hash ? 'password' : (u.oauth_provider || 'oauth'),
     // Absent means on. A safety default that must be discovered is not a safety default.
     filterComments: u.filter_comments !== 0,
+    avatar: avatarPayload(u),
   };
 }
 
