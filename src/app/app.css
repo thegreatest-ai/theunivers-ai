@@ -875,11 +875,26 @@ body:has(.wk-detail-back) .nav-fab{display:none}
 .wk-detail-head{display:flex;align-items:center;gap:10px;padding:12px 16px;
   border-bottom:1px solid var(--line)}
 .wk-detail-head .app-link{margin-left:auto}
-.wk-detail-stage{position:relative;width:100%;background:#000;min-height:240px;
+/* A stage whose ratio is UNKNOWN must still contain its picture.
+   Measured before the fix: a 1080x2400 photograph rendered 569px tall inside a 240px stage and
+   hung 165px below it. The cause is height:100% resolving against a parent whose own height is
+   only a min-height — indeterminate, so the image took its natural size and the box did not grow.
+   Two independent ways to reach a null ratio, so this is not a legacy-data problem:
+     - uploaded before server/image-size.mjs shipped (2026-08-13)
+     - HEIC, HEIF or AVIF, which the uploader accepts and the parser cannot read
+   HEIC is what an iPhone produces by default. overflow:hidden is the belt; sizing the image to
+   its own aspect is the braces. */
+.wk-detail-stage{position:relative;width:100%;background:#000;min-height:240px;overflow:hidden;
+  /* flex:0 0 auto is the actual fix. .wk-detail is a COLUMN flex container with max-height:92vh,
+     so this stage was a flex ITEM with the default flex-shrink:1 — compressed to 240px while the
+     photograph inside it stayed 569px, and 165px of somebody's picture hung outside the frame.
+     Not shrinking means the modal scrolls instead, which it is already set up to do. */
+  flex:0 0 auto;
   display:flex;align-items:center;justify-content:center}
 .wk-detail-stage.has-ratio{min-height:0}
-.wk-detail-stage img,.wk-detail-stage video{width:100%;height:100%;object-fit:contain;display:block;
-  max-height:min(70vh,720px)}
+.wk-detail-stage.has-ratio img,.wk-detail-stage.has-ratio video{width:100%;height:100%}
+.wk-detail-stage img,.wk-detail-stage video{width:auto;height:auto;max-width:100%;
+  object-fit:contain;display:block;max-height:min(70vh,720px)}
 .wk-detail-slides{position:absolute;left:0;right:0;bottom:8px;display:flex;justify-content:center;
   align-items:center;gap:12px}
 .wk-detail-thread{padding:18px 16px}
