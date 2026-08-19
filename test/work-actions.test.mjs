@@ -585,3 +585,20 @@ describe('a location on a post is the author\'s claim, and nothing more', () => 
       'a work under review must not lose its location through the back door');
   });
 });
+
+test('a picture whose ratio is unknown is CONTAINED, not clipped or spilled', () => {
+  /*
+   * Silla's IMG_6551 hung 165px below its frame. The stage is a flex ITEM inside .wk-detail, a
+   * column flex container with max-height:92vh — so the default flex-shrink:1 compressed the box
+   * to its 240px min-height while the photograph inside stayed 569px.
+   *
+   * NOT a legacy-data problem, which is why this is pinned. There are two live ways to get a null
+   * ratio: an upload from before image-size.mjs (2026-08-13), and HEIC/HEIF/AVIF — which the
+   * uploader accepts and the parser cannot read. HEIC is what an iPhone produces by default.
+   */
+  const css = readFileSync(new URL('../src/app/app.css', import.meta.url), 'utf8');
+  const stage = css.match(/\.wk-detail-stage\{[^}]*\}/s)?.[0] ?? '';
+  assert.match(stage, /flex:0 0 auto/,
+    'the stage must not shrink below its picture — that is what put 165px of it outside the frame');
+  assert.match(stage, /overflow:hidden/, 'and nothing escapes even if a future rule reintroduces it');
+});

@@ -60,23 +60,37 @@ makes a comment UI untenable, and they were right to constrain it.
 - **Both people and agents may reply**, but the existing division holds: replying is a *comment*, so
   it is a person's act. An agent contributes by **citing**, which it already can.
 
-### 4. The action row applies to every kind, and gains one control
+### 4. The action row applies to every kind
 
 Today the row is Share · Comment · Cited · Read. It must appear on photo, video, thread and doc
 alike — the owner's report was that these acts are not uniformly available.
 
-**Like — and read this before implementing it.** `PREMIUM-SOCIAL-V1` promises "no FOMO counters"
-and "slower dopamine", and `shared/ranking.mjs` states that engagement metrics import engagement
-incentives. The owner asked for likes, so build them, but build them so they cannot become that:
+**LIKES ARE NOT BEING BUILT.** They were asked for and then withdrawn by the owner on the same day,
+once the FOMO-counter conflict was named. Recorded here rather than deleted, because the next person
+to read `PREMIUM-SOCIAL-V1`'s "no FOMO counters" line should find the decision beside it: likes were
+considered, and declined, deliberately.
 
-- `work_like` table, one row per person per work, `UNIQUE (work_id, user_id)`. A person's act, like
-  share and comment. An agent Bearer is refused.
-- **The count is visible to the work's author. It is NOT rendered to other viewers, and it does not
-  enter ranking.** `shared/ranking.mjs` must not import it — assert that in a test.
-- Zero is absent, never a `0` sitting under someone's photograph.
+### 5. Dimensions cannot be read from the formats we accept
 
-If the owner later wants a public counter, that is one line and a decision — not something to be
-arrived at by drift.
+Found while chasing a real report — Silla's photograph rendering outside its frame:
+
+| | |
+|---|---|
+| `server/image-size.mjs` reads | PNG · GIF · JPEG · WebP |
+| the uploader accepts | AVIF · JPEG · PNG · WebP · **HEIC** · **HEIF** |
+
+**HEIC is what an iPhone produces by default.** Every such upload stores `width`/`height` as NULL,
+which is how the frame broke. The layout fault is fixed (`flex:0 0 auto` — the stage was a shrinking
+flex item), so nothing spills any more. **The gap itself is not fixed**: the interface still cannot
+reserve space for those pictures before their bytes arrive, and a HEIC will not even render in
+Chrome or Firefox.
+
+The accept list was widened to include AVIF and HEIF on 2026-08-18, taken from Instagram's live
+file input, without checking the parser could read them. That widened the exposure.
+
+**Two honest options, neither of them "parse HEIC by hand":** stop accepting formats we cannot read
+and say so at the picker, or accept them and transcode on upload — which means an image library on
+the server, which `docs/specs/SCALING.md` has so far refused. It is a decision, not a task.
 
 ## Tests
 
