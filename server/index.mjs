@@ -101,6 +101,22 @@ function operatorAuthorised(ctx) {
   return got.length === want.length && timingSafeEqual(Buffer.from(got), Buffer.from(want));
 }
 
+/**
+ * The named human who operates this node, or nothing.
+ *
+ * ADR-0007: the name appears on the author's appeal path and nowhere else — not on a public
+ * tombstone, not invented when the env is empty. An empty string is absent, not "Operator".
+ */
+function namedOperator() {
+  const name = String(process.env.OPERATOR_NAME || '').trim();
+  return name || null;
+}
+
+function withOperator(payload) {
+  const operator = namedOperator();
+  return operator ? { ...payload, operator } : payload;
+}
+
 route('GET', '/api/health', () => ({
   ok: true,
   service: 'theunivers-bridge-pilot',
@@ -1706,10 +1722,22 @@ route('POST', '/api/works/:id/comments', (ctx) => {
   const filtering = owner?.filter_comments !== 0;
   const hit = filtering ? matches(text) : null;
 
-  run(`INSERT INTO comment (id, work_id, user_id, body, created_at, hidden_at, hidden_reason)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      id, work.id, user.id, text, at,
-      hit ? at : null, hit ? 'filter' : null);
+  /*
+   * The insert and its receipt are one transaction. A hide with no receipt is an enforcement
+   * action that left no record, which is the claim this product exists not to make (ADR-0007 §4).
+   * Identifiers only — never the body, never the matched term.
+   */
+  inTransaction(() => {
+    run(`INSERT INTO comment (id, work_id, user_id, body, created_at, hidden_at, hidden_reason)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        id, work.id, user.id, text, at,
+        hit ? at : null, hit ? 'filter' : null);
+    if (hit) {
+      appendReceiptIn(user.id, MODERATION_ACTIONS.limit.receipt, withOperator({
+        subjectKind: 'comment', subject: id, work: work.id, source: 'filter',
+      }));
+    }
+  });
   // Kind only — the client refetches the list, so there is one code path for "how do I load
   // comments" instead of two that can disagree.
   publishAll([work.user_id, user.id], 'comment', { work: work.id });
@@ -1740,17 +1768,73 @@ route('GET', '/api/works/:id/comments', (ctx) => {
    * what the list hides.
    */
   const rows = all(
-    `SELECT c.id, c.body, c.created_at, c.user_id, u.name AS author
+    `SELECT c.id, c.body, c.created_at, c.user_id, c.hidden_at, c.appealed_at, u.name AS author
        FROM comment c JOIN user u ON u.id = c.user_id
       WHERE c.work_id = ? AND (c.hidden_at IS NULL OR c.user_id = ?)
       ORDER BY c.created_at ASC`, work.id, viewerId);
   const page = paginate(rows, ctx.query.get('page'), ctx.query.get('per'));
+  const operator = namedOperator();
   return {
-    comments: page.rows.map((c) => ({
-      id: c.id, body: c.body, at: c.created_at, authorId: c.user_id, author: c.author,
-    })),
+    comments: page.rows.map((c) => {
+      const row = {
+        id: c.id, body: c.body, at: c.created_at, authorId: c.user_id, author: c.author,
+      };
+      /*
+       * Own hidden comments only. Other viewers never receive the row, so they never receive
+       * these keys either. A client that filtered on `hidden` would be filtering a list that
+       * already excludes everyone else's hidden comments — do not add that filter.
+       */
+      if (c.hidden_at && c.user_id === viewerId) {
+        row.hidden = true;
+        row.appealed = Boolean(c.appealed_at);
+        if (operator) row.operator = operator;
+      }
+      return row;
+    }),
     page: page.page, pages: page.pages, per: page.per, total: page.total,
   };
+});
+
+route('POST', '/api/comments/:id/appeal', (ctx) => {
+  const user = ctx.user;
+  if (!user) return err(401, 'sign in required');
+
+  const byUser = take('appeal-user', user.id, LIMITS.appealPerUser.max, LIMITS.appealPerUser.windowMs);
+  if (!byUser.ok) return tooMany(byUser.retryAfter);
+  const byIp = take('appeal-ip', ctx.ip, LIMITS.appealPerIp.max, LIMITS.appealPerIp.windowMs);
+  if (!byIp.ok) return tooMany(byIp.retryAfter);
+
+  const id = String(ctx.params.id ?? '');
+  const comment = one('SELECT * FROM comment WHERE id = ?', id);
+  if (!comment) return err(404, 'no such comment');
+  /*
+   * A hidden comment of someone else is not a thing this person may know exists. A visible
+   * comment they do not own is a thing they can see, and contesting it is simply not theirs.
+   */
+  if (comment.user_id !== user.id) {
+    if (comment.hidden_at) return err(404, 'no such comment');
+    return err(403, 'only the author may contest this');
+  }
+  if (!comment.hidden_at) return err(409, 'this is not limited');
+  if (comment.appealed_at) return err(409, 'already contested');
+
+  const text = String(ctx.body.body ?? '').trim();
+  if (!text) return err(400, 'say what you want considered');
+  const body = text.slice(0, 2_000);
+  const at = now();
+
+  const attempt = raced(() => inTransaction(() => {
+    const moved = run(
+      `UPDATE comment SET appealed_at = ?, appeal_body = ?
+        WHERE id = ? AND hidden_at IS NOT NULL AND appealed_at IS NULL`,
+      at, body, comment.id);
+    if (moved.changes !== 1) throw new Error('RACE_LOST');
+    return appendReceiptIn(user.id, MODERATION_ACTIONS.appeal.receipt, withOperator({
+      subjectKind: 'comment', subject: comment.id, work: comment.work_id, source: 'author',
+    }));
+  }));
+  if (!attempt.ok) return err(409, 'already contested');
+  return { comment: comment.id, appealed: true, at, receipt: attempt.value?.id ?? null };
 });
 
 route('POST', '/api/comments/delete', (ctx) => {
@@ -3046,10 +3130,12 @@ route('GET', '/api/moderation/queue', (ctx) => {
   const rows = all(
     `SELECT * FROM report WHERE status = 'open' ORDER BY created_at ASC LIMIT 200`);
   const hidden = all(
-    `SELECT c.id, c.body, c.work_id, c.user_id, c.hidden_at, c.hidden_reason, u.name AS author
+    `SELECT c.id, c.body, c.work_id, c.user_id, c.hidden_at, c.hidden_reason,
+            c.appealed_at, c.appeal_body, u.name AS author
        FROM comment c JOIN user u ON u.id = c.user_id
       WHERE c.hidden_at IS NOT NULL
-      ORDER BY c.hidden_at ASC LIMIT 200`);
+      ORDER BY CASE WHEN c.appealed_at IS NOT NULL THEN 0 ELSE 1 END,
+               COALESCE(c.appealed_at, c.hidden_at) ASC LIMIT 200`);
   return {
     open: rows.length,
     reports: rows.map((r) => ({
@@ -3065,6 +3151,7 @@ route('GET', '/api/moderation/queue', (ctx) => {
     hidden: hidden.map((c) => ({
       id: c.id, work: c.work_id, authorId: c.user_id, author: c.author,
       body: c.body, at: c.hidden_at, reason: c.hidden_reason,
+      appealedAt: c.appealed_at || null, appealBody: c.appeal_body || null,
     })),
   };
 });
@@ -3287,10 +3374,10 @@ route('POST', '/api/moderation/release', (ctx) => {
       `UPDATE comment SET hidden_at = NULL, hidden_reason = NULL
         WHERE id = ? AND hidden_at IS NOT NULL`, id);
     if (moved.changes !== 1) throw new Error('RACE_LOST');
-    return appendReceiptIn(comment.user_id, MODERATION_ACTIONS.release.receipt, {
+    return appendReceiptIn(comment.user_id, MODERATION_ACTIONS.release.receipt, withOperator({
       subjectKind: 'comment', subject: comment.id, work: comment.work_id,
       reason, source: 'operator-token',
-    });
+    }));
   }));
   if (!attempt.ok) return err(409, 'not hidden');
   return { comment: comment.id, action: 'release', at, receipt: attempt.value?.id ?? null };

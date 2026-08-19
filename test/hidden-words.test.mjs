@@ -66,6 +66,8 @@ test('release is not a report-resolution action', () => {
   // Release is its own path, so it must not appear in the enum resolveReport accepts.
   assert.deepEqual(AVAILABLE_ACTIONS.sort(), ['dismiss', 'limit', 'takedown']);
   assert.equal(MODERATION_ACTIONS.release.receipt, 'moderation.restored');
+  assert.equal(MODERATION_ACTIONS.appeal.receipt, 'moderation.appealed');
+  assert.equal(MODERATION_ACTIONS.appeal.rung, null);
 });
 
 const SERVER = readFileSync(join(ROOT, 'server', 'index.mjs'), 'utf8');
@@ -93,6 +95,8 @@ test('filtering happens in SQL on read, never in the client', () => {
 
   assert.doesNotMatch(DETAIL, /hidden_at|hiddenAt|filterComments|matches\(/,
     'the glass must render what the API returned — filtering here is a client that can be told not to');
+  assert.doesNotMatch(DETAIL, /comments\.filter\(/,
+    'a client-side hide of other people\'s comments is the thing SQL already did');
   assert.match(SETTINGS, /Hide offensive comments/,
     'the switch is named for what a person wants, and it lives in Settings');
 });
@@ -100,6 +104,7 @@ test('filtering happens in SQL on read, never in the client', () => {
 test('the columns exist via ensureColumn, not a parallel store', () => {
   assert.match(DB_SRC, /ensureColumn\('comment', 'hidden_at'/);
   assert.match(DB_SRC, /ensureColumn\('comment', 'hidden_reason'/);
+  assert.match(DB_SRC, /ensureColumn\('comment', 'appealed_at'/);
   assert.match(DB_SRC, /ensureColumn\('user', 'filter_comments'/);
 });
 
@@ -217,8 +222,24 @@ describe('a filtered comment is the limit rung applied automatically', () => {
     const mine = await api(`/api/works/${w.id}/comments`, { as: 'ben' });
     assert.equal(mine.json.comments.filter((c) => c.id === posted.json.comment.id).length, 1,
       'the commenter still sees their own — do not "fix" this into equal visibility');
-    assert.equal(mine.json.comments.find((c) => c.id === posted.json.comment.id).body,
-      `you are a ${SLUR}`);
+    const own = mine.json.comments.find((c) => c.id === posted.json.comment.id);
+    assert.equal(own.body, `you are a ${SLUR}`);
+    assert.equal(own.hidden, true);
+    assert.equal(own.appealed, false);
+    assert.equal(theirs.json.comments[0]?.hidden, undefined,
+      'another viewer must never receive the hidden key, even on comments they can see');
+
+    const [receipt] = rows(
+      "SELECT type, user_id, payload FROM receipt WHERE type = 'moderation.limited' AND payload LIKE ?",
+      `%${posted.json.comment.id}%`);
+    assert.ok(receipt, 'a filter hit with no receipt is an enforcement action that left no record');
+    assert.equal(receipt.user_id, 'usr_ben');
+    const payload = JSON.parse(receipt.payload);
+    assert.equal(payload.source, 'filter');
+    assert.equal(payload.subject, posted.json.comment.id);
+    assert.equal(payload.body, undefined);
+    assert.ok(!JSON.stringify(payload).includes(SLUR),
+      'receipts hash identifiers, not the words the filter matched');
   });
 
   test('the count matches the list each viewer sees', async () => {
@@ -329,7 +350,11 @@ describe('a filtered comment is the limit rung applied automatically', () => {
     const mine = await api(`/api/works/${w.id}/comments`, { as: 'ben' });
     const seenClean = mine.json.comments.find((c) => c.id === clean.json.comment.id);
     const seenFiltered = mine.json.comments.find((c) => c.id === filtered.json.comment.id);
-    assert.equal(wire(seenFiltered), wire(seenClean));
+    assert.equal(seenFiltered.hidden, true,
+      'GET may tell the author, so they have something to contest — POST still must not');
+    assert.equal(seenFiltered.appealed, false);
+    assert.equal(seenClean.hidden, undefined,
+      'a clean comment must not grow a hidden key; that is how the author would learn the shape');
   });
 
   test('the operator queue lists the hit, and releasing writes a receipt', async () => {

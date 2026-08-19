@@ -240,6 +240,12 @@ export const LIMITS = {
   commentPerUser:  { max: 60,  windowMs: 60 * 60_000 },
   commentPerIp:    { max: 300, windowMs: 60 * 60_000 },
 
+  // Contesting a limit is exceptional — a person with a genuine case writes one, maybe two.
+  // Twelve an hour is already more than the operator of this node can read; the per-IP
+  // ceiling is the Sybil case, same shape as reporting.
+  appealPerUser:   { max: 12,  windowMs: 60 * 60_000 },
+  appealPerIp:     { max: 60,  windowMs: 60 * 60_000 },
+
   // Reverse geocode. The third party is Nominatim, unmetered use gets the whole origin blocked,
   // and a process-wide 1/s serialiser is the courtesy to them — these buckets are the courtesy
   // to everyone else sharing that one slot. Twenty an hour is already more lookups than a

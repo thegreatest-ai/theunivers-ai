@@ -64,6 +64,16 @@ export const MODERATION_ACTIONS = {
     sentence: 'This was restored by the operator after a filter hid it',
     implemented: true,
   },
+  /*
+   * Not a rung. Contesting a limit is the author's act, recorded as a forward append — the hide
+   * stays in the chain. Its own route; it must not become callable as a report action.
+   */
+  appeal: {
+    rung: null,
+    receipt: 'moderation.appealed',
+    sentence: 'You asked the operator of this node to review a limit. There is no panel. The original record stays.',
+    implemented: true,
+  },
 };
 
 /**
@@ -78,7 +88,12 @@ export const AVAILABLE_ACTIONS = Object.entries(MODERATION_ACTIONS)
  * What to show a person for a receipt on their own chain. Returns null for a type this module does
  * not own, so a caller can fall through to its own rendering rather than print a wrong sentence.
  */
-export function moderationSentence(receiptType) {
+export function moderationSentence(receiptType, payload) {
+  // A filter hit is the limit rung applied automatically. Calling it an operator review of a
+  // report would be a lie on the chain whose claim is that it records what happened.
+  if (receiptType === 'moderation.limited' && payload?.source === 'filter') {
+    return 'A filter hid this from other people. It is retained in full.';
+  }
   const found = Object.values(MODERATION_ACTIONS).find((a) => a.receipt === receiptType);
   return found ? found.sentence : null;
 }
