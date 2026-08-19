@@ -317,8 +317,11 @@ handle**, not stronger headers. That makes a leak attributable, which is the onl
 actually deters one.
 
 **A user's filename never reaches the filesystem.** Files are stored under a generated id and the
-original name is a column, which makes path traversal a class of bug that cannot occur rather than
-one to remember to prevent.
+original name is a column. Path traversal is not a class of bug to remember.
+
+When R2 is configured the bytes live in the bucket, but **the browser still loads `/api/media/:id`
+on this origin.** A redirect to Cloudflare's storage host would need an `img-src` hole. Do not add
+one. `docs/specs/R2-MEDIA.md`.
 
 ## A model reading strangers' text
 

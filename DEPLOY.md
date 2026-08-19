@@ -65,7 +65,9 @@ and types it into a form.
 The invite code must be generated, never `univers-pilot`: that one is in a chat transcript and was
 baked into a Docker image; treat it as public.
 
-Add GitHub's pair too when you have them, and `SMTP_*` when you want real password-reset email.
+Add GitHub's pair too when you have them, and the four `R2_*` secrets when video should leave
+the Fly volume (`R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` — see
+`docs/specs/R2-MEDIA.md`). `SMTP_*` when you want real password-reset email.
 
 ### 4. First deploy
 

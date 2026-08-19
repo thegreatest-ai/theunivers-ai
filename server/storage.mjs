@@ -3,14 +3,15 @@
  *
  * ─── Where bytes live, and why that is a decision rather than a detail ───────────────────
  *
- * Today: the Fly volume, which has ~900MB free. That is fine for photographs and documents in a
+ * Default: the Fly volume, which has ~900MB free. That is fine for photographs and documents in a
  * pilot and WRONG FOR VIDEO AT ANY REAL SCALE — twenty-odd clips fill the disk, and serving them
- * from `bom` costs $0.12/GB, Fly's most expensive egress band. The same bytes on Cloudflare R2
- * cost nothing to serve.
+ * from `bom` costs $0.12/GB, Fly's most expensive egress band.
  *
- * So this is written as a provider with one implementation. Moving to R2 or Tigris means adding a
- * second `put`/`get`/`remove` and changing nothing else. The quota below exists to make the day we
- * must move arrive as a warning rather than as a full disk.
+ * When R2 credentials are all set, puts go to the bucket instead of the volume. Serving still
+ * goes through GET /api/media/:id on this origin: img-src is 'self', and a redirect to
+ * Cloudflare's storage host would be an external image. See docs/specs/R2-MEDIA.md.
+ *
+ * Credentials choose the provider. There is no STORAGE_PROVIDER flag to disagree with them.
  * ─────────────────────────────────────────────────────────────────────────────────────────
  *
  * TWO RULES THAT ARE SECURITY, NOT HOUSEKEEPING:
@@ -26,6 +27,7 @@
 import { mkdirSync, writeFileSync, readFileSync, existsSync, unlinkSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import * as r2 from './r2.mjs';
 
 const ROOT = process.env.MEDIA_PATH
   ?? join(dirname(process.env.DB_PATH ?? './data/pilot.db'), 'media');
@@ -50,42 +52,79 @@ export function allowed(mime) {
   return LIMITS[String(mime ?? '').split(';')[0].trim().toLowerCase()] ?? null;
 }
 
+export function provider() {
+  return r2.configured() ? 'r2' : 'local';
+}
+
+function absOf(rel) {
+  return join(ROOT, rel);
+}
+
+function contained(abs) {
+  return abs.startsWith(ROOT);
+}
+
+function localGet(rel) {
+  const abs = absOf(rel);
+  if (!contained(abs) || !existsSync(abs)) return null;
+  return readFileSync(abs);
+}
+
+function localRemove(rel) {
+  const abs = absOf(rel);
+  if (contained(abs) && existsSync(abs)) unlinkSync(abs);
+}
+
+function localPut(rel, buffer) {
+  const abs = absOf(rel);
+  mkdirSync(dirname(abs), { recursive: true });
+  writeFileSync(abs, buffer);
+}
+
 /**
  * Write bytes and return where they went.
  *
  * Sharded by the first two characters of the id: a single directory with tens of thousands of
- * files is slow to list on most filesystems, and this costs one line to avoid.
+ * files is slow to list on most filesystems, and this costs one line to avoid. The same relative
+ * path is the R2 object key, so a later move does not rewrite the media row.
  */
-export function put(buffer, mime) {
+export async function put(buffer, mime) {
   const spec = allowed(mime);
   if (!spec) throw new Error(`${mime} is not an accepted file type`);
   if (buffer.length > spec.max) {
     throw new Error(`too large — the limit for ${mime} is ${Math.round(spec.max / 1e6)}MB`);
   }
   const id = `med_${randomUUID().slice(0, 12)}`;
-  const rel = join(id.slice(4, 6), id);
-  const abs = join(ROOT, rel);
-  mkdirSync(dirname(abs), { recursive: true });
-  writeFileSync(abs, buffer);
+  const rel = `${id.slice(4, 6)}/${id}`;
+  if (r2.configured()) await r2.put(rel, buffer, mime);
+  else localPut(rel, buffer);
   return { id, path: rel, bytes: buffer.length, kind: spec.kind };
 }
 
-export function get(rel) {
-  const abs = join(ROOT, rel);
-  // A stored path is generated, never user input — but a containment check costs nothing and
-  // makes that guarantee independent of every future caller remembering it.
-  if (!abs.startsWith(ROOT) || !existsSync(abs)) return null;
-  return readFileSync(abs);
+/**
+ * Read bytes. Local first, so photographs uploaded before R2 was configured still resolve.
+ * Then the bucket, if it is on.
+ */
+export async function get(rel) {
+  const local = localGet(rel);
+  if (local) return local;
+  if (r2.configured()) return r2.get(rel);
+  return null;
 }
 
-export function remove(rel) {
-  const abs = join(ROOT, rel);
-  if (abs.startsWith(ROOT) && existsSync(abs)) unlinkSync(abs);
+export async function remove(rel) {
+  localRemove(rel);
+  if (r2.configured()) await r2.remove(rel);
 }
 
-export function sizeOf(rel) {
-  const abs = join(ROOT, rel);
-  return abs.startsWith(ROOT) && existsSync(abs) ? statSync(abs).size : 0;
+export async function sizeOf(rel) {
+  const abs = absOf(rel);
+  if (contained(abs) && existsSync(abs)) return statSync(abs).size;
+  if (r2.configured()) {
+    const bytes = await r2.get(rel);
+    return bytes ? bytes.length : 0;
+  }
+  return 0;
 }
 
 /** How full the volume is, for /api/metrics — so the move to object storage is a warning. */
@@ -93,6 +132,9 @@ export function storageStats(usedBytes) {
   return {
     usedBytes,
     quotaPerUser: QUOTA_BYTES,
-    note: 'local volume; video at scale needs object storage — see server/storage.mjs',
+    provider: provider(),
+    note: provider() === 'r2'
+      ? 'R2 holds new uploads; unmigrated files remain on the volume'
+      : 'local volume; set R2_* secrets to keep video off the disk — see docs/specs/R2-MEDIA.md',
   };
 }

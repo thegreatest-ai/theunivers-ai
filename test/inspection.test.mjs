@@ -124,14 +124,14 @@ test('a valid claim stamps the inspector and issues a check-in nonce', () => {
   assert.equal(inspection.publicJob(claimed.job, buyer).nonce, undefined);
 });
 
-test('a frame without the check-in nonce is refused — last week’s photo does not work', () => {
+test('a frame without the check-in nonce is refused — last week’s photo does not work', async () => {
   const order = makeOrder(buyer, seller);
   const job = inspection.postJob({
     orderId: order, commissionerId: buyer, end: 'arrival', fee: { amount: 50, currency: 'AED' },
   }).job;
   inspection.transition(job.id, inspector, 'claimed');
 
-  const bad = inspection.captureEvidence(job.id, inspector, {
+  const bad = await inspection.captureEvidence(job.id, inspector, {
     bytes: Buffer.from([0xff, 0xd8, 0xff, 0xd9]), mime: 'image/jpeg',
     presentedNonce: 'WRNG', nonceInShot: true, live: true,
   });
@@ -139,7 +139,7 @@ test('a frame without the check-in nonce is refused — last week’s photo does
   assert.equal(bad.code, 'BAD_NONCE');
 });
 
-test('a live, consistent capture grades web-attested and records an OBSERVATION', () => {
+test('a live, consistent capture grades web-attested and records an OBSERVATION', async () => {
   const order = makeOrder(buyer, seller);
   const job = inspection.postJob({
     orderId: order, commissionerId: buyer, end: 'arrival', fee: { amount: 50, currency: 'AED' },
@@ -148,7 +148,7 @@ test('a live, consistent capture grades web-attested and records an OBSERVATION'
   const claim = inspection.transition(job.id, inspector, 'claimed');
 
   const bytes = Buffer.from([0xff, 0xd8, 0xff, 0xd9]); // minimal JPEG (SOI+EOI)
-  const cap = inspection.captureEvidence(job.id, inspector, {
+  const cap = await inspection.captureEvidence(job.id, inspector, {
     bytes, mime: 'image/jpeg', presentedNonce: claim.nonce, nonceInShot: true, live: true,
     device: { lat: 25.2048, lng: 55.2708, accuracy_m: 18 },
     network: { lat: 25.34, lng: 55.42 },
@@ -174,7 +174,7 @@ test('a live, consistent capture grades web-attested and records an OBSERVATION'
   assert.equal(ev[0].assurance, 'web-attested');
 });
 
-test('the stored hash matches the stripped bytes — not what the file claims about itself', () => {
+test('the stored hash matches the stripped bytes — not what the file claims about itself', async () => {
   // A JPEG with an APP1 (EXIF) segment. stripExif must remove it, and the hash must be over the
   // result, so "this is the image submitted" is provable against what actually lives in the store.
   const soi = Buffer.from([0xff, 0xd8]);
@@ -191,7 +191,7 @@ test('the stored hash matches the stripped bytes — not what the file claims ab
     orderId: order, commissionerId: buyer, end: 'origin', fee: { amount: 50, currency: 'AED' },
   }).job;
   const claim = inspection.transition(job.id, inspector, 'claimed');
-  const cap = inspection.captureEvidence(job.id, inspector, {
+  const cap = await inspection.captureEvidence(job.id, inspector, {
     bytes: withExif, mime: 'image/jpeg', presentedNonce: claim.nonce, nonceInShot: true, live: true,
     device: { lat: 25.2, lng: 55.27 }, network: { lat: 25.2, lng: 55.27 },
   });
@@ -200,14 +200,14 @@ test('the stored hash matches the stripped bytes — not what the file claims ab
     'the receipted hash is over the stored, stripped bytes');
 });
 
-test('a spoofed device position that disagrees with the network drops to self', () => {
+test('a spoofed device position that disagrees with the network drops to self', async () => {
   const order = makeOrder(buyer, seller);
   const job = inspection.postJob({
     orderId: order, commissionerId: buyer, end: 'arrival', fee: { amount: 50, currency: 'AED' },
     minAssurance: 'web-attested',
   }).job;
   const claim = inspection.transition(job.id, inspector, 'claimed');
-  const cap = inspection.captureEvidence(job.id, inspector, {
+  const cap = await inspection.captureEvidence(job.id, inspector, {
     bytes: Buffer.from([0xff, 0xd8, 0xff, 0xd9]), mime: 'image/jpeg',
     presentedNonce: claim.nonce, nonceInShot: true, live: true,
     device: { lat: 29.7604, lng: -95.3698 },  // Houston — the spoof
@@ -218,13 +218,13 @@ test('a spoofed device position that disagrees with the network drops to self', 
   assert.ok(!cap.meetsPolicy, 'self does not meet a web-attested policy');
 });
 
-test('a non-inspector cannot capture evidence', () => {
+test('a non-inspector cannot capture evidence', async () => {
   const order = makeOrder(buyer, seller);
   const job = inspection.postJob({
     orderId: order, commissionerId: buyer, end: 'arrival', fee: { amount: 50, currency: 'AED' },
   }).job;
   inspection.transition(job.id, inspector, 'claimed');
-  const bad = inspection.captureEvidence(job.id, seller, {
+  const bad = await inspection.captureEvidence(job.id, seller, {
     bytes: Buffer.from([0xff, 0xd8, 0xff, 0xd9]), mime: 'image/jpeg', presentedNonce: 'ANY',
   });
   assert.ok(!bad.ok);

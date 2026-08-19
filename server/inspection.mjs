@@ -266,7 +266,7 @@ export function stripExif(buf) {
  * submitted" is provable against what actually lives in the store, not against a pre-strip version
  * that no longer exists anywhere.
  */
-export function captureEvidence(jobId, actorAgentId, {
+export async function captureEvidence(jobId, actorAgentId, {
   bytes, mime, presentedNonce, nonceInShot = false,
   device, network, requestedAt, observedAt, live = true,
 }) {
@@ -296,7 +296,7 @@ export function captureEvidence(jobId, actorAgentId, {
   const sha256 = createHash('sha256').update(clean).digest('hex');
 
   let media = null;
-  try { media = store.put(clean, mime || 'image/jpeg'); } catch { media = null; }
+  try { media = await store.put(clean, mime || 'image/jpeg'); } catch { media = null; }
 
   const id = `ev_${randomUUID().slice(0, 8)}`;
   const source = device?.lat != null ? 'device' : (network?.lat != null ? 'network' : null);

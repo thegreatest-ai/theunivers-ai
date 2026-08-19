@@ -205,45 +205,31 @@ Eight users is not a scaling horizon. It is a Tuesday.
 
 ### What a second provider needs
 
-`server/storage.mjs` is written as a provider with one implementation, and the surface is genuinely
-small — **three call sites in the whole application**:
+`server/storage.mjs` is a provider. Three call sites, all async:
 
-| Site | `server/index.mjs` | Signature today |
+| Site | `server/index.mjs` | Signature |
 |---|---|---|
-| upload | `store.put(buf, mime)` | sync, returns `{ id, path, bytes, kind }` |
-| serve | `store.get(m.path)` | sync, returns `Buffer` |
-| delete | `store.remove(m.path)` | sync, void |
+| upload | `await store.put(buf, mime)` | `{ id, path, bytes, kind }` |
+| serve | `await store.get(m.path)` | `Buffer` |
+| delete | `await store.remove(m.path)` | void |
 
-An R2 or Tigris provider needs those three, plus four things that are not in the interface and are
-where the actual work is:
+Credentials choose R2 or the volume. Four things that are not in that interface:
 
-1. **All three become async.** S3-compatible clients are promise-based. `put` and `remove` are
-   already inside `async` handlers, so they are free. `get` is not — the media route is a sync
-   handler and becomes `async`. One route.
+1. **All three are async.** Local returns promises too, so the call sites have one shape.
+2. **`get` should stop existing on the serving path.** Refused while `img-src` is `'self'`.
+   A 302 to `*.r2.cloudflarestorage.com` is an external image — the same class of hole as a
+   Google picture URL. The server fetches from R2 and returns the bytes on `/api/media/:id`.
+   A first-party media hostname plus a CSP allow of *that* host is the later move. See
+   `docs/specs/R2-MEDIA.md`.
+3. **The presigned URL must carry the headers `SECURITY.md` promises.** Not applicable until
+   serving redirects. Today the app still sets `content-disposition: inline`,
+   `x-content-type-options: nosniff` and `cache-control: private, no-store` itself.
+4. **Two expiries must agree.** The app signature is still 10 minutes. No bucket URL is issued.
 
-2. **`get` should stop existing on the serving path.** Proxying bytes through the app spends Fly
-   egress at $0.12/GB to fetch from a bucket that would have served them free. The route should
-   return a **redirect to a presigned URL**, not a body. That changes `GET /api/media/:id` from
-   `{ __file, bytes, headers }` to `{ __redirect }` — a shape the route loop already supports.
+No dependency: S3 signature v4 is HMAC-SHA256 over a canonical string in `server/r2.mjs`.
 
-3. **The presigned URL must carry the headers `SECURITY.md` promises.** Today the app sets
-   `content-disposition: inline`, `x-content-type-options: nosniff` and `cache-control: private,
-   no-store` itself. Hand that to a bucket and they are gone unless they are signed into the URL —
-   S3 and R2 take `response-content-disposition` and `response-cache-control` as signed query
-   parameters. **Miss this and "view in the platform, not collected from it" silently becomes a
-   download link.** It will not look broken; it will look like a working download.
-
-4. **Two expiries must agree.** The app's own signature lasts 10 minutes (`MEDIA_TTL_MS`). A
-   presigned URL has its own lifetime. Set the bucket's to the same 10 minutes, or the shorter one
-   ends the link and the longer one is a lie.
-
-No dependency is needed for either: S3 signature v4 is HMAC-SHA256 over a canonical string, which
-`node:crypto` already does, and the codebase already signs media URLs this way. That is perhaps
-200 lines. An SDK would be faster to write and would end the project's zero-dependency property,
-which is a real thing it has rather than a pose — that is a judgement call for whoever does it.
-
-`storageStats()` is exported and **never called**; the media figures in `/api/metrics` are now
-produced by `scaleStats()` in `server/index.mjs`. It is dead and can go.
+`storageStats()` reports `provider: 'r2' | 'local'`. `/api/metrics` `scale.volume.provider` is
+the same value.
 
 ### Triggers
 

@@ -795,7 +795,7 @@ route('POST', '/api/agent/inspections/transition', (ctx) => {
  * derived here from the edge and never trusted from the client. EXIF is stripped and the hash is
  * taken server-side, so "this is the image submitted" is provable against the stored bytes.
  */
-route('POST', '/api/agent/inspections/:id/evidence', (ctx) => {
+route('POST', '/api/agent/inspections/:id/evidence', async (ctx) => {
   const agent = ctx.agent;
   if (!agent) return err(401, 'agent token required');
 
@@ -805,7 +805,7 @@ route('POST', '/api/agent/inspections/:id/evidence', (ctx) => {
         accuracy_m: ctx.headers['x-geo-accuracy'] != null ? Number(ctx.headers['x-geo-accuracy']) : null }
     : null;
 
-  const result = inspection.captureEvidence(ctx.params.id, agent.id, {
+  const result = await inspection.captureEvidence(ctx.params.id, agent.id, {
     bytes: ctx.raw,
     mime,
     presentedNonce: String(ctx.headers['x-nonce'] ?? ''),
@@ -1420,16 +1420,16 @@ function liveWork(w, viewerId = null) {
   };
 }
 
-function eraseWorkMedia(workId) {
-  for (const m of all('SELECT path FROM media WHERE work_id = ?', workId)) store.remove(m.path);
+async function eraseWorkMedia(workId) {
+  for (const m of all('SELECT path FROM media WHERE work_id = ?', workId)) await store.remove(m.path);
   run('DELETE FROM media WHERE work_id = ?', workId);
 }
 
 /** Bytes gone, title and body emptied, the row stays so comments still resolve. */
-function withdrawWork(work) {
+async function withdrawWork(work) {
   const at = now();
   const digest = work.body_sha256 || postDigest(work);
-  eraseWorkMedia(work.id);
+  await eraseWorkMedia(work.id);
   run(`UPDATE work SET withdrawn_at = ?, body_sha256 = ?, title = '', body = '' WHERE id = ?`,
       at, digest, work.id);
   return at;
@@ -1548,7 +1548,7 @@ route('POST', '/api/works/:id/media', async (ctx) => {
   if (focalY.error) return err(400, focalY.error);
 
   let put;
-  try { put = store.put(buf, mime); } catch (e) { return err(413, e.message); }
+  try { put = await store.put(buf, mime); } catch (e) { return err(413, e.message); }
 
   // Read from the BYTES, never from the client: dimensions decide how much space the detail view
   // reserves, and a number a caller can assert is a layout it can control. Same argument as
@@ -1574,7 +1574,7 @@ route('POST', '/api/works/:id/media', async (ctx) => {
     return { ordinal };
   });
   if (!inserted) {
-    store.remove(put.path);
+    await store.remove(put.path);
     return err(409, `A post can hold ${MEDIA_CAP} pictures.`);
   }
 
@@ -1598,7 +1598,7 @@ route('POST', '/api/works/:id/media', async (ctx) => {
  * Images and video are shown inline; anything else downloads, because "display this document" is
  * how a viewer gets talked into rendering something it should not.
  */
-route('GET', '/api/media/:id', (ctx) => {
+route('GET', '/api/media/:id', async (ctx) => {
   // Signature or session — either is proof. The signature exists because a browser cannot send a
   // header for an <img>; the session path is kept so an API client with a token still works.
   const exp = Number(ctx.query.get('e') ?? 0);
@@ -1609,7 +1609,7 @@ route('GET', '/api/media/:id', (ctx) => {
 
   const m = one('SELECT * FROM media WHERE id = ?', ctx.params.id);
   if (!m) return err(404, 'not found');
-  const bytes = store.get(m.path);
+  const bytes = await store.get(m.path);
   if (!bytes) return err(404, 'not found');
 
   return {
@@ -1911,7 +1911,7 @@ route('POST', '/api/works/update', (ctx) => {
   return { work: liveWork(one('SELECT * FROM work WHERE id = ?', work.id)) };
 });
 
-route('POST', '/api/works/delete', (ctx) => {
+route('POST', '/api/works/delete', async (ctx) => {
   const user = ctx.user;
   if (!user) return err(401, 'sign in required');
   const id = String(ctx.body.id ?? '');
@@ -1940,11 +1940,11 @@ route('POST', '/api/works/delete', (ctx) => {
    * hard-deletes, because there is nobody else's record to keep.
    */
   if (commentCount(id) > 0) {
-    const at = withdrawWork(work);
+    const at = await withdrawWork(work);
     return { ok: true, withdrawn: true, at };
   }
 
-  eraseWorkMedia(id);
+  await eraseWorkMedia(id);
   run('DELETE FROM work_view WHERE work_id = ?', id);
   run('DELETE FROM work WHERE id = ?', id);
   return { ok: true };
@@ -2263,6 +2263,7 @@ function scaleStats() {
       // volume was created at, and it is a constant here rather than a measurement for that reason.
       capacityBytes: 900_000_000,
       quotaPerUser: store.QUOTA_BYTES,
+      provider: store.provider(),
     },
     // The largest single uploader, because a per-person quota only bounds the volume if the number
     // of people is also bounded — 8 people at the full 120MB allowance fill it on their own.
@@ -3568,7 +3569,7 @@ route('POST', '/api/profile/avatar', async (ctx) => {
   }
 
   let put;
-  try { put = store.put(buf, mime); } catch (e) { return err(413, e.message); }
+  try { put = await store.put(buf, mime); } catch (e) { return err(413, e.message); }
 
   const size = imageSize(buf, mime);
   const filename = String(ctx.headers['x-filename'] ?? '').slice(0, 160);
@@ -3585,10 +3586,10 @@ route('POST', '/api/profile/avatar', async (ctx) => {
       if (previous) run('DELETE FROM media WHERE id = ?', previous.id);
     });
   } catch (e) {
-    store.remove(put.path);
+    await store.remove(put.path);
     throw e;
   }
-  if (previous) store.remove(previous.path);
+  if (previous) await store.remove(previous.path);
 
   return {
     person: publicPerson(one('SELECT * FROM user WHERE id = ?', user.id), user.id),
@@ -3599,7 +3600,7 @@ route('POST', '/api/profile/avatar', async (ctx) => {
  * Take the photograph off. The person stays; initials return. POST, not DELETE: CORS on this
  * origin allows GET and POST only, and every other erasure in this file is already a POST.
  */
-route('POST', '/api/profile/avatar/remove', (ctx) => {
+route('POST', '/api/profile/avatar/remove', async (ctx) => {
   const user = ctx.user;
   if (!user) return err(401, 'sign in required');
 
@@ -3610,7 +3611,7 @@ route('POST', '/api/profile/avatar/remove', (ctx) => {
     run('UPDATE user SET avatar_id = NULL WHERE id = ?', user.id);
     if (previous) run('DELETE FROM media WHERE id = ?', previous.id);
   });
-  if (previous) store.remove(previous.path);
+  if (previous) await store.remove(previous.path);
 
   return {
     person: publicPerson(one('SELECT * FROM user WHERE id = ?', user.id), user.id),
