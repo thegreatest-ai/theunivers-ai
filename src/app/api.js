@@ -92,9 +92,13 @@ export const api = {
   }),
   updateWork: (body) => req('/api/works/update', { method: 'POST', body: JSON.stringify(body) }),
   deleteWork: (id) => req('/api/works/delete', { method: 'POST', body: JSON.stringify({ id }) }),
-  workComments: (id, page = 1) => req(`/api/works/${encodeURIComponent(id)}/comments?page=${page}`),
-  commentOnWork: (id, body) => req(`/api/works/${encodeURIComponent(id)}/comments`, {
-    method: 'POST', body: JSON.stringify({ body }),
+  workComments: (id, page = 1, parent) => {
+    const q = new URLSearchParams({ page: String(page) });
+    if (parent) q.set('parent', parent);
+    return req(`/api/works/${encodeURIComponent(id)}/comments?${q}`);
+  },
+  commentOnWork: (id, body, parent) => req(`/api/works/${encodeURIComponent(id)}/comments`, {
+    method: 'POST', body: JSON.stringify({ body, ...(parent ? { parent } : {}) }),
   }),
   deleteComment: (id) => req('/api/comments/delete', { method: 'POST', body: JSON.stringify({ id }) }),
   appealComment: (id, body) => req(`/api/comments/${encodeURIComponent(id)}/appeal`, {

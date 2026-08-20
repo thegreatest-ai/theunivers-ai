@@ -68,13 +68,14 @@ export default function CreatePost({ kind, accept, multiple, onClose, onShared }
   const [items, setItems] = useState([]);
   const [current, setCurrent] = useState(0);
   const [ratio, setRatio] = useState('original');
-  const [text, setText] = useState({ body: '' });
+  const [text, setText] = useState({ title: '', body: '' });
   const [place, setPlace] = useState('');
   const [placeCc, setPlaceCc] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
   const zoomable = kind === 'photo' || kind === 'video';
+  const named = kind === 'doc' || kind === 'video';
 
   useEffect(() => {
     const root = box.current;
@@ -165,7 +166,7 @@ export default function CreatePost({ kind, accept, multiple, onClose, onShared }
     setCurrent(0);
     appending.current = false;
     setRatio('original');
-    setText({ body: '' });
+    setText({ title: '', body: '' });
     setPlace('');
     setPlaceCc('');
     setError('');
@@ -181,7 +182,7 @@ export default function CreatePost({ kind, accept, multiple, onClose, onShared }
     try {
       const w = created = await api.createWork({
         kind,
-        title: '',
+        title: named ? String(text.title || '').slice(0, 200) : '',
         body: text.body,
         ratio,
         place,
@@ -280,11 +281,20 @@ export default function CreatePost({ kind, accept, multiple, onClose, onShared }
               onDragOver={(e) => e.preventDefault()}
               onDrop={(e) => { e.preventDefault(); take(e.dataTransfer.files); }}
             >
-              <p>Drag photos and videos here</p>
+              <p>
+                {kind === 'video' ? 'Drag a video here'
+                  : kind === 'doc' ? 'Drag a PDF or text file here'
+                    : 'Drag photos and videos here'}
+              </p>
+              {kind === 'video' && (
+                <p className="app-note">Up to 40MB — larger files will not upload.</p>
+              )}
               <span className="app-cta">Select from computer</span>
             </div>
           ) : (
             <form className="cp-form" onSubmit={share}>
+              {kind !== 'doc' ? (
+              <>
               <div
                 className="cp-hero"
                 style={previewAspect ? { '--ar': String(previewAspect) } : undefined}
@@ -379,13 +389,41 @@ export default function CreatePost({ kind, accept, multiple, onClose, onShared }
                   )}
                 </div>
               )}
+              </>
+              ) : (
+              <ul className="cp-files">
+                {items.map((item, i) => (
+                  <li key={item.url}>
+                    <span>{item.file.name}</span>
+                    <span className="app-meta">{Math.round(item.file.size / 1024)} KB</span>
+                    <button type="button" className="app-link" onClick={() => removeAt(i)}>
+                      ×<span className="sr-only">Remove this file</span>
+                    </button>
+                  </li>
+                ))}
+                {multiple && !atCap && (
+                  <li>
+                    <button type="button" className="cp-add-more" onClick={addMore}>Add more</button>
+                  </li>
+                )}
+              </ul>
+              )}
               {multiple && atCap && (
                 <p className="app-note cp-cap">A post can hold {MEDIA_CAP} pictures.</p>
               )}
 
+              {named && (
+                <input
+                  maxLength={200}
+                  placeholder="Name"
+                  value={text.title}
+                  onChange={(e) => setText((p) => ({ ...p, title: e.target.value }))}
+                />
+              )}
               <textarea
                 rows={3}
-                placeholder="Caption (optional)"
+                maxLength={10000}
+                placeholder={named ? 'Description (optional)' : 'Caption (optional)'}
                 value={text.body}
                 onChange={(e) => setText((p) => ({ ...p, body: e.target.value }))}
               />

@@ -1397,6 +1397,20 @@ function visibleCommentCount(workId, viewerId) {
   )?.c ?? 0;
 }
 
+function visibleReplyCount(parentId, viewerId) {
+  if (viewerId) {
+    return one(
+      `SELECT COUNT(*) c FROM comment
+        WHERE parent_id = ? AND (hidden_at IS NULL OR user_id = ?)`,
+      parentId, viewerId,
+    )?.c ?? 0;
+  }
+  return one(
+    `SELECT COUNT(*) c FROM comment WHERE parent_id = ? AND hidden_at IS NULL`,
+    parentId,
+  )?.c ?? 0;
+}
+
 const workViewCounts = (workId) => ({
   people: one("SELECT COUNT(*) c FROM work_view WHERE work_id = ? AND kind = 'person'", workId)?.c ?? 0,
   agents: one("SELECT COUNT(*) c FROM work_view WHERE work_id = ? AND kind = 'agent'", workId)?.c ?? 0,
@@ -1725,7 +1739,33 @@ route('POST', '/api/works/:id/comments', (ctx) => {
 
   const body = String(ctx.body.body ?? '').trim();
   if (!body) return err(400, 'a comment needs something to say');
-  const text = body.slice(0, 2_000);
+  let text = body.slice(0, 2_000);
+
+  /*
+   * Two levels only. A reply to a reply is stored against the top-level parent and carries
+   * an @mention of whoever was addressed — never a third row of nesting. parent_id is the
+   * gate; the mention is the courtesy so the thread still reads.
+   */
+  let parentId = null;
+  const asked = String(ctx.body.parent ?? '').trim();
+  if (asked) {
+    const parent = one(
+      `SELECT c.*, u.name AS author
+         FROM comment c JOIN user u ON u.id = c.user_id
+        WHERE c.id = ?`, asked);
+    if (!parent || parent.work_id !== work.id) return err(404, 'no such comment');
+    if (parent.hidden_at && parent.user_id !== user.id) return err(404, 'no such comment');
+    if (parent.parent_id) {
+      const who = String(parent.author || '').trim();
+      const mention = who ? `@${who}` : '';
+      if (mention && !text.toLowerCase().startsWith(mention.toLowerCase())) {
+        text = `${mention} ${text}`.slice(0, 2_000);
+      }
+      parentId = parent.parent_id;
+    } else {
+      parentId = parent.id;
+    }
+  }
 
   const id = `cmt_${randomUUID().slice(0, 8)}`;
   const at = now();
@@ -1744,9 +1784,9 @@ route('POST', '/api/works/:id/comments', (ctx) => {
    * Identifiers only — never the body, never the matched term.
    */
   inTransaction(() => {
-    run(`INSERT INTO comment (id, work_id, user_id, body, created_at, hidden_at, hidden_reason)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        id, work.id, user.id, text, at,
+    run(`INSERT INTO comment (id, work_id, user_id, parent_id, body, created_at, hidden_at, hidden_reason)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        id, work.id, user.id, parentId, text, at,
         hit ? at : null, hit ? 'filter' : null);
     if (hit) {
       appendReceiptIn(user.id, MODERATION_ACTIONS.limit.receipt, withOperator({
@@ -1759,7 +1799,7 @@ route('POST', '/api/works/:id/comments', (ctx) => {
   publishAll([work.user_id, user.id], 'comment', { work: work.id });
   // The response is the same whether the filter fired or not. Telling the commenter "your
   // comment was hidden" is how they write it again, angrier, from another account.
-  return { comment: { id, workId: work.id, authorId: user.id, author: user.name, body: text, at } };
+  return { comment: { id, workId: work.id, authorId: user.id, author: user.name, body: text, at, parentId } };
 });
 
 route('GET', '/api/works/:id/comments', (ctx) => {
@@ -1770,6 +1810,14 @@ route('GET', '/api/works/:id/comments', (ctx) => {
   const viewerId = ctx.user?.id ?? ctx.agent?.user_id ?? null;
   if (isHidden(viewerId, work.user_id)) return err(404, 'no such work');
   if (work.limited_at && viewerId !== work.user_id) return err(404, 'no such work');
+
+  const parentFilter = String(ctx.query.get('parent') ?? '').trim();
+  let parentRow = null;
+  if (parentFilter) {
+    parentRow = one('SELECT * FROM comment WHERE id = ? AND work_id = ?', parentFilter, work.id);
+    if (!parentRow) return err(404, 'no such comment');
+    if (parentRow.parent_id) return err(400, 'replies live on the top-level comment');
+  }
 
   /*
    * THE ONE PLACE a viewer is deliberately shown something others cannot see.
@@ -1782,19 +1830,32 @@ route('GET', '/api/works/:id/comments', (ctx) => {
    * Filtered in SQL, the same way limited posts are excluded. A client-side hide is a
    * client that can be told not to. The count uses the same predicate, or it betrays
    * what the list hides.
+   *
+   * Top-level and replies are separate lists. Collapsed-by-default means the default GET
+   * is the points; `?parent=` is the thread behind View replies (N).
    */
-  const rows = all(
-    `SELECT c.id, c.body, c.created_at, c.user_id, c.hidden_at, c.appealed_at, u.name AS author
-       FROM comment c JOIN user u ON u.id = c.user_id
-      WHERE c.work_id = ? AND (c.hidden_at IS NULL OR c.user_id = ?)
-      ORDER BY c.created_at ASC`, work.id, viewerId);
+  const rows = parentFilter
+    ? all(
+      `SELECT c.id, c.body, c.created_at, c.user_id, c.hidden_at, c.appealed_at, c.parent_id,
+              u.name AS author
+         FROM comment c JOIN user u ON u.id = c.user_id
+        WHERE c.work_id = ? AND c.parent_id = ? AND (c.hidden_at IS NULL OR c.user_id = ?)
+        ORDER BY c.created_at ASC`, work.id, parentFilter, viewerId)
+    : all(
+      `SELECT c.id, c.body, c.created_at, c.user_id, c.hidden_at, c.appealed_at, c.parent_id,
+              u.name AS author
+         FROM comment c JOIN user u ON u.id = c.user_id
+        WHERE c.work_id = ? AND c.parent_id IS NULL AND (c.hidden_at IS NULL OR c.user_id = ?)
+        ORDER BY c.created_at ASC`, work.id, viewerId);
   const page = paginate(rows, ctx.query.get('page'), ctx.query.get('per'));
   const operator = namedOperator();
   return {
     comments: page.rows.map((c) => {
       const row = {
         id: c.id, body: c.body, at: c.created_at, authorId: c.user_id, author: c.author,
+        parentId: c.parent_id ?? null,
       };
+      if (!parentFilter) row.replies = visibleReplyCount(c.id, viewerId);
       /*
        * Own hidden comments only. Other viewers never receive the row, so they never receive
        * these keys either. A client that filtered on `hidden` would be filtering a list that
@@ -1862,6 +1923,10 @@ route('POST', '/api/comments/delete', (ctx) => {
   const work = one('SELECT * FROM work WHERE id = ?', comment.work_id);
   if (comment.user_id !== user.id && work?.user_id !== user.id) {
     return err(403, 'only the author or the work\'s owner may delete this');
+  }
+  const kids = one('SELECT COUNT(*) c FROM comment WHERE parent_id = ?', id)?.c ?? 0;
+  if (kids > 0) {
+    return err(409, 'this has replies and cannot be deleted');
   }
   run('DELETE FROM comment WHERE id = ?', id);
   publishAll([work?.user_id, comment.user_id].filter(Boolean), 'comment', { work: comment.work_id });

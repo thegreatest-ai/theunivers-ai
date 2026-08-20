@@ -831,6 +831,34 @@ ensureColumn('user', 'links', `links TEXT NOT NULL DEFAULT '[]'`);
 // the right shape open while the bytes arrive rather than reflowing the page when they land.
 ensureColumn('media', 'width', 'width INTEGER');
 ensureColumn('media', 'height', 'height INTEGER');
+
+/**
+ * A filename is not a caption. The composer used to pre-fill Title from the file, so works
+ * already published still show a camera's name where a person's words belong. Blanking those
+ * titles loses nothing: media.filename still has the file's name, which is where it belongs.
+ *
+ * Compared against the stored filename and its decoded form because `x-filename` is
+ * percent-encoded on upload. Idempotent: a second boot finds nothing left to blank.
+ * Do not invent a caption to replace it — empty is honest.
+ */
+export function blankFilenameTitles() {
+  const rows = db.prepare(`
+    SELECT w.id AS id, w.title AS title, m.filename AS filename
+      FROM work w
+      JOIN media m ON m.work_id = w.id
+     WHERE m.ordinal = (
+       SELECT MIN(ordinal) FROM media WHERE work_id = w.id
+     )
+       AND w.title != ''
+  `).all();
+  const upd = db.prepare(`UPDATE work SET title = '' WHERE id = ?`);
+  for (const r of rows) {
+    let decoded = r.filename;
+    try { decoded = decodeURIComponent(r.filename); } catch { /* keep the stored bytes */ }
+    if (r.title === r.filename || r.title === decoded) upd.run(r.id);
+  }
+}
+blankFilenameTitles();
 /*
  * Zoom is per IMAGE, inside the post's frame. The bytes are never re-encoded; these numbers
  * are applied as CSS on the cropped surfaces (profile grid, Discover). WorkDetail does not
@@ -1069,6 +1097,7 @@ db.exec(`
     id         TEXT PRIMARY KEY,
     work_id    TEXT NOT NULL REFERENCES work(id) ON DELETE RESTRICT,
     user_id    TEXT NOT NULL REFERENCES user(id) ON DELETE RESTRICT,
+    parent_id  TEXT REFERENCES comment(id) ON DELETE RESTRICT,
     body       TEXT NOT NULL,
     created_at TEXT NOT NULL
   );
@@ -1094,6 +1123,32 @@ ensureColumn('comment', 'hidden_reason', 'hidden_reason TEXT');
  */
 ensureColumn('comment', 'appealed_at', 'appealed_at TEXT');
 ensureColumn('comment', 'appeal_body', 'appeal_body TEXT');
+/*
+ * Two levels only (Instagram, measured). parent_id points at the TOP-LEVEL comment.
+ * A reply to a reply is stored against that parent, never a third level. RESTRICT: a
+ * reply is somebody else's words and must not vanish because a parent was removed.
+ */
+ensureColumn('comment', 'parent_id', 'parent_id TEXT');
+ensureForeignKeys('comment', {
+  references: ['parent_id'],
+  create: `CREATE TABLE "comment" (
+    id            TEXT PRIMARY KEY,
+    work_id       TEXT NOT NULL REFERENCES work(id) ON DELETE RESTRICT,
+    user_id       TEXT NOT NULL REFERENCES user(id) ON DELETE RESTRICT,
+    parent_id     TEXT REFERENCES comment(id) ON DELETE RESTRICT,
+    body          TEXT NOT NULL,
+    created_at    TEXT NOT NULL,
+    hidden_at     TEXT,
+    hidden_reason TEXT,
+    appealed_at   TEXT,
+    appeal_body   TEXT
+  )`,
+  indexes: [
+    'CREATE INDEX IF NOT EXISTS comment_work_idx ON comment(work_id, created_at)',
+    'CREATE INDEX IF NOT EXISTS comment_parent_idx ON comment(parent_id, created_at)',
+  ],
+});
+db.exec('CREATE INDEX IF NOT EXISTS comment_parent_idx ON comment(parent_id, created_at)');
 
 db.exec(`
 
