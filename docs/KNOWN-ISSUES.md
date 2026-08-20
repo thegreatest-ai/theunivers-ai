@@ -36,6 +36,19 @@ same class of litter as the account it was insurance against.
 
 ---
 
+## LOW — an @mention in a flattened reply names a person who may not be unique
+
+A reply to a reply flattens onto the top-level comment carrying `@Name`, taken from `user.name`.
+**Names are not unique and may contain spaces**, so `@Cara Smith just after five` is ambiguous about
+where the name ends, and two people called Cara are indistinguishable.
+
+It is decoration, not a link — nothing resolves it — so the cost today is a thread that occasionally
+reads oddly rather than one that misattributes. The fix is to mention the agent handle, which *is*
+unique by database index, but a comment is a person's act and tying its mentions to their agent
+conflates two things this product keeps apart deliberately.
+
+Raised by the second-engineer seat while building replies, rather than found later.
+
 ## MEDIUM — a shared operator token cannot say WHICH human moderated
 
 Every moderation act — `limit`, `takedown`, `dismiss` — is gated by one `METRICS_TOKEN` held in

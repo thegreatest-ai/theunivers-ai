@@ -40,6 +40,106 @@ function stageStyle(ratio) {
   return undefined;
 }
 
+function CommentRow({
+  c, depth, own, viewerId, canReply, busy,
+  replyTo, replyDraft, setReplyTo, setReplyDraft,
+  threads, onToggle, onMore, onReply, onDrop, onDone,
+}) {
+  const thread = threads[c.id];
+  return (
+    <li>
+      <b>{c.author}</b>
+      <span className="app-meta">{new Date(c.at).toLocaleString()}</span>
+      <p>{c.body}</p>
+      {c.hidden && (
+        <div className="wk-own-hidden">
+          <p className="app-note">Only you can see this.</p>
+          {c.appealed
+            ? (
+              <p className="app-note">
+                You asked the operator of this node to look. There is no panel.
+              </p>
+            )
+            : (
+              <Contest
+                commentId={c.id}
+                operator={c.operator}
+                onDone={onDone}
+              />
+            )}
+        </div>
+      )}
+      <div className="wk-comment-acts">
+        {canReply && (
+          <button type="button" className="app-link" onClick={() => {
+            setReplyTo(c.id);
+            setReplyDraft('');
+          }}>Reply</button>
+        )}
+        {depth === 0 && c.replies > 0 && (
+          <button type="button" className="app-link" onClick={() => onToggle(c.id)}>
+            {thread?.open ? 'Hide replies' : `View replies (${c.replies})`}
+          </button>
+        )}
+        {(own || c.authorId === viewerId) && (
+          <button type="button" className="app-link" onClick={() => onDrop(c.id)}>
+            Delete
+          </button>
+        )}
+      </div>
+      {depth === 0 && thread?.open && (
+        <ul className="wk-replies">
+          {(thread.comments || []).map((r) => (
+            <CommentRow
+              key={r.id}
+              c={r}
+              depth={1}
+              own={own}
+              viewerId={viewerId}
+              canReply={canReply}
+              busy={busy}
+              replyTo={replyTo}
+              replyDraft={replyDraft}
+              setReplyTo={setReplyTo}
+              setReplyDraft={setReplyDraft}
+              threads={threads}
+              onToggle={onToggle}
+              onMore={onMore}
+              onReply={onReply}
+              onDrop={onDrop}
+              onDone={onDone}
+            />
+          ))}
+          {thread.page < thread.pages && (
+            <li>
+              <button type="button" className="app-link" onClick={() => onMore(c.id, thread.page + 1)}>
+                More replies
+              </button>
+            </li>
+          )}
+        </ul>
+      )}
+      {replyTo === c.id && (
+        <form className="wk-reply-form" onSubmit={(e) => onReply(e, c.id)}>
+          <textarea
+            rows={2}
+            maxLength={2000}
+            value={replyDraft}
+            placeholder="Write a reply…"
+            onChange={(e) => setReplyDraft(e.target.value)}
+          />
+          <div className="wk-edit-row">
+            <button className="app-cta" disabled={busy === 'comment' || !replyDraft.trim()}>
+              {busy === 'comment' ? 'Posting…' : 'Post reply'}
+            </button>
+            <button type="button" className="app-link" onClick={() => setReplyTo(null)}>Cancel</button>
+          </div>
+        </form>
+      )}
+    </li>
+  );
+}
+
 export default function WorkDetail({ work: initial, workId, own: ownProp, onClose, onChanged }) {
   const { me } = useOutletContext() || {};
   const id = initial?.id || workId;
@@ -53,6 +153,9 @@ export default function WorkDetail({ work: initial, workId, own: ownProp, onClos
   const [sharing, setSharing] = useState(false);
   const [editing, setEditing] = useState(false);
   const [edit, setEdit] = useState({ title: '', body: '', ratio: 'original', place: '', place_cc: '' });
+  const [replyTo, setReplyTo] = useState(null);
+  const [replyDraft, setReplyDraft] = useState('');
+  const [threads, setThreads] = useState({});
   const composer = useRef(null);
 
   function loadWork() {
@@ -73,6 +176,12 @@ export default function WorkDetail({ work: initial, workId, own: ownProp, onClos
       if (data?.work && data.work !== id) return;
       loadComments().catch(() => {});
       loadWork().catch(() => {});
+      setThreads((prev) => {
+        for (const pid of Object.keys(prev)) {
+          if (prev[pid]?.open) loadReplies(pid).catch(() => {});
+        }
+        return prev;
+      });
     });
     return () => { alive = false; stop(); };
   }, [id]);
@@ -83,21 +192,44 @@ export default function WorkDetail({ work: initial, workId, own: ownProp, onClos
     return trapFocus(root, onClose);
   }, [onClose]);
 
-  async function sendComment(e) {
+  async function loadReplies(parentId, page = 1, append = false) {
+    const d = await api.workComments(id, page, parentId);
+    setThreads((prev) => {
+      const had = prev[parentId];
+      const prevComments = append ? (had?.comments || []) : [];
+      return {
+        ...prev,
+        [parentId]: {
+          open: true,
+          comments: append ? [...prevComments, ...(d.comments || [])] : (d.comments || []),
+          page: d.page, pages: d.pages, total: d.total,
+        },
+      };
+    });
+  }
+
+  async function sendComment(e, parent) {
     e.preventDefault();
-    const body = draft.trim();
+    const body = (parent ? replyDraft : draft).trim();
     if (!body || busy) return;
     setBusy('comment');
     setError('');
     try {
-      const r = await api.commentOnWork(id, body);
-      setDraft('');
+      const r = await api.commentOnWork(id, body, parent);
+      if (parent) {
+        setReplyDraft('');
+        setReplyTo(null);
+      } else {
+        setDraft('');
+      }
       // Refetch rather than appending the POST body: a filter hit is silent on write, and the
       // list is how the author sees enough to contest. One code path, same as delete.
       const d = await api.workComments(id);
       setComments(d.comments || []);
       const w = await api.work(id);
       setWork(w.work);
+      const root = r.comment?.parentId || parent;
+      if (root) await loadReplies(root);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -113,6 +245,8 @@ export default function WorkDetail({ work: initial, workId, own: ownProp, onClos
       setComments(d.comments || []);
       const w = await api.work(id);
       setWork(w.work);
+      const open = Object.keys(threads).filter((pid) => threads[pid]?.open);
+      await Promise.all(open.map((pid) => loadReplies(pid).catch(() => {})));
     } catch (err) {
       setError(err.message);
     }
@@ -242,15 +376,25 @@ export default function WorkDetail({ work: initial, workId, own: ownProp, onClos
                 <p>{work.body}</p>
               </div>
             )}
-            {work.kind === 'doc' && media.map((m) => (
-              <div key={m.id} className="wk-detail-doc">
-                <p className="app-meta">{decodeURIComponent(m.filename || 'file')} · {Math.round(m.bytes / 1024)} KB</p>
-                {m.mime === 'application/pdf'
-                  ? <iframe title="Document" src={`${m.url}#toolbar=0&navpanes=0`} />
-                  : <Text url={m.url} />}
-              </div>
-            ))}
-            {work.kind !== 'thread' && (work.title || work.body) && (
+            {work.kind === 'doc' && (
+              <>
+                {(work.title || work.body) && (
+                  <div className="wk-detail-cap">
+                    {work.title && <h4>{work.title}</h4>}
+                    {work.body && <p>{work.body}</p>}
+                  </div>
+                )}
+                {media.map((m) => (
+                  <div key={m.id} className="wk-detail-doc">
+                    <p className="app-meta">{decodeURIComponent(m.filename || '')}{m.bytes != null ? ` · ${Math.round(m.bytes / 1024)} KB` : ''}</p>
+                    {m.mime === 'application/pdf'
+                      ? <iframe title={work.title || 'Document'} src={`${m.url}#toolbar=0&navpanes=0`} />
+                      : <Text url={m.url} />}
+                  </div>
+                ))}
+              </>
+            )}
+            {work.kind !== 'thread' && work.kind !== 'doc' && (work.title || work.body) && (
               <div className="wk-detail-cap">
                 {work.title && <h4>{work.title}</h4>}
                 {work.body && <p>{work.body}</p>}
@@ -293,9 +437,9 @@ export default function WorkDetail({ work: initial, workId, own: ownProp, onClos
 
         {editing && (
           <form className="wk-edit" onSubmit={saveEdit}>
-            <input value={edit.title} placeholder="Title (optional)"
+            <input value={edit.title} placeholder={work.kind === 'doc' || work.kind === 'video' ? 'Name' : 'Title (optional)'}
                    onChange={(e) => setEdit((p) => ({ ...p, title: e.target.value }))} />
-            <textarea rows={4} value={edit.body} placeholder="Caption"
+            <textarea rows={4} value={edit.body} placeholder={work.kind === 'doc' || work.kind === 'video' ? 'Description' : 'Caption'}
                       onChange={(e) => setEdit((p) => ({ ...p, body: e.target.value }))} />
             <PlaceFields
               place={edit.place}
@@ -321,38 +465,40 @@ export default function WorkDetail({ work: initial, workId, own: ownProp, onClos
             {comments?.length === 0 && <p className="app-note">No comments yet.</p>}
             <ul>
               {(comments || []).map((c) => (
-                <li key={c.id}>
-                  <b>{c.author}</b>
-                  <span className="app-meta">{new Date(c.at).toLocaleString()}</span>
-                  <p>{c.body}</p>
-                  {c.hidden && (
-                    <div className="wk-own-hidden">
-                      <p className="app-note">Only you can see this.</p>
-                      {c.appealed
-                        ? (
-                          <p className="app-note">
-                            You asked the operator of this node to look. There is no panel.
-                          </p>
-                        )
-                        : (
-                          <Contest
-                            commentId={c.id}
-                            operator={c.operator}
-                            onDone={() => loadComments()}
-                          />
-                        )}
-                    </div>
-                  )}
-                  {(own || c.authorId === viewerId) && (
-                    <button type="button" className="app-link" onClick={() => dropComment(c.id)}>
-                      Delete
-                    </button>
-                  )}
-                </li>
+                <CommentRow
+                  key={c.id}
+                  c={c}
+                  depth={0}
+                  own={own}
+                  viewerId={viewerId}
+                  canReply={!work.withdrawn && !work.takenDown}
+                  busy={busy}
+                  replyTo={replyTo}
+                  replyDraft={replyDraft}
+                  setReplyTo={setReplyTo}
+                  setReplyDraft={setReplyDraft}
+                  threads={threads}
+                  onToggle={async (pid) => {
+                    const t = threads[pid];
+                    if (t?.open) {
+                      setThreads((p) => ({ ...p, [pid]: { ...t, open: false } }));
+                      return;
+                    }
+                    if (t?.comments) {
+                      setThreads((p) => ({ ...p, [pid]: { ...t, open: true } }));
+                      return;
+                    }
+                    try { await loadReplies(pid); } catch (err) { setError(err.message); }
+                  }}
+                  onMore={(pid, page) => loadReplies(pid, page, true).catch((err) => setError(err.message))}
+                  onReply={(e, parent) => sendComment(e, parent)}
+                  onDrop={dropComment}
+                  onDone={() => loadComments()}
+                />
               ))}
             </ul>
             {!work.withdrawn && !work.takenDown && (
-              <form onSubmit={sendComment}>
+              <form onSubmit={(e) => sendComment(e)}>
                 <textarea ref={composer} rows={3} maxLength={2000} value={draft}
                           placeholder="Write a comment…"
                           onChange={(e) => setDraft(e.target.value)} />

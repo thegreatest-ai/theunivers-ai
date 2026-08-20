@@ -287,6 +287,9 @@ function WorkHit({ w, onOpen }) {
             every photograph in the feed. Absent renders as absent, the same rule the cells follow. */}
         {w.title && <b className="dsc-hit-title">{w.title}</b>}
         {w.body && <p className="dsc-hit-body">{w.body}</p>}
+        {w.kind === 'doc' && first?.filename && (
+          <p className="app-meta">{decodeURIComponent(first.filename)}{first.bytes != null ? ` · ${Math.round(first.bytes / 1024)} KB` : ''}</p>
+        )}
         <PlaceLine place={w.place} placeCc={w.place_cc} />
       </button>
       <div className="post-foot">

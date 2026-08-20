@@ -75,11 +75,13 @@ describe('the picture is the hero, and the controls do not cover it', () => {
       'a border around location made it louder than the caption');
   });
 
-  test('CreatePost did not grow a title field', () => {
+  test('photographs still have no Title field; Name is for files and video', () => {
     const src = read('src/app/CreatePost.jsx');
     assert.doesNotMatch(src, /placeholder="Title/);
-    assert.doesNotMatch(src, /text\.title/);
-    assert.match(src, /title: ''/, 'the API still receives an empty title; the author never types one');
+    assert.match(src, /named \? String\(text\.title/,
+      'photos still send an empty title; the author never types one there');
+    assert.match(src, /placeholder="Name"/);
+    assert.match(src, /kind === 'doc' \|\| kind === 'video'/);
   });
 });
 

@@ -33,7 +33,7 @@ export const KINDS = [
   { id: 'photo', label: 'Photos', accept: 'image/jpeg,image/png,image/webp,image/heic', multiple: true,
     empty: 'Photographs and carousels.', invite: 'Share your first photo' },
   { id: 'video', label: 'Videos', accept: 'video/mp4,video/quicktime', multiple: false,
-    empty: 'Short clips. Large files are capped while storage is on one small volume.',
+    empty: 'Short clips. Up to 40MB — larger files will not upload.',
     invite: 'Share your first video' },
   { id: 'thread', label: 'Threads', accept: null, multiple: false,
     empty: 'Something written. No upload needed.', invite: 'Write your first thread' },
@@ -167,9 +167,15 @@ export default function Works({ userId, own }) {
               )}
               {w.kind === 'doc' && (
                 <div className="wk-file">
-                  {decodeURIComponent(w.media[0]?.filename || w.title || 'file')}
-                  <span className="app-meta">
-                    {w.media[0] ? `${Math.round(w.media[0].bytes / 1024)} KB` : ''}
+                  <span className="wk-file-copy">
+                    {w.title && <b>{w.title}</b>}
+                    {w.body && <p>{w.body}</p>}
+                    <span className="app-meta">
+                      {w.media[0] ? [
+                        decodeURIComponent(w.media[0].filename || '') || null,
+                        w.media[0].bytes != null ? `${Math.round(w.media[0].bytes / 1024)} KB` : null,
+                      ].filter(Boolean).join(' · ') : ''}
+                    </span>
                   </span>
                 </div>
               )}

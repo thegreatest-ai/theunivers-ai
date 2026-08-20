@@ -7,13 +7,13 @@ _Written 2026-08-19. The repo is the bus: if it is not a file here, it does not 
 **`~/Studio/projects/theunivers-ai`** — one Node process serving three things from a single origin:
 the cinematic marketing site at `/`, the **Bridge** product at `/app`, and the API at `/api/*`.
 
-Live at **https://theunivers.ai** on Fly.io (region `bom`), currently **v84**.
+Live at **https://theunivers.ai** on Fly.io (region `bom`), currently **v86**.
 GitHub: `github.com/thegreatest-ai/theunivers-ai` — **public**, so scan before every push.
 
 ```bash
 npm install
 npm run dev:all     # server :8790 + vite :5188
-npm test            # 533 tests — run npm run build FIRST or it fails by design
+npm test            # 549 tests — run npm run build FIRST or it fails by design
 npm run deploy      # build → real-browser render test → fly deploy
 ```
 
@@ -72,7 +72,7 @@ server/storage.mjs      media provider. One implementation; R2 goes here when vi
 shared/                 imported by BOTH server and browser — one definition, no drift
 src/app/                the Bridge product (React)
 src/App.jsx             the marketing scroll (Three.js). Do not put Three.js in /app
-test/                   533 tests. Source-reading tests pin rules a unit test cannot
+test/                   549 tests. Source-reading tests pin rules a unit test cannot
 ```
 
 ## 5. How work is done here
@@ -89,18 +89,15 @@ message that will be reversed by somebody who did not know.
 
 ## 6. Current state and what is open
 
-**Shipped and live:** auth (password + Google OAuth), agents and mandates, orders with receipts,
-Discover, the follow graph, block/report, the full moderation ladder (limit · takedown · dismiss ·
-withdraw) with receipts, comments with **Hidden Words** filtering, author-facing **appeal** of a
-filtered comment (receipt + contest; still CLI for the operator), the create-post window with
-ratio · zoom · add-more · location, a 3:4 profile grid, and **avatar upload** — a photograph of
-the person, centre-cropped in a circle; initials when absent.
+**Shipped and live (v86):** auth, agents and mandates, orders with receipts, Discover, the follow
+graph, block/report, the moderation ladder, Hidden Words with author-facing appeal, avatar upload,
+＋ Create publishing on You, the action row (share · comment · cited · view), ask-your-agent-to-contact,
+and the frame that holds the picture.
 
-**On this branch, not deployed:** **ask your agent to contact** another from Discover or a profile
-(session; guard; template note; thread stays read-only). **＋ Create** publishes on You rather than
-dumping into the workspace. One action row keeps share · comment · cited · view as four claims;
-cited is a count, never a button, and it appears on the person who was used only when an agent
-actually built. After a share, the project that received it opens, still `captured`.
+**On this branch, not deployed:** a filename is no longer a caption (boot migration blanks titles
+that merely repeat `media.filename`); files and videos take a Name and Description; comments are
+two levels, collapsed behind View replies (N), with RESTRICT so a reply cannot vanish with its
+parent. Likes are not being built. The video cap is named at 40MB and not raised.
 
 **Highest-value open items** (details in `docs/KNOWN-ISSUES.md`):
 
@@ -111,8 +108,8 @@ actually built. After a share, the project that received it opens, still `captur
    person can moderate.
 3. **Media lives on a ~900MB Fly volume.** Fine for photos; wrong for video. R2 provider goes in
    `server/storage.mjs`.
-4. **Comments are flat and chronological.** Instagram is two-level and ranked. A deliberate
-   decision has never been made — currently it is a default.
+4. **Comments are two levels.** A reply to a reply flattens with an @mention. Do not add a third
+   level, and do not reintroduce a like.
 
 **The reference material** is in `design/`: `Instagram-Complete-Spec.pdf` (v2.0, measured live
 2026-08-18) and `Instagram-Product-Design-Spec.pdf`. Findings extracted in
@@ -137,5 +134,6 @@ Protocol, screenshot. Use it.
 - Touch `.env` or any secret. Secrets are Keychain-first (`npm run secret`), account
   `theunivers-ai`, and `.env` holds `keychain:NAME` references only.
 - Commit anything matching `.env*` — it is gitignored, and the repo is public.
-- Add a title field to the compose window, reintroduce a square profile grid, or apply zoom in the
-  detail view. Each was removed deliberately and each has a test guarding it.
+- Add a Title field to the photograph compose window, reintroduce a square profile grid, or apply
+  zoom in the detail view. Each was removed deliberately and each has a test guarding it. **Name**
+  on a file or a video is a different field: it is what the author called the work.

@@ -72,6 +72,13 @@ test('commenting is a person, and an agent is refused', () => {
     'a comment must require a session');
   assert.doesNotMatch(body, /ctx\.agent\b/,
     'a comment must not accept an agent token — it is an unstructured human utterance');
+  assert.match(body, /ctx\.body\.parent/,
+    'a reply is a comment, so the same credential gates it');
+});
+
+test('likes were withdrawn — there is no like route to refuse', () => {
+  assert.doesNotMatch(SERVER, /route\('(?:GET|POST)', '\/api\/[^']*like/,
+    'likes were asked for and then declined; a route would be building them');
 });
 
 test('the action row does not offer a person a cite control', () => {

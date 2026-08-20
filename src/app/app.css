@@ -722,6 +722,10 @@
 .wk-thread h4{margin:0 0 6px;font-size:.95rem}
 .wk-thread p{margin:0;font-size:.9rem;line-height:1.6;white-space:pre-wrap}
 .wk-file{display:flex;justify-content:space-between;gap:12px;padding:13px 14px;text-decoration:none;
+  color:inherit;align-items:flex-start;text-align:left}
+.wk-file-copy{display:flex;flex-direction:column;gap:4px;min-width:0}
+.wk-file-copy b{font-size:.95rem}
+.wk-file-copy p{margin:0;font-size:.88rem;color:var(--muted);white-space:pre-wrap}
   color:var(--text);font-size:.9rem;border-bottom:1px solid var(--line)}
 .wk-file:hover{color:var(--cyan)}
 .wk-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 12px;
@@ -822,6 +826,9 @@ body:has(.wk-detail-back) .nav-fab{display:none}
 .cp-form input,.cp-form textarea{padding:10px 12px;border-radius:10px;font-family:inherit;
   font-size:.92rem;color:#fff;background:rgba(255,255,255,.05);border:1px solid var(--line);
   outline:none;resize:vertical}
+.cp-files{list-style:none;margin:0;padding:8px 0 0;display:flex;flex-direction:column;gap:4px}
+.cp-files li{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}
+.cp-files li span:first-child{flex:1;min-width:0;overflow-wrap:anywhere}
 /* Quiet on purpose. A heavy border around an optional field made location louder than the
    caption — the thing most people will actually fill in. The pin still labels the compose
    control; it is never painted on PlaceLine, which is a caption and must not look attested. */
@@ -923,6 +930,9 @@ body:has(.wk-detail-back) .nav-fab{display:none}
 .wk-comments ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px}
 .wk-comments li p{margin:4px 0 0;line-height:1.5;white-space:pre-wrap}
 .wk-comments form{display:flex;flex-direction:column;gap:8px}
+.wk-comment-acts{display:flex;flex-wrap:wrap;gap:8px 12px;margin-top:6px}
+.wk-replies{margin:10px 0 0;padding:0 0 0 14px;border-left:1px solid var(--line)}
+.wk-reply-form{margin-top:8px}
 .wk-own-hidden{margin-top:8px;display:flex;flex-direction:column;gap:6px}
 .wk-contest{flex-basis:100%;display:flex;flex-direction:column;gap:8px;margin-top:6px}
 .wk-contest textarea{padding:10px 12px;border-radius:10px;font-family:inherit;font-size:.92rem;
