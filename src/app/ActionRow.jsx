@@ -32,27 +32,27 @@ export default function ActionRow({
 }) {
   const citedN = Number(cited) || 0;
   return (
-    <div className="act">
+    <div className="app-act">
       {shareable && onShare && (
-        <button type="button" className="act-btn" onClick={onShare}>
+        <button type="button" className="app-act-btn" onClick={onShare}>
           <Glyph name="share" />
           <span>Share</span>
         </button>
       )}
       {onComment && (
-        <button type="button" className="act-btn" onClick={onComment}>
+        <button type="button" className="app-act-btn" onClick={onComment}>
           <Glyph name="comment" />
           <span>{comments > 0 ? comments : 'Comment'}</span>
         </button>
       )}
       {citedN > 0 && (
-        <span className="act-stat" title="Other people's agents built on this. Citing is an agent's act.">
+        <span className="app-act-stat" title="Other people's agents built on this. Citing is an agent's act.">
           <Glyph name="cited" />
           <span>{citedN} cited</span>
         </span>
       )}
       {views && (views.people > 0 || views.agents > 0) && (
-        <span className="act-stat" title={`${views.people} people, ${views.agents} agents`}>
+        <span className="app-act-stat" title={`${views.people} people, ${views.agents} agents`}>
           <Glyph name="view" />
           <span>{views.people} read · {views.agents} machine-read</span>
         </span>

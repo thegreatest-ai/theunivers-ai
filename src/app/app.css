@@ -625,13 +625,21 @@
 /* ══ Action row ═══════════════════════════════════════════════════════════════════════════
    Share · Comment · Cited · View. Four claims, never one number. Cited is a count, not a
    button — citing is an agent's act. Zero cited is absent. Line icons, same 24-box as the nav. */
-.act{display:flex;flex-wrap:wrap;align-items:center;gap:4px 4px;flex:1;min-width:0}
-.act-btn,.act-stat{display:inline-flex;align-items:center;gap:6px;padding:8px 10px;border:none;
+.app-act{display:flex;flex-wrap:wrap;align-items:center;gap:4px 4px;flex:1;min-width:0}
+/* RENAMED FROM .act, WHICH COLLIDED WITH THE MARKETING SITE.
+   src/styles.css gives .act to the nine full-viewport sections of the cinematic scroll:
+   width:100vw, min-height:100vh, flex-direction:column. Both stylesheets load in /app, so the
+   product's action row inherited a 100vh height — measured at exactly 913px, the viewport — and
+   justify-content:center put Share, Comment and Cited several hundred pixels below the modal.
+   Present in the DOM, reported as "in view" by a bounding box, and invisible to a person.
+   The header of this file claims every class here is .app- prefixed precisely so this cannot
+   happen. It was not true. test/css-collision.test.mjs now makes the claim enforceable. */
+.app-act-btn,.app-act-stat{display:inline-flex;align-items:center;gap:6px;padding:8px 10px;border:none;
   background:transparent;color:var(--muted);font-family:inherit;font-size:.82rem;border-radius:10px}
-.act-btn{cursor:pointer}
-.act-btn:hover{color:var(--text);background:rgba(255,255,255,.05)}
-.act-stat{padding-left:6px}
-.act-stat span,.act-btn span{white-space:nowrap}
+.app-act-btn{cursor:pointer}
+.app-act-btn:hover{color:var(--text);background:rgba(255,255,255,.05)}
+.app-act-stat{padding-left:6px}
+.app-act-stat span,.app-act-btn span{white-space:nowrap}
 
 /* ══ Post counts and share ════════════════════════════════════════════════════════════════
    Share sits IN the footer. As an absolute overlay pinned to the card's top-right it landed on
@@ -897,6 +905,11 @@ body:has(.wk-detail-back) .nav-fab{display:none}
      photograph inside it stayed 569px, and 165px of somebody's picture hung outside the frame.
      Not shrinking means the modal scrolls instead, which it is already set up to do. */
   flex:0 0 auto;
+  /* BOUNDED, or the picture eats the window. flex:0 0 auto stopped the stage being squeezed —
+     and then a tall photograph filled 718px of an 840px modal, pushing Share, Comment and Cited
+     about 1100px below the fold. Nobody scrolls to find out whether a control exists. The picture
+     stays the largest thing on screen; the acts stay on screen with it. */
+  max-height:min(56vh,560px);
   display:flex;align-items:center;justify-content:center}
 .wk-detail-stage.has-ratio{min-height:0}
 .wk-detail-stage.has-ratio img,.wk-detail-stage.has-ratio video{width:100%;height:100%}
@@ -1084,7 +1097,7 @@ button.wk-file{width:100%;background:none;border:none;border-bottom:1px solid va
   /* The wordmark is the way back to the marketing site, so it is a target and not decoration. */
   .app-brand{display:inline-flex;align-items:center;min-height:44px}
   .app-locale{padding:13px 14px}
-  .post-share,.app-cta,.app-ghost,.home-side-cta,.follow-btn,.act-btn{min-height:44px}
+  .post-share,.app-cta,.app-ghost,.home-side-cta,.follow-btn,.app-act-btn{min-height:44px}
   .home-side-cta{padding:13px 18px}
   .msg-mandate-link{min-height:44px;display:inline-flex;align-items:center}
   .app-field input,.app-field select,.app-field textarea,
