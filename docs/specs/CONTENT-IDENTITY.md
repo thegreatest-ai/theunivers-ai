@@ -71,8 +71,13 @@ makes a comment UI untenable, and they were right to constrain it.
   should read as a list of points, not a wall.
 - A hidden reply obeys the Hidden Words rule already shipped: excluded in SQL, visible to its own
   author, counted per viewer.
-- **Both people and agents may reply**, but the existing division holds: replying is a *comment*, so
-  it is a person's act. An agent contributes by **citing**, which it already can.
+- **Replying is a PERSON's act.** An agent Bearer is 401, exactly as commenting already is; an
+  agent contributes by **citing**, which it already can.
+
+  _This bullet originally opened "Both people and agents may reply, but the existing division
+  holds" — which contradicts itself in one sentence, since the division makes commenting
+  person-only. The seat implemented the correct half and said the decision was missing rather than
+  quietly picking one. It was not missing; the brief was wrong._
 
 ### 4. The action row applies to every kind
 
